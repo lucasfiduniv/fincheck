@@ -41,6 +41,7 @@ export function useBudgetsModalController({
 }: UseBudgetsModalControllerProps) {
   const queryClient = useQueryClient()
   const { categories } = useCategories()
+  const [mode, setMode] = useState<'list' | 'form'>('list')
   const [budgetBeingEdited, setBudgetBeingEdited] =
     useState<CategoryBudgetSummary | null>(null)
   const [budgetBeingDeleted, setBudgetBeingDeleted] =
@@ -110,6 +111,7 @@ export function useBudgetsModalController({
 
       await queryClient.invalidateQueries({ queryKey: ['categoryBudgets', month, year] })
       setBudgetBeingEdited(null)
+      setMode('list')
       reset({
         categoryId: '',
         limit: '0',
@@ -121,6 +123,16 @@ export function useBudgetsModalController({
 
   function handleOpenCreateForm() {
     setBudgetBeingEdited(null)
+    setMode('form')
+    reset({
+      categoryId: '',
+      limit: '0',
+    })
+  }
+
+  function handleCloseForm() {
+    setBudgetBeingEdited(null)
+    setMode('list')
     reset({
       categoryId: '',
       limit: '0',
@@ -129,12 +141,13 @@ export function useBudgetsModalController({
 
   function handleOpenEditForm(budget: CategoryBudgetSummary) {
     setBudgetBeingEdited(budget)
+    setMode('form')
     setValue('categoryId', budget.categoryId)
     setValue('limit', budget.limit ?? 0)
   }
 
   function handleCancelEdit() {
-    handleOpenCreateForm()
+    handleCloseForm()
   }
 
   function handleOpenDeleteModal(budget: CategoryBudgetSummary) {
@@ -153,7 +166,7 @@ export function useBudgetsModalController({
       await queryClient.invalidateQueries({ queryKey: ['categoryBudgets', month, year] })
 
       if (budgetBeingEdited?.categoryBudgetId === budgetBeingDeleted.categoryBudgetId) {
-        handleOpenCreateForm()
+        handleCloseForm()
       }
 
       toast.success('Limite removido com sucesso!')
@@ -164,6 +177,7 @@ export function useBudgetsModalController({
   }
 
   return {
+    mode,
     control,
     errors,
     handleSubmit,
@@ -179,7 +193,9 @@ export function useBudgetsModalController({
     handleCloseDeleteModal,
     handleOpenCreateForm,
     handleOpenEditForm,
+    handleCloseForm,
     handleCancelEdit,
     isEditMode: !!budgetBeingEdited,
+    budgetBeingEdited,
   }
 }

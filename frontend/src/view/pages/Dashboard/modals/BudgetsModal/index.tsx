@@ -26,6 +26,7 @@ export function BudgetsModal({
   budgets,
 }: BudgetsModalProps) {
   const {
+    mode,
     control,
     errors,
     handleSubmit,
@@ -39,8 +40,10 @@ export function BudgetsModal({
     handleCloseDeleteModal,
     handleOpenCreateForm,
     handleOpenEditForm,
+    handleCloseForm,
     handleCancelEdit,
     isEditMode,
+    budgetBeingEdited,
   } = useBudgetsModalController({ month, year, budgets })
 
   const budgetsWithLimit = budgets.filter((budget) => budget.categoryBudgetId !== null)
@@ -60,118 +63,165 @@ export function BudgetsModal({
   return (
     <Modal title="Orçamento por categoria" open={open} onClose={onClose}>
       <div className="space-y-6">
-        <div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-700 tracking-[-0.5px]">Limites definidos</span>
-            <button
-              className="text-sm text-teal-900 font-medium"
-              onClick={handleOpenCreateForm}
-            >
-              Novo limite
-            </button>
-          </div>
-
-          <div className="space-y-2 mt-2 max-h-44 overflow-y-auto">
-            {budgetsWithLimit.length === 0 && (
-              <div className="h-16 rounded-lg bg-gray-50 text-sm text-gray-700 flex items-center justify-center">
-                Nenhum limite definido para este mês.
+        {mode === 'list' && (
+          <>
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-700 tracking-[-0.5px]">Limites definidos</span>
+                <button
+                  className="text-sm text-teal-900 font-medium"
+                  onClick={handleOpenCreateForm}
+                >
+                  Novo limite
+                </button>
               </div>
-            )}
 
-            {budgetsWithLimit.map((budget) => (
-              <div
-                key={budget.categoryId}
-                className="rounded-lg border border-gray-300 px-3 py-2 flex items-center justify-between gap-3"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <CategoryIcon type="EXPENSE" category={budget.categoryIcon} />
-                  <div className="min-w-0">
-                    <strong className="text-sm text-gray-800 block truncate">
-                      {budget.categoryName}
-                    </strong>
-                    <span className="text-xs text-gray-600 block">
-                      Limite {formatCurrency(budget.limit ?? 0)}
-                    </span>
+              <div className="space-y-2 mt-2 max-h-52 overflow-y-auto">
+                {budgetsWithLimit.length === 0 && (
+                  <div className="h-20 rounded-lg bg-gray-50 text-sm text-gray-700 flex flex-col items-center justify-center gap-2 px-3 text-center">
+                    <span>Nenhum limite definido para este mês.</span>
+                    <button
+                      className="text-teal-900 font-medium"
+                      onClick={handleOpenCreateForm}
+                    >
+                      Criar primeiro limite
+                    </button>
                   </div>
-                </div>
+                )}
 
-                <div className="flex items-center gap-2">
-                  <button
-                    className="text-xs text-teal-900 font-medium"
-                    onClick={() => handleOpenEditForm(budget)}
+                {budgetsWithLimit.map((budget) => (
+                  <div
+                    key={budget.categoryId}
+                    className="rounded-lg border border-gray-300 px-3 py-2 flex items-center justify-between gap-3"
                   >
-                    Editar
-                  </button>
-                  <button
-                    className="w-8 h-8 flex items-center justify-center"
-                    onClick={() => handleOpenDeleteModal(budget)}
-                  >
-                    <TrashIcon className="w-4 h-4 text-red-900" />
-                  </button>
-                </div>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <CategoryIcon type="EXPENSE" category={budget.categoryIcon} />
+                      <div className="min-w-0">
+                        <strong className="text-sm text-gray-800 block truncate">
+                          {budget.categoryName}
+                        </strong>
+                        <span className="text-xs text-gray-600 block">
+                          Limite {formatCurrency(budget.limit ?? 0)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="text-xs text-teal-900 font-medium"
+                        onClick={() => handleOpenEditForm(budget)}
+                      >
+                        Editar
+                      </button>
+                      <button
+                        className="w-8 h-8 flex items-center justify-center"
+                        onClick={() => handleOpenDeleteModal(budget)}
+                      >
+                        <TrashIcon className="w-4 h-4 text-red-900" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
+            </div>
 
-        <form className="space-y-4" onSubmit={handleSubmit}>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-700 tracking-[-0.5px] block">
-              {isEditMode ? 'Editar limite' : 'Novo limite mensal'}
-            </span>
+            {budgetsWithLimit.length > 0 && (
+              <Button className="w-full" type="button" onClick={handleOpenCreateForm}>
+                Novo limite mensal
+              </Button>
+            )}
+          </>
+        )}
 
-            {isEditMode && (
+        {mode === 'form' && (
+          <form className="space-y-4" onSubmit={handleSubmit}>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-700 tracking-[-0.5px] block">
+                {isEditMode ? 'Editar limite mensal' : 'Novo limite mensal'}
+              </span>
+
               <button
                 type="button"
                 className="text-sm text-gray-700"
-                onClick={handleCancelEdit}
+                onClick={handleCloseForm}
               >
-                Cancelar
+                Voltar
               </button>
-            )}
-          </div>
+            </div>
 
-          <Controller
-            control={control}
-            name="categoryId"
-            defaultValue=""
-            render={({ field: { onChange, value } }) => (
-              <Select
-                placeholder="Categoria"
-                onChange={onChange}
-                value={value}
-                error={errors.categoryId?.message}
-                options={budgetableCategories.map((category) => ({
-                  value: category.id,
-                  label: category.name,
-                }))}
-              />
+            {!isEditMode && budgetableCategories.length === 0 && (
+              <div className="rounded-lg bg-gray-50 text-sm text-gray-700 p-3 text-center">
+                Todas as categorias de despesa já têm limite neste mês.
+              </div>
             )}
-          />
 
-          <div>
-            <span className="text-gray-600 tracking-[-0.5px] text-xs block">Limite mensal</span>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-gray-600 tracking-[-0.5px] text-lg">R$</span>
+            {isEditMode && budgetBeingEdited && (
+              <div className="rounded-lg border border-gray-300 px-3 py-2 flex items-center gap-2">
+                <CategoryIcon type="EXPENSE" category={budgetBeingEdited.categoryIcon} />
+                <span className="text-sm text-gray-800">{budgetBeingEdited.categoryName}</span>
+              </div>
+            )}
+
+            {!isEditMode && (
               <Controller
                 control={control}
-                name="limit"
+                name="categoryId"
+                defaultValue=""
                 render={({ field: { onChange, value } }) => (
-                  <InputCurrency
-                    error={errors.limit?.message}
-                    value={value}
+                  <Select
+                    placeholder="Categoria"
                     onChange={onChange}
-                    className="text-2xl"
+                    value={value}
+                    error={errors.categoryId?.message}
+                    options={budgetableCategories.map((category) => ({
+                      value: category.id,
+                      label: category.name,
+                    }))}
                   />
                 )}
               />
-            </div>
-          </div>
+            )}
 
-          <Button className="w-full" type="submit" isLoading={isLoading}>
-            {isEditMode ? 'Salvar limite' : 'Criar limite'}
-          </Button>
-        </form>
+            <div>
+              <span className="text-gray-600 tracking-[-0.5px] text-xs block">Limite mensal</span>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-gray-600 tracking-[-0.5px] text-lg">R$</span>
+                <Controller
+                  control={control}
+                  name="limit"
+                  render={({ field: { onChange, value } }) => (
+                    <InputCurrency
+                      error={errors.limit?.message}
+                      value={value}
+                      onChange={onChange}
+                      className="text-2xl"
+                    />
+                  )}
+                />
+              </div>
+            </div>
+
+            <Button
+              className="w-full"
+              type="submit"
+              isLoading={isLoading}
+              disabled={!isEditMode && budgetableCategories.length === 0}
+            >
+              {isEditMode ? 'Salvar limite' : 'Criar limite'}
+            </Button>
+
+            {isEditMode && (
+              <Button
+                className="w-full"
+                type="button"
+                variant="ghost"
+                onClick={handleCancelEdit}
+              >
+                Cancelar edição
+              </Button>
+            )}
+          </form>
+        )}
       </div>
     </Modal>
   )
