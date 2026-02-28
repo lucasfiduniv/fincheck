@@ -7,44 +7,76 @@ interface AccountCardProps {
   data: BankAccount
 }
 
+interface BankBrand {
+  displayName: string
+  logoSrc: string
+  aliases: string[]
+}
+
+const BANK_BRANDS: BankBrand[] = [
+  {
+    displayName: 'Nubank',
+    logoSrc: '/bancos/nubank.svg',
+    aliases: ['nubank', 'nu bank', 'nu'],
+  },
+  {
+    displayName: 'Sicoob',
+    logoSrc: '/bancos/sicoob.svg',
+    aliases: ['sicoob'],
+  },
+]
+
+function resolveBankBrand(accountName: string) {
+  const normalizedName = accountName.toLowerCase().trim()
+
+  const matchedBrand = BANK_BRANDS.find((brand) =>
+    brand.aliases.some((alias) => normalizedName.includes(alias))
+  )
+
+  if (matchedBrand) {
+    return matchedBrand
+  }
+
+  return {
+    displayName: accountName,
+    logoSrc: '/bancos/default-bank.svg',
+  }
+}
+
 export function AccountCard({ data }: AccountCardProps) {
   const { color, name, currentBalance } = data
   const { areValuesVisible, openEditAccountModal } = useDashboard()
 
-  function getBankLogoSrc(accountName: string) {
-    const normalizedName = accountName.toLowerCase()
-
-    if (normalizedName.includes('nubank')) {
-      return '/bancos/nubank.svg'
-    }
-
-    if (normalizedName.includes('sicoob')) {
-      return '/bancos/sicoob.svg'
-    }
-
-    return '/bancos/default-bank.svg'
-  }
+  const bankBrand = resolveBankBrand(name)
+  const showCustomName =
+    bankBrand.displayName.toLowerCase() !== name.toLowerCase().trim()
 
   return (
     <div
-      className="p-4 bg-white rounded-2xl h-[200px] flex flex-col justify-between border-b-4 border-b-teal-950"
-      style={{ borderBottomColor: color }}
+      className="relative overflow-hidden p-4 rounded-2xl h-[200px] flex flex-col justify-between border border-gray-100 bg-cover bg-center"
+      style={{
+        borderBottomColor: color,
+        backgroundImage: `linear-gradient(135deg, ${color}1A 0%, transparent 55%), url('/face=front.svg')`,
+      }}
       role="button"
       onClick={() => openEditAccountModal(data)}
     >
-      <div>
+      <div className="relative z-10">
         <img
-          src={getBankLogoSrc(name)}
-          alt={name}
+          src={bankBrand.logoSrc}
+          alt={bankBrand.displayName}
           className="h-8 w-auto"
         />
 
-        <span className="text-gray-800 font-medium tracking-[-0.5px] mt-4 block">
-          {name}
-        </span>
+       
+        {showCustomName && (
+          <span className="text-gray-600 text-xs tracking-[-0.3px] block">
+            {name}
+          </span>
+        )}
       </div>
 
-      <div>
+      <div className="relative z-10">
         <span
           className={cn(
             'text-gray-800 font-medium tracking-[-0.5px] block',
