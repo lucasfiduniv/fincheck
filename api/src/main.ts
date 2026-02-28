@@ -7,6 +7,7 @@ import { NextFunction, Request, Response } from 'express'
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule)
+  const port = Number(process.env.PORT) || 3000
 
   app.use((request: Request, response: Response, next: NextFunction) => {
     response.header('Access-Control-Allow-Origin', '*')
@@ -30,6 +31,6 @@ async function bootstrap() {
     allowedHeaders: '*',
   })
 
-  await app.listen(3000)
+  await app.listen(port, '0.0.0.0')
 }
 bootstrap()
