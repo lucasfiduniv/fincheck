@@ -4,6 +4,7 @@ import { Accounts } from './components/Accounts'
 import { DashboardContext, DashboardProvider } from './components/DashboardContext'
 import { Fab } from './components/Fab'
 import { Transactions } from './components/Transactions'
+import { CategoriesModal } from './modals/CategoriesModal'
 import { EditAccountModal } from './modals/EditAccountModal'
 import { NewAccountModal } from './modals/NewAccountModal'
 import { NewTransactionModal } from './modals/NewTransactionModal'
@@ -33,6 +34,7 @@ export function Dashboard() {
 
             <NewAccountModal />
             <NewTransactionModal />
+            <CategoriesModal />
             {accountBeingEdited && <EditAccountModal />}
           </div>
         )}

@@ -6,6 +6,7 @@ interface DashboardContextValue {
   isNewAccountModalOpen: boolean
   isEditAccountModalOpen: boolean
   isNewTransactionModalOpen: boolean
+  isCategoriesModalOpen: boolean
   accountBeingEdited: BankAccount | null
   newTransactionType: 'INCOME' | 'EXPENSE' | null
   toggleValueVisibility: () => void
@@ -15,6 +16,8 @@ interface DashboardContextValue {
   closeEditAccountModal: () => void
   openNewTransactionModal: (type: 'INCOME' | 'EXPENSE') => void
   closeNewTransactionModal: () => void
+  openCategoriesModal: () => void
+  closeCategoriesModal: () => void
 }
 
 export const DashboardContext = createContext({} as DashboardContextValue)
@@ -26,6 +29,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const [accountBeingEdited, setAccountBeingEdited] = useState<BankAccount | null>(null)
   const [isNewTransactionModalOpen, setIsNewTransactionModalOpen] = useState(false)
   const [newTransactionType, setNewTransactionType] = useState<'INCOME' | 'EXPENSE' | null>(null)
+  const [isCategoriesModalOpen, setIsCategoriesModalOpen] = useState(false)
 
   const toggleValueVisibility = useCallback(() => {
     setAreValuesVisible(prevState => !prevState)
@@ -59,6 +63,14 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     setIsNewTransactionModalOpen(false)
   }, [])
 
+  const openCategoriesModal = useCallback(() => {
+    setIsCategoriesModalOpen(true)
+  }, [])
+
+  const closeCategoriesModal = useCallback(() => {
+    setIsCategoriesModalOpen(false)
+  }, [])
+
   return (
     <DashboardContext.Provider
       value={{
@@ -67,6 +79,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         isNewAccountModalOpen,
         isEditAccountModalOpen,
         isNewTransactionModalOpen,
+        isCategoriesModalOpen,
         newTransactionType,
         openNewAccountModal,
         closeNewAccountModal,
@@ -74,7 +87,9 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         closeEditAccountModal,
         accountBeingEdited,
         openNewTransactionModal,
-        closeNewTransactionModal
+        closeNewTransactionModal,
+        openCategoriesModal,
+        closeCategoriesModal
       }}
     >
       {children}
