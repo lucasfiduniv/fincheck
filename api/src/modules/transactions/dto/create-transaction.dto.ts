@@ -48,7 +48,7 @@ export class CreateTransactionDto {
   @IsOptional()
   @IsInt()
   @Min(2)
-  @Max(60)
+  @Max(360)
     repeatCount?: number
 
   @IsOptional()

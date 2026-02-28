@@ -74,6 +74,7 @@ export class CategoryBudgetsService {
       where: {
         userId,
         type: 'EXPENSE',
+        status: 'POSTED',
         categoryId: {
           in: expenseCategories.map((category) => category.id),
         },

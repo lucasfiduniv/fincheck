@@ -8,3 +8,8 @@ export enum TransactionCreationType {
   RECURRING = 'RECURRING',
   INSTALLMENT = 'INSTALLMENT',
 }
+
+export enum TransactionStatus {
+  POSTED = 'POSTED',
+  PLANNED = 'PLANNED',
+}

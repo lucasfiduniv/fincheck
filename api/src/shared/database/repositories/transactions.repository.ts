@@ -22,6 +22,10 @@ export class TransactionsRepository {
     return this.prismaService.transaction.update(updateDto)
   }
 
+  updateMany(updateManyDto: Prisma.TransactionUpdateManyArgs) {
+    return this.prismaService.transaction.updateMany(updateManyDto)
+  }
+
   delete(deleteDto: Prisma.TransactionDeleteArgs) {
     return this.prismaService.transaction.delete(deleteDto)
   }

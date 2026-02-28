@@ -62,6 +62,13 @@ enum TransactionEntryType {
   @@map("transaction_entry_type")
 }
 
+enum TransactionStatus {
+  POSTED
+  PLANNED
+
+  @@map("transaction_status")
+}
+
 model Category {
   id     String          @id @default(uuid()) @db.Uuid
   userId String          @map("user_id") @db.Uuid
@@ -86,6 +93,7 @@ model Transaction {
   value         Float
   date          DateTime
   type          TransactionType
+  status        TransactionStatus @default(POSTED)
   entryType     TransactionEntryType @default(SINGLE) @map("entry_type")
   recurrenceGroupId String?     @map("recurrence_group_id") @db.Uuid
   installmentNumber Int?        @map("installment_number")

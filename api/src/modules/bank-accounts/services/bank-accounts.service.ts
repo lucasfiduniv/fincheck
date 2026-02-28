@@ -3,6 +3,7 @@ import { CreateBankAccountDto } from '../dto/create-bank-account.dto'
 import { UpdateBankAccountDto } from '../dto/update-bank-account.dto'
 import { BankAccountsRepository } from 'src/shared/database/repositories/bank-accounts.repository'
 import { ValidateBankAccountOwnershipService } from './validate-bank-account-ownership.service'
+import { TransactionStatus } from 'src/modules/transactions/entities/Transaction'
 
 @Injectable()
 export class BankAccountsService {
@@ -32,6 +33,7 @@ export class BankAccountsService {
           select: {
             type: true,
             value: true,
+            status: true,
           },
         },
       },
@@ -39,11 +41,16 @@ export class BankAccountsService {
 
     return bankAccounts.map(({ transactions, ...bankAccount }) => {
       const totalTransactions = transactions.reduce(
-        (acc, transaction) =>
-          acc +
-          (transaction.type === 'INCOME'
-            ? transaction.value
-            : -transaction.value),
+        (acc, transaction) => {
+          if (transaction.status !== TransactionStatus.POSTED) {
+            return acc
+          }
+
+          return acc +
+            (transaction.type === 'INCOME'
+              ? transaction.value
+              : -transaction.value)
+        },
         0,
       )
 

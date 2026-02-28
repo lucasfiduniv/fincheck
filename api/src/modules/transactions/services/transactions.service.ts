@@ -5,7 +5,11 @@ import { TransactionsRepository } from 'src/shared/database/repositories/transac
 import { ValidateBankAccountOwnershipService } from '../../bank-accounts/services/validate-bank-account-ownership.service'
 import { ValidateCategoryOwnershipService } from '../../categories/services/validate-category-ownership.service'
 import { ValidateTransactionOwnershipService } from './validate-transaction-ownership.service'
-import { TransactionCreationType, TransactionType } from '../entities/Transaction'
+import {
+  TransactionCreationType,
+  TransactionStatus,
+  TransactionType,
+} from '../entities/Transaction'
 import { randomUUID } from 'crypto'
 
 @Injectable()
@@ -57,11 +61,14 @@ export class TransactionsService {
           : repeatCount ?? this.defaultRecurringMonths
     const recurrenceGroupId =
       creationType === TransactionCreationType.ONCE ? null : randomUUID()
-    const baseDate = new Date(date)
+    const baseDate = this.toUTCDate(date)
 
     const createdTransactions = await Promise.all(
       Array.from({ length: transactionsCount }).map((_, index) => {
-        const occurrenceDate = this.addMonthsUTC(baseDate, index)
+        const occurrenceDate =
+          creationType === TransactionCreationType.ONCE
+            ? baseDate
+            : this.buildMonthlyOccurrenceDate(baseDate, index, dueDay)
         const installmentLabel = `${name} (${index + 1}/${transactionsCount})`
 
         return this.transactionsRepo.create({
@@ -76,6 +83,7 @@ export class TransactionsService {
                 : name,
             type,
             value,
+            status: this.getStatusForCreationType(creationType),
             entryType: this.getEntryType(creationType),
             recurrenceGroupId,
             installmentNumber:
@@ -161,6 +169,53 @@ export class TransactionsService {
     })
   }
 
+  async updateStatus(
+    userId: string,
+    transactionId: string,
+    status: TransactionStatus,
+  ) {
+    await this.validateEntitiesOwnership({ userId, transactionId })
+
+    return this.transactionsRepo.update({
+      where: { id: transactionId },
+      data: { status },
+    })
+  }
+
+  async adjustFutureValuesByRecurrenceGroup(
+    userId: string,
+    recurrenceGroupId: string,
+    data: { value: number; fromDate?: string },
+  ) {
+    const recurrenceGroup = await this.transactionsRepo.findFirst({
+      where: {
+        userId,
+        recurrenceGroupId,
+      },
+      select: { id: true },
+    })
+
+    if (!recurrenceGroup) {
+      throw new BadRequestException('Recurrence group not found.')
+    }
+
+    const fromDate = data.fromDate ? new Date(data.fromDate) : new Date()
+
+    return this.transactionsRepo.updateMany({
+      where: {
+        userId,
+        recurrenceGroupId,
+        status: TransactionStatus.PLANNED,
+        date: {
+          gte: fromDate,
+        },
+      },
+      data: {
+        value: data.value,
+      },
+    })
+  }
+
   async remove(userId: string, transactionId: string) {
     await this.validateEntitiesOwnership({ userId, transactionId })
 
@@ -176,6 +231,7 @@ export class TransactionsService {
     const reminders = await this.transactionsRepo.findMany({
       where: {
         userId,
+        status: TransactionStatus.PLANNED,
         entryType: {
           in: ['RECURRING', 'INSTALLMENT'],
         },
@@ -275,6 +331,29 @@ export class TransactionsService {
     return utcDate
   }
 
+  private toUTCDate(date: string) {
+    const datePortion = date.split('T')[0]
+    const [year, month, day] = datePortion.split('-').map(Number)
+
+    return new Date(Date.UTC(year, month - 1, day))
+  }
+
+  private buildMonthlyOccurrenceDate(
+    baseDate: Date,
+    monthsToAdd: number,
+    dueDay?: number,
+  ) {
+    const targetYear = baseDate.getUTCFullYear()
+    const targetMonth = baseDate.getUTCMonth() + monthsToAdd
+    const dueDayToUse = dueDay ?? baseDate.getUTCDate()
+    const maxDayInMonth = new Date(
+      Date.UTC(targetYear, targetMonth + 1, 0),
+    ).getUTCDate()
+    const normalizedDay = Math.min(dueDayToUse, maxDayInMonth)
+
+    return new Date(Date.UTC(targetYear, targetMonth, normalizedDay))
+  }
+
   private getEntryType(type: TransactionCreationType) {
     if (type === TransactionCreationType.RECURRING) {
       return 'RECURRING'
@@ -285,5 +364,13 @@ export class TransactionsService {
     }
 
     return 'SINGLE'
+  }
+
+  private getStatusForCreationType(type: TransactionCreationType) {
+    if (type === TransactionCreationType.ONCE) {
+      return TransactionStatus.POSTED
+    }
+
+    return TransactionStatus.PLANNED
   }
 }

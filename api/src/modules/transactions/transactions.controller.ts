@@ -11,6 +11,7 @@ import {
   HttpStatus,
   Query,
   ParseIntPipe,
+  Patch,
 } from '@nestjs/common'
 import { TransactionsService } from './services/transactions.service'
 import { CreateTransactionDto } from './dto/create-transaction.dto'
@@ -19,6 +20,8 @@ import { ActiveUserId } from 'src/shared/decorators/ActiveUserId'
 import { OptionalParseUUIDPipe } from 'src/shared/pipes/OptionalParseUUIDPipe'
 import { TransactionType } from './entities/Transaction'
 import { OptionalParseEnumPipe } from 'src/shared/pipes/OptionalParseEnumPipe'
+import { UpdateTransactionStatusDto } from './dto/update-transaction-status.dto'
+import { AdjustRecurrenceFutureValuesDto } from './dto/adjust-recurrence-future-values.dto'
 
 @Controller('transactions')
 export class TransactionsController {
@@ -71,6 +74,32 @@ export class TransactionsController {
       userId,
       transactionId,
       updateTransactionDto,
+    )
+  }
+
+  @Patch(':transactionId/status')
+  updateStatus(
+    @ActiveUserId() userId: string,
+    @Param('transactionId', ParseUUIDPipe) transactionId: string,
+    @Body() updateTransactionStatusDto: UpdateTransactionStatusDto,
+  ) {
+    return this.transactionsService.updateStatus(
+      userId,
+      transactionId,
+      updateTransactionStatusDto.status,
+    )
+  }
+
+  @Patch('recurrence-groups/:recurrenceGroupId/future-values')
+  adjustFutureValuesByRecurrenceGroup(
+    @ActiveUserId() userId: string,
+    @Param('recurrenceGroupId', ParseUUIDPipe) recurrenceGroupId: string,
+    @Body() adjustRecurrenceFutureValuesDto: AdjustRecurrenceFutureValuesDto,
+  ) {
+    return this.transactionsService.adjustFutureValuesByRecurrenceGroup(
+      userId,
+      recurrenceGroupId,
+      adjustRecurrenceFutureValuesDto,
     )
   }
 
