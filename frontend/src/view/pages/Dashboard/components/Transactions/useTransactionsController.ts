@@ -5,9 +5,13 @@ import { TransactionsFilters } from '../../../../../app/services/transactionsSer
 import { Transaction } from '../../../../../app/entities/Transaction'
 import { useCategoryBudgets } from '../../../../../app/hooks/useCategoryBudgets'
 import { useTransactionDueAlerts } from '../../../../../app/hooks/useTransactionDueAlerts'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { transactionsService } from '../../../../../app/services/transactionsService'
+import { toast } from 'react-hot-toast'
 
 export function useTransactionsController() {
   const { areValuesVisible } = useDashboard()
+  const queryClient = useQueryClient()
 
   const [isFiltersModalOpen, setIsFiltersModalOpen] = useState(false)
   const [isBudgetsModalOpen, setIsBudgetsModalOpen] = useState(false)
@@ -27,6 +31,14 @@ export function useTransactionsController() {
   } = useCategoryBudgets({ month: filters.month, year: filters.year })
   const { dueAlerts, isLoadingDueAlerts, refetchDueAlerts } =
     useTransactionDueAlerts({ month: filters.month, year: filters.year })
+
+  const { mutateAsync: markTransactionAsPosted, isLoading: isMarkingAsPosted } =
+    useMutation(transactionsService.updateStatus)
+
+  const {
+    mutateAsync: adjustFutureValuesByGroup,
+    isLoading: isAdjustingFutureValues,
+  } = useMutation(transactionsService.adjustFutureValuesByGroup)
 
   useEffect(() => {
     refetchTransactions()
@@ -91,6 +103,36 @@ export function useTransactionsController() {
     setTransactionBeingEdited(null)
   }
 
+  async function handleMarkAsPosted(transactionId: string) {
+    try {
+      await markTransactionAsPosted({ id: transactionId, status: 'POSTED' })
+
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['bankAccounts'] })
+      queryClient.invalidateQueries({ queryKey: ['categoryBudgets'] })
+
+      toast.success('Transação efetivada com sucesso!')
+    } catch {
+      toast.error('Erro ao efetivar transação!')
+    }
+  }
+
+  async function handleAdjustFutureValuesByGroup(params: {
+    recurrenceGroupId: string;
+    value: number;
+    fromDate?: string;
+  }) {
+    try {
+      await adjustFutureValuesByGroup(params)
+
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+
+      toast.success('Reajuste aplicado nas transações futuras!')
+    } catch {
+      toast.error('Erro ao reajustar transações futuras!')
+    }
+  }
+
   const hasTransactions = transactions.length > 0
   const alertBudgetsCount = categoryBudgets.filter((budget) => budget.hasAlert).length
   const alertDueRemindersCount = dueAlerts.filter((alert) => alert.hasAlert).length
@@ -119,6 +161,10 @@ export function useTransactionsController() {
     isEditModalOpen,
     transactionBeingEdited,
     handleOpenEditModal,
-    handleCloseEditModal
+    handleCloseEditModal,
+    handleMarkAsPosted,
+    handleAdjustFutureValuesByGroup,
+    isMarkingAsPosted,
+    isAdjustingFutureValues,
   }
 }

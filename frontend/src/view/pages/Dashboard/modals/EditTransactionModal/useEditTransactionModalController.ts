@@ -91,7 +91,13 @@ export function useEditTransactionModalController(
         id: transaction!.id,
         type: transaction!.type,
         value: currencyStringToNumber(data.value),
-        date: data.date.toISOString(),
+        date: new Date(
+          Date.UTC(
+            data.date.getFullYear(),
+            data.date.getMonth(),
+            data.date.getDate(),
+          ),
+        ).toISOString(),
       })
 
       queryClient.invalidateQueries({ queryKey: ['transactions'] })

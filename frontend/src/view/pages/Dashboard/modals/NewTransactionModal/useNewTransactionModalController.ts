@@ -61,10 +61,10 @@ const schema = z.object({
   }
 
   if (data.repeatType === 'INSTALLMENT') {
-    if (!data.repeatCount || data.repeatCount < 2 || data.repeatCount > 60) {
+    if (!data.repeatCount || data.repeatCount < 2 || data.repeatCount > 360) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Informe uma quantidade entre 2 e 60',
+        message: 'Informe uma quantidade entre 2 e 360',
         path: ['repeatCount'],
       })
     }
@@ -75,11 +75,11 @@ const schema = z.object({
   if (
     data.repeatType === 'RECURRING' &&
     data.repeatCount !== undefined &&
-    (data.repeatCount < 2 || data.repeatCount > 60)
+    (data.repeatCount < 2 || data.repeatCount > 360)
   ) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: 'Informe uma quantidade entre 2 e 60',
+      message: 'Informe uma quantidade entre 2 e 360',
       path: ['repeatCount'],
     })
   }
@@ -128,7 +128,13 @@ export function useNewTransactionModalController() {
         ...data,
         value: currencyStringToNumber(data.value),
         type: newTransactionType!,
-        date: data.date.toISOString(),
+        date: new Date(
+          Date.UTC(
+            data.date.getFullYear(),
+            data.date.getMonth(),
+            data.date.getDate(),
+          ),
+        ).toISOString(),
         repeatCount:
           data.repeatType === 'ONCE'
             ? undefined

@@ -148,7 +148,7 @@ export function NewTransactionModal() {
               <Input
                 type="number"
                 min={2}
-                max={60}
+                max={360}
                 placeholder={
                   repeatType === 'RECURRING'
                     ? 'Quantidade de meses (opcional)'

@@ -41,6 +41,10 @@ export function Transactions() {
     dueAlerts,
     isLoadingDueAlerts,
     alertDueRemindersCount,
+    handleMarkAsPosted,
+    handleAdjustFutureValuesByGroup,
+    isMarkingAsPosted,
+    isAdjustingFutureValues,
   } = useTransactionsController()
 
   if (isInitialLoading) {
@@ -247,6 +251,8 @@ export function Transactions() {
                 open={isEditModalOpen}
                 onClose={handleCloseEditModal}
                 transaction={transactionBeingEdited}
+                onAdjustFutureValuesByGroup={handleAdjustFutureValuesByGroup}
+                isAdjustingFutureValues={isAdjustingFutureValues}
               />
             )}
 
@@ -266,24 +272,47 @@ export function Transactions() {
                     <strong className="font-bold tracking-[-0.5px] block">
                       {transaction.name}
                     </strong>
-                    <span className="text-sm text-gray-600">
-                      {formatDate(new Date(transaction.date))}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-gray-600">
+                        {formatDate(new Date(transaction.date))}
+                      </span>
+
+                      {transaction.status === 'PLANNED' && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 font-medium">
+                          Planejada
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                <span
-                  className={cn(
-                    'tracking-[-0.5px] font-medium',
-                    transaction.type === 'EXPENSE'
-                      ? 'text-red-800'
-                      : 'text-green-800',
-                    !areValuesVisible && 'blur-md'
+                <div className="flex items-center gap-2">
+                  {transaction.status === 'PLANNED' && (
+                    <button
+                      className="text-xs px-2 py-1 rounded-lg bg-teal-900 text-white disabled:opacity-50"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        handleMarkAsPosted(transaction.id)
+                      }}
+                      disabled={isMarkingAsPosted}
+                    >
+                      Efetivar
+                    </button>
                   )}
-                >
-                  {transaction.type === 'EXPENSE' ? '- ' : '+ '}
-                  {formatCurrency(transaction.value)}
-                </span>
+
+                  <span
+                    className={cn(
+                      'tracking-[-0.5px] font-medium',
+                      transaction.type === 'EXPENSE'
+                        ? 'text-red-800'
+                        : 'text-green-800',
+                      !areValuesVisible && 'blur-md'
+                    )}
+                  >
+                    {transaction.type === 'EXPENSE' ? '- ' : '+ '}
+                    {formatCurrency(transaction.value)}
+                  </span>
+                </div>
               </div>
             ))}
           </>

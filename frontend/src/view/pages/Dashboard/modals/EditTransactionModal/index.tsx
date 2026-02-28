@@ -9,14 +9,27 @@ import { useEditTransactionModalController } from './useEditTransactionModalCont
 import { Transaction } from '../../../../../app/entities/Transaction'
 import { ConfirmDeleteModal } from '../../../../components/ConfirmDeleteModal'
 import { TrashIcon } from '../../../../components/icons/TrashIcon'
+import { useState } from 'react'
 
 interface EditTransactionModalProps {
   open: boolean
   onClose(): void
   transaction: Transaction | null
+  onAdjustFutureValuesByGroup(params: {
+    recurrenceGroupId: string;
+    value: number;
+    fromDate?: string;
+  }): Promise<void>
+  isAdjustingFutureValues: boolean
 }
 
-export function EditTransactionModal({ transaction, open, onClose }: EditTransactionModalProps) {
+export function EditTransactionModal({
+  transaction,
+  open,
+  onClose,
+  onAdjustFutureValuesByGroup,
+  isAdjustingFutureValues,
+}: EditTransactionModalProps) {
   const {
     control,
     errors,
@@ -31,8 +44,26 @@ export function EditTransactionModal({ transaction, open, onClose }: EditTransac
     handleOpenDeleteModal,
     handleCloseDeleteModal
   } = useEditTransactionModalController(transaction, onClose)
+  const [futureValue, setFutureValue] = useState('')
+  const [futureFromDate, setFutureFromDate] = useState('')
 
   const isExpense = transaction?.type === 'EXPENSE'
+  const canAdjustFutureValues = !!transaction?.recurrenceGroupId
+
+  async function handleAdjustFutureValues() {
+    if (!transaction?.recurrenceGroupId || !futureValue) {
+      return
+    }
+
+    await onAdjustFutureValuesByGroup({
+      recurrenceGroupId: transaction.recurrenceGroupId,
+      value: Number(futureValue),
+      fromDate: futureFromDate ? new Date(futureFromDate).toISOString() : undefined,
+    })
+
+    setFutureValue('')
+    setFutureFromDate('')
+  }
 
   if (isDeleteModalOpen)
     return (
@@ -132,6 +163,40 @@ export function EditTransactionModal({ transaction, open, onClose }: EditTransac
               />
             )}
           />
+
+          {canAdjustFutureValues && (
+            <div className="rounded-xl border border-gray-200 p-3 space-y-3">
+              <strong className="text-sm tracking-[-0.5px] text-gray-800 block">
+                Reajustar valores futuros
+              </strong>
+
+              <Input
+                name="futureValue"
+                type="number"
+                min={0.01}
+                step="0.01"
+                placeholder="Novo valor para as próximas"
+                value={futureValue}
+                onChange={(event) => setFutureValue(event.target.value)}
+              />
+
+              <Input
+                name="futureFromDate"
+                type="date"
+                placeholder="Aplicar a partir de"
+                value={futureFromDate}
+                onChange={(event) => setFutureFromDate(event.target.value)}
+              />
+
+              <Button
+                type="button"
+                onClick={handleAdjustFutureValues}
+                isLoading={isAdjustingFutureValues}
+              >
+                Aplicar nas futuras
+              </Button>
+            </div>
+          )}
 
           <Button type="submit" isLoading={isLoading}>Salvar</Button>
         </div>

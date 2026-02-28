@@ -6,6 +6,7 @@ export interface Transaction {
   value: number
   type: 'INCOME' | 'EXPENSE'
   date: string
+  status: 'POSTED' | 'PLANNED'
   entryType?: 'SINGLE' | 'RECURRING' | 'INSTALLMENT'
   recurrenceGroupId?: string | null
   installmentNumber?: number | null
