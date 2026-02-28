@@ -10,6 +10,18 @@ import { formatCurrency } from '../../../../../app/utils/formatCurrency'
 import { cn } from '../../../../../app/utils/cn'
 import { Spinner } from '../../../../components/Spinner'
 import { PlusIcon } from '@radix-ui/react-icons'
+import { useCreditCards } from '../../../../../app/hooks/useCreditCards'
+import { CreditCardCard } from './CreditCardCard'
+import { useState } from 'react'
+import { BankAccount } from '../../../../../app/entities/BankAccount'
+import { CreditCard } from '../../../../../app/entities/CreditCard'
+import { SummaryModal } from './SummaryModal'
+import { useDashboard } from '../DashboardContext/useDashboard'
+import { ConfirmDeleteModal } from '../../../../components/ConfirmDeleteModal'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { bankAccountsService } from '../../../../../app/services/bankAccounts'
+import toast from 'react-hot-toast'
+import { creditCardsService } from '../../../../../app/services/creditCardsService'
 
 export function Accounts() {
   const {
@@ -22,7 +34,132 @@ export function Accounts() {
     openNewAccountModal,
     currentBalance
   } = useAccountsController()
+  const {
+    openEditAccountModal,
+    openNewTransactionModal,
+    openEditCreditCardModal,
+    openNewCreditCardPurchaseModal,
+    openPayCreditCardStatementModal,
+  } = useDashboard()
+  const { creditCards } = useCreditCards()
+  const queryClient = useQueryClient()
   const windowWidth = useWindowWidth()
+  const [selectedAccount, setSelectedAccount] = useState<BankAccount | null>(null)
+  const [selectedCreditCard, setSelectedCreditCard] = useState<CreditCard | null>(null)
+  const [confirmAction, setConfirmAction] = useState<'DELETE_ACCOUNT' | 'DEACTIVATE_CARD' | null>(null)
+
+  const { mutateAsync: removeAccount, isLoading: isRemovingAccount } = useMutation(bankAccountsService.remove)
+  const { mutateAsync: updateCreditCard, isLoading: isUpdatingCreditCard } = useMutation(creditCardsService.update)
+
+  function handleOpenAccountSummary(account: BankAccount) {
+    setSelectedCreditCard(null)
+    setSelectedAccount(account)
+  }
+
+  function handleOpenCreditCardSummary(creditCard: CreditCard) {
+    setSelectedAccount(null)
+    setSelectedCreditCard(creditCard)
+  }
+
+  function handleCloseSummary() {
+    setSelectedAccount(null)
+    setSelectedCreditCard(null)
+  }
+
+  function handleOpenConfirmDeleteAccount() {
+    setConfirmAction('DELETE_ACCOUNT')
+  }
+
+  function handleOpenConfirmDeactivateCard() {
+    setConfirmAction('DEACTIVATE_CARD')
+  }
+
+  function handleCloseConfirmModal() {
+    setConfirmAction(null)
+  }
+
+  function handleEditAccountFromSummary() {
+    if (!selectedAccount) {
+      return
+    }
+
+    openEditAccountModal(selectedAccount)
+    handleCloseSummary()
+  }
+
+  function handleCreateTransactionFromSummary() {
+    if (!selectedAccount) {
+      return
+    }
+
+    openNewTransactionModal('EXPENSE', selectedAccount.id)
+    handleCloseSummary()
+  }
+
+  function handleEditCreditCardFromSummary() {
+    if (!selectedCreditCard) {
+      return
+    }
+
+    openEditCreditCardModal(selectedCreditCard)
+    handleCloseSummary()
+  }
+
+  function handleNewPurchaseFromSummary() {
+    if (!selectedCreditCard) {
+      return
+    }
+
+    openNewCreditCardPurchaseModal(selectedCreditCard.id)
+    handleCloseSummary()
+  }
+
+  function handlePayStatementFromSummary() {
+    if (!selectedCreditCard) {
+      return
+    }
+
+    openPayCreditCardStatementModal(selectedCreditCard.id)
+    handleCloseSummary()
+  }
+
+  async function handleDeleteAccount() {
+    if (!selectedAccount) {
+      return
+    }
+
+    try {
+      await removeAccount(selectedAccount.id)
+
+      queryClient.invalidateQueries({ queryKey: ['bankAccounts'] })
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      toast.success('Conta excluída com sucesso!')
+
+      handleCloseConfirmModal()
+      handleCloseSummary()
+    } catch {
+      toast.error('Erro ao excluir conta!')
+    }
+  }
+
+  async function handleDeactivateCreditCard() {
+    if (!selectedCreditCard) {
+      return
+    }
+
+    try {
+      await updateCreditCard({ id: selectedCreditCard.id, isActive: false })
+
+      queryClient.invalidateQueries({ queryKey: ['creditCards'] })
+      queryClient.invalidateQueries({ queryKey: ['creditCardStatement'] })
+      toast.success('Cartão inativado com sucesso!')
+
+      handleCloseConfirmModal()
+      handleCloseSummary()
+    } catch {
+      toast.error('Erro ao inativar cartão!')
+    }
+  }
 
   if (isLoading) {
     return (
@@ -36,6 +173,42 @@ export function Accounts() {
 
   return (
     <div className="bg-teal-900 rounded-2xl w-full h-full px-4 py-8 lg:p-10 flex flex-col">
+      {confirmAction === 'DELETE_ACCOUNT' && (
+        <ConfirmDeleteModal
+          title="Tem certeza que deseja excluir esta conta?"
+          description="Ao excluir a conta, também serão excluídos todos os registros de receitas e despesas relacionados."
+          isLoading={isRemovingAccount}
+          onClose={handleCloseConfirmModal}
+          onConfirm={handleDeleteAccount}
+        />
+      )}
+
+      {confirmAction === 'DEACTIVATE_CARD' && (
+        <ConfirmDeleteModal
+          title="Tem certeza que deseja inativar este cartão?"
+          description="Você ainda poderá consultar faturas e histórico, mas novas compras serão bloqueadas."
+          isLoading={isUpdatingCreditCard}
+          onClose={handleCloseConfirmModal}
+          onConfirm={handleDeactivateCreditCard}
+        />
+      )}
+
+      <SummaryModal
+        open={!!selectedAccount || !!selectedCreditCard}
+        onClose={handleCloseSummary}
+        account={selectedAccount}
+        creditCard={selectedCreditCard}
+        onEditAccount={handleEditAccountFromSummary}
+        onDeleteAccount={handleOpenConfirmDeleteAccount}
+        onCreateTransaction={handleCreateTransactionFromSummary}
+        onEditCreditCard={handleEditCreditCardFromSummary}
+        onNewCreditCardPurchase={handleNewPurchaseFromSummary}
+        onPayCreditCardStatement={handlePayStatementFromSummary}
+        onDeactivateCreditCard={handleOpenConfirmDeactivateCard}
+        isDeletingAccount={isRemovingAccount && confirmAction === 'DELETE_ACCOUNT'}
+        isDeactivatingCreditCard={isUpdatingCreditCard && confirmAction === 'DEACTIVATE_CARD'}
+      />
+
       <div>
         <span className="tracking-[-0.5px] text-white block">Saldo Total</span>
 
@@ -81,7 +254,7 @@ export function Accounts() {
           </>
         )}
         {accounts.length > 0 && (
-          <div>
+          <div className="space-y-6">
             <Swiper
               spaceBetween={16}
               slidesPerView={windowWidth >= 500 ? 2.1 : 1.2}
@@ -105,10 +278,29 @@ export function Accounts() {
 
               {accounts.map(account => (
                 <SwiperSlide key={account.id}>
-                  <AccountCard data={account} />
+                  <AccountCard data={account} onClick={handleOpenAccountSummary} />
                 </SwiperSlide>
               ))}
             </Swiper>
+
+            {creditCards.length > 0 && (
+              <div>
+                <strong className="text-white tracking-[-1px] text-lg font-bold block mb-3">
+                  Meus cartões
+                </strong>
+
+                <div className="flex gap-4 overflow-x-auto pb-2">
+                  {creditCards.map((creditCard) => (
+                    <div key={creditCard.id} className="min-w-[280px] max-w-[320px] flex-1">
+                      <CreditCardCard
+                        data={creditCard}
+                        onClick={handleOpenCreditCardSummary}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

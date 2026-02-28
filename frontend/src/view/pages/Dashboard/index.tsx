@@ -8,12 +8,16 @@ import { CategoriesModal } from './modals/CategoriesModal'
 import { EditAccountModal } from './modals/EditAccountModal'
 import { NewAccountModal } from './modals/NewAccountModal'
 import { NewTransactionModal } from './modals/NewTransactionModal'
+import { NewCreditCardModal } from './modals/NewCreditCardModal'
+import { NewCreditCardPurchaseModal } from './modals/NewCreditCardPurchaseModal'
+import { PayCreditCardStatementModal } from './modals/PayCreditCardStatementModal'
+import { EditCreditCardModal } from './modals/EditCreditCardModal'
 
 export function Dashboard() {
   return (
     <DashboardProvider>
       <DashboardContext.Consumer>
-        {({ accountBeingEdited }) => (
+        {({ accountBeingEdited, creditCardBeingEdited }) => (
           <div className="w-full h-full p-4 lg:px-8 lg:pt-6 lg:pb-8 flex flex-col gap-4">
             <header className="h-12 flex items-center justify-between">
               <Logo className="h-6 text-teal-900" />
@@ -34,8 +38,12 @@ export function Dashboard() {
 
             <NewAccountModal />
             <NewTransactionModal />
+            <NewCreditCardModal />
+            <NewCreditCardPurchaseModal />
+            <PayCreditCardStatementModal />
             <CategoriesModal />
             {accountBeingEdited && <EditAccountModal />}
+            {creditCardBeingEdited && <EditCreditCardModal />}
           </div>
         )}
       </DashboardContext.Consumer>

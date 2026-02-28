@@ -6,6 +6,7 @@ import { useBankAccounts } from '../../../../../app/hooks/useBankAccounts'
 import { useCategories } from '../../../../../app/hooks/useCategories'
 import { useMemo } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useEffect } from 'react'
 import { transactionsService } from '../../../../../app/services/transactionsService'
 import { toast } from 'react-hot-toast'
 import { currencyStringToNumber } from '../../../../../app/utils/currencyStringToNumber'
@@ -92,6 +93,7 @@ export function useNewTransactionModalController() {
     isNewTransactionModalOpen,
     closeNewTransactionModal,
     newTransactionType,
+    transactionPresetBankAccountId,
   } = useDashboard()
 
   const {
@@ -100,7 +102,8 @@ export function useNewTransactionModalController() {
     formState: { errors },
     control,
     watch,
-    reset
+    reset,
+    setValue,
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -121,6 +124,16 @@ export function useNewTransactionModalController() {
   } = useMutation(transactionsService.create)
 
   const repeatType = watch('repeatType')
+
+  useEffect(() => {
+    if (!isNewTransactionModalOpen) {
+      return
+    }
+
+    if (transactionPresetBankAccountId) {
+      setValue('bankAccountId', transactionPresetBankAccountId)
+    }
+  }, [isNewTransactionModalOpen, setValue, transactionPresetBankAccountId])
 
   const handleSubmit = hookFormSubmit(async (data) => {
     try {
@@ -162,6 +175,7 @@ export function useNewTransactionModalController() {
         value: '0',
         date: new Date(),
         repeatType: 'ONCE',
+        bankAccountId: transactionPresetBankAccountId ?? '',
         dueDay: new Date().getDate(),
         alertDaysBefore: 3,
       })

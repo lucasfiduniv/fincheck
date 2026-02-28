@@ -5,6 +5,7 @@ import { useDashboard } from '../../DashboardContext/useDashboard'
 
 interface AccountCardProps {
   data: BankAccount
+  onClick?: (data: BankAccount) => void
 }
 
 interface BankBrand {
@@ -43,9 +44,9 @@ function resolveBankBrand(accountName: string) {
   }
 }
 
-export function AccountCard({ data }: AccountCardProps) {
+export function AccountCard({ data, onClick }: AccountCardProps) {
   const { color, name, currentBalance } = data
-  const { areValuesVisible, openEditAccountModal } = useDashboard()
+  const { areValuesVisible } = useDashboard()
 
   const bankBrand = resolveBankBrand(name)
   const showCustomName =
@@ -53,33 +54,39 @@ export function AccountCard({ data }: AccountCardProps) {
 
   return (
     <div
-      className="relative overflow-hidden p-4 rounded-2xl h-[200px] flex flex-col justify-between border border-gray-100 bg-cover bg-center"
+      className="p-4 bg-white rounded-2xl h-[200px] flex flex-col justify-between border-b-4"
       style={{
         borderBottomColor: color,
-        backgroundImage: `linear-gradient(135deg, ${color}1A 0%, transparent 55%), url('/face=front.svg')`,
       }}
       role="button"
-      onClick={() => openEditAccountModal(data)}
+      onClick={() => onClick?.(data)}
     >
-      <div className="relative z-10">
+      <div>
         <img
           src={bankBrand.logoSrc}
           alt={bankBrand.displayName}
-          className="h-8 w-auto"
+          className="h-7 w-auto"
         />
 
-       
+        <span className="text-[10px] text-gray-500 uppercase tracking-[0.08em] mt-4 block">
+          Conta bancária
+        </span>
+
+        <strong className="text-gray-800 font-semibold tracking-[-0.5px] mt-1 block">
+          {name}
+        </strong>
+
         {showCustomName && (
-          <span className="text-gray-600 text-xs tracking-[-0.3px] block">
-            {name}
+          <span className="text-gray-600 text-xs tracking-[-0.3px] mt-1 block">
+            Marca: {bankBrand.displayName}
           </span>
         )}
       </div>
 
-      <div className="relative z-10">
+      <div>
         <span
           className={cn(
-            'text-gray-800 font-medium tracking-[-0.5px] block',
+            'text-gray-800 text-xl font-semibold tracking-[-0.5px] block',
             !areValuesVisible && 'blur-md'
           )}
         >

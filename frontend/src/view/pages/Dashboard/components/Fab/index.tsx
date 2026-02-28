@@ -9,6 +9,9 @@ export function Fab() {
     openNewAccountModal,
     openNewTransactionModal,
     openCategoriesModal,
+    openNewCreditCardModal,
+    openNewCreditCardPurchaseModal,
+    openPayCreditCardStatementModal,
   } = useDashboard()
 
   return (
@@ -38,6 +41,18 @@ export function Fab() {
           <DropdownMenu.Item className="gap-2" onSelect={openCategoriesModal}>
             <CategoryIcon type="EXPENSE" />
             Categorias
+          </DropdownMenu.Item>
+          <DropdownMenu.Item className="gap-2" onSelect={openNewCreditCardModal}>
+            <CategoryIcon type="INCOME" />
+            Novo Cartão
+          </DropdownMenu.Item>
+          <DropdownMenu.Item className="gap-2" onSelect={openNewCreditCardPurchaseModal}>
+            <CategoryIcon type="EXPENSE" />
+            Compra no Cartão
+          </DropdownMenu.Item>
+          <DropdownMenu.Item className="gap-2" onSelect={openPayCreditCardStatementModal}>
+            <BankAccountIcon />
+            Pagar Fatura
           </DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Root>

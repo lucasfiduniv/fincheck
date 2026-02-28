@@ -4,7 +4,13 @@ import { TransactionsFilters } from '../services/transactionsService/getAll'
 
 export function useTransactions(filters: TransactionsFilters) {
   const { data, isFetching, isInitialLoading, refetch } = useQuery({
-    queryKey: ['transactions'],
+    queryKey: [
+      'transactions',
+      filters.month,
+      filters.year,
+      filters.bankAccountId ?? '',
+      filters.type ?? '',
+    ],
     queryFn: () => transactionsService.getAll(filters),
   })
 
