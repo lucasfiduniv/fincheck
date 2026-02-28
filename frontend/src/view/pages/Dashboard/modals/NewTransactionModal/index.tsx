@@ -18,6 +18,7 @@ export function NewTransactionModal() {
     register,
     accounts,
     categories,
+    repeatType,
     isLoading
   } = useNewTransactionModalController()
 
@@ -106,6 +107,46 @@ export function NewTransactionModal() {
               />
             )}
           />
+
+          <Controller
+            control={control}
+            name="repeatType"
+            render={({ field: { onChange, value } }) => (
+              <Select
+                placeholder="Tipo de lançamento"
+                onChange={onChange}
+                value={value}
+                options={[
+                  { value: 'ONCE', label: 'Única' },
+                  { value: 'RECURRING', label: 'Recorrente mensal' },
+                  { value: 'INSTALLMENT', label: 'Parcelada' },
+                ]}
+              />
+            )}
+          />
+
+          {repeatType !== 'ONCE' && (
+            <div className="space-y-2">
+              <Input
+                type="number"
+                min={2}
+                max={60}
+                placeholder={
+                  repeatType === 'RECURRING'
+                    ? 'Quantidade de meses (opcional)'
+                    : 'Quantidade de parcelas'
+                }
+                error={errors.repeatCount?.message}
+                {...register('repeatCount')}
+              />
+
+              {repeatType === 'RECURRING' && (
+                <span className="text-xs text-gray-600 tracking-[-0.5px] block">
+                  Se deixar em branco, vamos lançar 24 meses automaticamente.
+                </span>
+              )}
+            </div>
+          )}
 
           <Button type="submit" isLoading={isLoading}>Criar</Button>
         </div>

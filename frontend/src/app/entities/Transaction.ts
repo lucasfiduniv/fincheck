@@ -6,6 +6,10 @@ export interface Transaction {
   value: number
   type: 'INCOME' | 'EXPENSE'
   date: string
+  entryType?: 'SINGLE' | 'RECURRING' | 'INSTALLMENT'
+  recurrenceGroupId?: string | null
+  installmentNumber?: number | null
+  installmentCount?: number | null
   category?: {
     id: string
     name: string

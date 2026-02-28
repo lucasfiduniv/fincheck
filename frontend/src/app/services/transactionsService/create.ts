@@ -7,6 +7,8 @@ export interface CreateTransactionParams {
   value: number
   type: 'INCOME' | 'EXPENSE'
   date: string
+  repeatType?: 'ONCE' | 'RECURRING' | 'INSTALLMENT'
+  repeatCount?: number
 }
 
 export async function create(params: CreateTransactionParams) {

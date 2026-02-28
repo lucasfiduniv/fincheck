@@ -28,6 +28,39 @@ const schema = z.object({
   categoryId: z.string().nonempty('Informe a categoria'),
   bankAccountId: z.string().nonempty('Informe a conta'),
   date: z.date(),
+  repeatType: z.enum(['ONCE', 'RECURRING', 'INSTALLMENT']),
+  repeatCount: z
+    .union([z.coerce.number(), z.literal(''), z.undefined()])
+    .optional()
+    .transform((value) => value === '' || value === undefined ? undefined : value),
+}).superRefine((data, ctx) => {
+  if (data.repeatType === 'ONCE') {
+    return
+  }
+
+  if (data.repeatType === 'INSTALLMENT') {
+    if (!data.repeatCount || data.repeatCount < 2 || data.repeatCount > 60) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Informe uma quantidade entre 2 e 60',
+        path: ['repeatCount'],
+      })
+    }
+
+    return
+  }
+
+  if (
+    data.repeatType === 'RECURRING' &&
+    data.repeatCount !== undefined &&
+    (data.repeatCount < 2 || data.repeatCount > 60)
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Informe uma quantidade entre 2 e 60',
+      path: ['repeatCount'],
+    })
+  }
 })
 
 type FormData = z.infer<typeof schema>;
@@ -44,12 +77,14 @@ export function useNewTransactionModalController() {
     handleSubmit: hookFormSubmit,
     formState: { errors },
     control,
+    watch,
     reset
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
       value: '0',
-      date: new Date()
+      date: new Date(),
+      repeatType: 'ONCE',
     }
   })
 
@@ -61,13 +96,19 @@ export function useNewTransactionModalController() {
     mutateAsync
   } = useMutation(transactionsService.create)
 
+  const repeatType = watch('repeatType')
+
   const handleSubmit = hookFormSubmit(async (data) => {
     try {
       await mutateAsync({
         ...data,
         value: currencyStringToNumber(data.value),
         type: newTransactionType!,
-        date: data.date.toISOString()
+        date: data.date.toISOString(),
+        repeatCount:
+          data.repeatType === 'ONCE'
+            ? undefined
+            : data.repeatCount,
       })
 
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
@@ -79,7 +120,11 @@ export function useNewTransactionModalController() {
           : 'Receita cadastrada com sucesso!'
       )
       closeNewTransactionModal()
-      reset()
+      reset({
+        value: '0',
+        date: new Date(),
+        repeatType: 'ONCE',
+      })
     } catch {
       toast.success(
         newTransactionType === 'EXPENSE'
@@ -100,6 +145,7 @@ export function useNewTransactionModalController() {
     register,
     errors,
     control,
+    repeatType,
     handleSubmit,
     accounts,
     categories,

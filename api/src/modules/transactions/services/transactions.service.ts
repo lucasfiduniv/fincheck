@@ -1,14 +1,17 @@
-import { Injectable } from '@nestjs/common'
+import { BadRequestException, Injectable } from '@nestjs/common'
 import { CreateTransactionDto } from '../dto/create-transaction.dto'
 import { UpdateTransactionDto } from '../dto/update-transaction.dto'
 import { TransactionsRepository } from 'src/shared/database/repositories/transactions.repository'
 import { ValidateBankAccountOwnershipService } from '../../bank-accounts/services/validate-bank-account-ownership.service'
 import { ValidateCategoryOwnershipService } from '../../categories/services/validate-category-ownership.service'
 import { ValidateTransactionOwnershipService } from './validate-transaction-ownership.service'
-import { TransactionType } from '../entities/Transaction'
+import { TransactionCreationType, TransactionType } from '../entities/Transaction'
+import { randomUUID } from 'crypto'
 
 @Injectable()
 export class TransactionsService {
+  private readonly defaultRecurringMonths = 24
+
   constructor(
     private readonly transactionsRepo: TransactionsRepository,
     private readonly validateBankAccountOwnershipService: ValidateBankAccountOwnershipService,
@@ -17,7 +20,16 @@ export class TransactionsService {
   ) {}
 
   async create(userId: string, createTransactionDto: CreateTransactionDto) {
-    const { bankAccountId, categoryId, date, name, type, value } =
+    const {
+      bankAccountId,
+      categoryId,
+      date,
+      name,
+      type,
+      value,
+      repeatCount,
+      repeatType,
+    } =
       createTransactionDto
 
     await this.validateEntitiesOwnership({
@@ -26,17 +38,58 @@ export class TransactionsService {
       categoryId,
     })
 
-    return this.transactionsRepo.create({
-      data: {
-        userId,
-        bankAccountId,
-        categoryId,
-        date,
-        name,
-        type,
-        value,
-      },
-    })
+    const creationType = repeatType ?? TransactionCreationType.ONCE
+
+    if (
+      creationType === TransactionCreationType.INSTALLMENT &&
+      !repeatCount
+    ) {
+      throw new BadRequestException('repeatCount is required for installments.')
+    }
+
+    const transactionsCount =
+      creationType === TransactionCreationType.ONCE
+        ? 1
+        : creationType === TransactionCreationType.INSTALLMENT
+          ? repeatCount!
+          : repeatCount ?? this.defaultRecurringMonths
+    const recurrenceGroupId =
+      creationType === TransactionCreationType.ONCE ? null : randomUUID()
+    const baseDate = new Date(date)
+
+    const createdTransactions = await Promise.all(
+      Array.from({ length: transactionsCount }).map((_, index) => {
+        const occurrenceDate = this.addMonthsUTC(baseDate, index)
+        const installmentLabel = `${name} (${index + 1}/${transactionsCount})`
+
+        return this.transactionsRepo.create({
+          data: {
+            userId,
+            bankAccountId,
+            categoryId,
+            date: occurrenceDate,
+            name:
+              creationType === TransactionCreationType.INSTALLMENT
+                ? installmentLabel
+                : name,
+            type,
+            value,
+            entryType: this.getEntryType(creationType),
+            recurrenceGroupId,
+            installmentNumber:
+              creationType === TransactionCreationType.INSTALLMENT
+                ? index + 1
+                : null,
+            installmentCount:
+              creationType === TransactionCreationType.INSTALLMENT
+                ? transactionsCount
+                : null,
+          },
+        })
+      }),
+    )
+
+    return createdTransactions[0]
   }
 
   findAllByUserId(
@@ -131,5 +184,25 @@ export class TransactionsService {
       categoryId &&
         this.validateCategoryOwnershipService.validate(userId, categoryId),
     ])
+  }
+
+  private addMonthsUTC(date: Date, monthsToAdd: number) {
+    const utcDate = new Date(date)
+
+    utcDate.setUTCMonth(utcDate.getUTCMonth() + monthsToAdd)
+
+    return utcDate
+  }
+
+  private getEntryType(type: TransactionCreationType) {
+    if (type === TransactionCreationType.RECURRING) {
+      return 'RECURRING'
+    }
+
+    if (type === TransactionCreationType.INSTALLMENT) {
+      return 'INSTALLMENT'
+    }
+
+    return 'SINGLE'
   }
 }
