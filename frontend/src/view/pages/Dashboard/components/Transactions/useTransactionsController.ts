@@ -3,11 +3,13 @@ import { useDashboard } from '../DashboardContext/useDashboard'
 import { useTransactions } from '../../../../../app/hooks/useTransactions'
 import { TransactionsFilters } from '../../../../../app/services/transactionsService/getAll'
 import { Transaction } from '../../../../../app/entities/Transaction'
+import { useCategoryBudgets } from '../../../../../app/hooks/useCategoryBudgets'
 
 export function useTransactionsController() {
   const { areValuesVisible } = useDashboard()
 
   const [isFiltersModalOpen, setIsFiltersModalOpen] = useState(false)
+  const [isBudgetsModalOpen, setIsBudgetsModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [transactionBeingEdited, setTransactionBeingEdited] = useState<Transaction | null>(null)
   const [filters, setFilters] = useState<TransactionsFilters>({
@@ -17,10 +19,19 @@ export function useTransactionsController() {
 
   const { transactions, isLoading, isInitialLoading, refetchTransactions } =
     useTransactions(filters)
+  const {
+    categoryBudgets,
+    isLoadingCategoryBudgets,
+    refetchCategoryBudgets,
+  } = useCategoryBudgets({ month: filters.month, year: filters.year })
 
   useEffect(() => {
     refetchTransactions()
   }, [filters, refetchTransactions])
+
+  useEffect(() => {
+    refetchCategoryBudgets()
+  }, [filters, refetchCategoryBudgets])
 
   function handleChangeFilters<TFilter extends keyof TransactionsFilters>(
     filter: TFilter
@@ -55,6 +66,14 @@ export function useTransactionsController() {
     setIsFiltersModalOpen(false)
   }
 
+  function handleOpenBudgetsModal() {
+    setIsBudgetsModalOpen(true)
+  }
+
+  function handleCloseBudgetsModal() {
+    setIsBudgetsModalOpen(false)
+  }
+
   function handleOpenEditModal(transaction: Transaction) {
     setIsEditModalOpen(true)
     setTransactionBeingEdited(transaction)
@@ -66,6 +85,7 @@ export function useTransactionsController() {
   }
 
   const hasTransactions = transactions.length > 0
+  const alertBudgetsCount = categoryBudgets.filter((budget) => budget.hasAlert).length
 
   return {
     areValuesVisible,
@@ -74,9 +94,15 @@ export function useTransactionsController() {
     isInitialLoading,
     isLoading,
     isFiltersModalOpen,
+    isBudgetsModalOpen,
     filters,
+    categoryBudgets,
+    isLoadingCategoryBudgets,
+    alertBudgetsCount,
     handleOpenFiltersModal,
     handleCloseFiltersModal,
+    handleOpenBudgetsModal,
+    handleCloseBudgetsModal,
     handleChangeFilters,
     handleApplyFilters,
     isEditModalOpen,
