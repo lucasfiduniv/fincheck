@@ -17,6 +17,9 @@ model User {
   password String
 
   bankAccounts BankAccount[]
+  creditCards CreditCard[]
+  creditCardPurchases CreditCardPurchase[]
+  creditCardInstallments CreditCardInstallment[]
   categories   Category[]
   transactions Transaction[]
   categoryBudgets CategoryBudget[]
@@ -41,10 +44,96 @@ model BankAccount {
   color          String
 
   transactions Transaction[]
+  creditCards CreditCard[]
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("bank_accounts")
+}
+
+enum CreditCardPurchaseType {
+  ONE_TIME
+  INSTALLMENT
+
+  @@map("credit_card_purchase_type")
+}
+
+enum CreditCardInstallmentStatus {
+  PENDING
+  PAID
+  CANCELED
+
+  @@map("credit_card_installment_status")
+}
+
+model CreditCard {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  bankAccountId String   @map("bank_account_id") @db.Uuid
+  name          String
+  brand         String?
+  color         String
+  creditLimit   Float    @map("credit_limit")
+  closingDay    Int      @map("closing_day")
+  dueDay        Int      @map("due_day")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  user             User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bankAccount      BankAccount             @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  purchases        CreditCardPurchase[]
+  installments     CreditCardInstallment[]
+
+  @@map("credit_cards")
+}
+
+model CreditCardPurchase {
+  id               String                 @id @default(uuid()) @db.Uuid
+  userId           String                 @map("user_id") @db.Uuid
+  creditCardId     String                 @map("credit_card_id") @db.Uuid
+  categoryId       String?                @map("category_id") @db.Uuid
+  description      String
+  amount           Float
+  purchaseDate     DateTime               @map("purchase_date")
+  type             CreditCardPurchaseType
+  installmentCount Int                    @default(1) @map("installment_count")
+  createdAt        DateTime               @default(now()) @map("created_at")
+  updatedAt        DateTime               @updatedAt @map("updated_at")
+
+  user         User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  creditCard   CreditCard              @relation(fields: [creditCardId], references: [id], onDelete: Cascade)
+  category     Category?               @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  installments CreditCardInstallment[]
+
+  @@map("credit_card_purchases")
+}
+
+model CreditCardInstallment {
+  id                   String                      @id @default(uuid()) @db.Uuid
+  userId               String                      @map("user_id") @db.Uuid
+  creditCardId         String                      @map("credit_card_id") @db.Uuid
+  purchaseId           String                      @map("purchase_id") @db.Uuid
+  installmentNumber    Int                         @map("installment_number")
+  installmentCount     Int                         @map("installment_count")
+  amount               Float
+  statementYear        Int                         @map("statement_year")
+  statementMonth       Int                         @map("statement_month")
+  dueDate              DateTime                    @map("due_date")
+  status               CreditCardInstallmentStatus @default(PENDING)
+  paymentTransactionId String?                     @map("payment_transaction_id") @db.Uuid
+  paidAt               DateTime?                   @map("paid_at")
+  createdAt            DateTime                    @default(now()) @map("created_at")
+  updatedAt            DateTime                    @updatedAt @map("updated_at")
+
+  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  creditCard         CreditCard        @relation(fields: [creditCardId], references: [id], onDelete: Cascade)
+  purchase           CreditCardPurchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  paymentTransaction Transaction?      @relation(fields: [paymentTransactionId], references: [id], onDelete: SetNull)
+
+  @@index([userId, creditCardId, statementYear, statementMonth])
+  @@index([paymentTransactionId])
+  @@map("credit_card_installments")
 }
 
 enum TransactionType {
@@ -77,6 +166,7 @@ model Category {
   type   TransactionType
 
   transactions Transaction[]
+  creditCardPurchases CreditCardPurchase[]
   categoryBudgets CategoryBudget[]
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -104,6 +194,7 @@ model Transaction {
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   bankAccount BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
   category    Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  paidCreditCardInstallments CreditCardInstallment[]
 
   @@map("transactions")
 }

@@ -5,6 +5,9 @@ import { CategoriesRepository } from './repositories/categories.repository'
 import { BankAccountsRepository } from './repositories/bank-accounts.repository'
 import { TransactionsRepository } from './repositories/transactions.repository'
 import { CategoryBudgetsRepository } from './repositories/category-budgets.repository'
+import { CreditCardsRepository } from './repositories/credit-cards.repository'
+import { CreditCardPurchasesRepository } from './repositories/credit-card-purchases.repository'
+import { CreditCardInstallmentsRepository } from './repositories/credit-card-installments.repository'
 
 @Global()
 @Module({
@@ -15,6 +18,9 @@ import { CategoryBudgetsRepository } from './repositories/category-budgets.repos
     BankAccountsRepository,
     TransactionsRepository,
     CategoryBudgetsRepository,
+    CreditCardsRepository,
+    CreditCardPurchasesRepository,
+    CreditCardInstallmentsRepository,
   ],
   exports: [
     UsersRepository,
@@ -22,6 +28,9 @@ import { CategoryBudgetsRepository } from './repositories/category-budgets.repos
     BankAccountsRepository,
     TransactionsRepository,
     CategoryBudgetsRepository,
+    CreditCardsRepository,
+    CreditCardPurchasesRepository,
+    CreditCardInstallmentsRepository,
   ],
 })
 export class DatabaseModule {}

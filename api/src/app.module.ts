@@ -8,6 +8,7 @@ import { CategoriesModule } from './modules/categories/categories.module'
 import { BankAccountsModule } from './modules/bank-accounts/bank-accounts.module'
 import { TransactionsModule } from './modules/transactions/transactions.module'
 import { CategoryBudgetsModule } from './modules/category-budgets/category-budgets.module'
+import { CreditCardsModule } from './modules/credit-cards/credit-cards.module'
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { CategoryBudgetsModule } from './modules/category-budgets/category-budge
     BankAccountsModule,
     TransactionsModule,
     CategoryBudgetsModule,
+    CreditCardsModule,
   ],
   controllers: [],
   providers: [
