@@ -19,6 +19,7 @@ model User {
   bankAccounts BankAccount[]
   categories   Category[]
   transactions Transaction[]
+  categoryBudgets CategoryBudget[]
 
   @@map("users")
 }
@@ -53,6 +54,14 @@ enum TransactionType {
   @@map("transaction_type")
 }
 
+enum TransactionEntryType {
+  SINGLE
+  RECURRING
+  INSTALLMENT
+
+  @@map("transaction_entry_type")
+}
+
 model Category {
   id     String          @id @default(uuid()) @db.Uuid
   userId String          @map("user_id") @db.Uuid
@@ -61,6 +70,7 @@ model Category {
   type   TransactionType
 
   transactions Transaction[]
+  categoryBudgets CategoryBudget[]
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -76,10 +86,29 @@ model Transaction {
   value         Float
   date          DateTime
   type          TransactionType
+  entryType     TransactionEntryType @default(SINGLE) @map("entry_type")
+  recurrenceGroupId String?     @map("recurrence_group_id") @db.Uuid
+  installmentNumber Int?        @map("installment_number")
+  installmentCount  Int?        @map("installment_count")
 
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   bankAccount BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
   category    Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   @@map("transactions")
+}
+
+model CategoryBudget {
+  id         String @id @default(uuid()) @db.Uuid
+  userId     String @map("user_id") @db.Uuid
+  categoryId String @map("category_id") @db.Uuid
+  month      Int
+  year       Int
+  limit      Float
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, categoryId, month, year])
+  @@map("category_budgets")
 }
