@@ -29,6 +29,8 @@ export class TransactionsService {
       value,
       repeatCount,
       repeatType,
+      dueDay,
+      alertDaysBefore,
     } =
       createTransactionDto
 
@@ -84,6 +86,14 @@ export class TransactionsService {
               creationType === TransactionCreationType.INSTALLMENT
                 ? transactionsCount
                 : null,
+            dueDay:
+              creationType === TransactionCreationType.ONCE
+                ? null
+                : dueDay ?? occurrenceDate.getUTCDate(),
+            alertDaysBefore:
+              creationType === TransactionCreationType.ONCE
+                ? null
+                : alertDaysBefore ?? 3,
           },
         })
       }),
@@ -156,6 +166,77 @@ export class TransactionsService {
 
     await this.transactionsRepo.delete({
       where: { id: transactionId },
+    })
+  }
+
+  async findDueAlertsSummaryByMonth(
+    userId: string,
+    { month, year }: { month: number; year: number },
+  ) {
+    const reminders = await this.transactionsRepo.findMany({
+      where: {
+        userId,
+        entryType: {
+          in: ['RECURRING', 'INSTALLMENT'],
+        },
+        dueDay: {
+          not: null,
+        },
+        date: {
+          gte: new Date(Date.UTC(year, month)),
+          lt: new Date(Date.UTC(year, month + 1)),
+        },
+      },
+      orderBy: [{ dueDay: 'asc' }, { name: 'asc' }],
+    })
+
+    const uniqueByGroup = new Map<string, (typeof reminders)[number]>()
+
+    for (const reminder of reminders) {
+      const groupKey =
+        reminder.recurrenceGroupId ?? `${reminder.id}-${reminder.name}`
+
+      if (!uniqueByGroup.has(groupKey)) {
+        uniqueByGroup.set(groupKey, reminder)
+      }
+    }
+
+    const now = new Date()
+    const nowAtMidnight = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    )
+
+    return Array.from(uniqueByGroup.values()).map((reminder) => {
+      const reminderDueDay = reminder.dueDay ?? reminder.date.getUTCDate()
+      const dueDateAtMidnight = new Date(Date.UTC(year, month, reminderDueDay))
+      const dayDiff = Math.floor(
+        (dueDateAtMidnight.getTime() - nowAtMidnight.getTime()) /
+          (1000 * 60 * 60 * 24),
+      )
+
+      const alertBefore = reminder.alertDaysBefore ?? 3
+
+      const status =
+        dayDiff < 0
+          ? 'OVERDUE'
+          : dayDiff === 0
+            ? 'DUE_TODAY'
+            : dayDiff <= alertBefore
+              ? 'UPCOMING'
+              : 'FUTURE'
+
+      return {
+        id: reminder.id,
+        recurrenceGroupId: reminder.recurrenceGroupId,
+        name: reminder.name,
+        entryType: reminder.entryType,
+        dueDay: reminderDueDay,
+        alertDaysBefore: alertBefore,
+        amount: reminder.value,
+        daysUntilDue: dayDiff,
+        status,
+        hasAlert: status !== 'FUTURE',
+      }
     })
   }
 

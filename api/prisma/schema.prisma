@@ -90,6 +90,8 @@ model Transaction {
   recurrenceGroupId String?     @map("recurrence_group_id") @db.Uuid
   installmentNumber Int?        @map("installment_number")
   installmentCount  Int?        @map("installment_count")
+  dueDay            Int?        @map("due_day")
+  alertDaysBefore   Int?        @map("alert_days_before")
 
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   bankAccount BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)

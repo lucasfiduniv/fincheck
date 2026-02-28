@@ -9,6 +9,8 @@ export interface CreateTransactionParams {
   date: string
   repeatType?: 'ONCE' | 'RECURRING' | 'INSTALLMENT'
   repeatCount?: number
+  dueDay?: number
+  alertDaysBefore?: number
 }
 
 export async function create(params: CreateTransactionParams) {

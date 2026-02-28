@@ -29,6 +29,8 @@ const schema = z.object({
   bankAccountId: z.string().nonempty('Informe a conta'),
   date: z.date(),
   repeatType: z.enum(['ONCE', 'RECURRING', 'INSTALLMENT']),
+  dueDay: z.coerce.number().optional(),
+  alertDaysBefore: z.coerce.number().optional(),
   repeatCount: z
     .union([z.coerce.number(), z.literal(''), z.undefined()])
     .optional()
@@ -36,6 +38,26 @@ const schema = z.object({
 }).superRefine((data, ctx) => {
   if (data.repeatType === 'ONCE') {
     return
+  }
+
+  if (!data.dueDay || data.dueDay < 1 || data.dueDay > 31) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Informe o dia de vencimento entre 1 e 31',
+      path: ['dueDay'],
+    })
+  }
+
+  if (
+    data.alertDaysBefore === undefined ||
+    data.alertDaysBefore < 0 ||
+    data.alertDaysBefore > 15
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Informe alerta entre 0 e 15 dias',
+      path: ['alertDaysBefore'],
+    })
   }
 
   if (data.repeatType === 'INSTALLMENT') {
@@ -85,6 +107,8 @@ export function useNewTransactionModalController() {
       value: '0',
       date: new Date(),
       repeatType: 'ONCE',
+      dueDay: new Date().getDate(),
+      alertDaysBefore: 3,
     }
   })
 
@@ -109,6 +133,14 @@ export function useNewTransactionModalController() {
           data.repeatType === 'ONCE'
             ? undefined
             : data.repeatCount,
+        dueDay:
+          data.repeatType === 'ONCE'
+            ? undefined
+            : data.dueDay,
+        alertDaysBefore:
+          data.repeatType === 'ONCE'
+            ? undefined
+            : data.alertDaysBefore,
       })
 
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
@@ -124,6 +156,8 @@ export function useNewTransactionModalController() {
         value: '0',
         date: new Date(),
         repeatType: 'ONCE',
+        dueDay: new Date().getDate(),
+        alertDaysBefore: 3,
       })
     } catch {
       toast.success(

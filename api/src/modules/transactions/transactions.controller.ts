@@ -49,6 +49,18 @@ export class TransactionsController {
     })
   }
 
+  @Get('due-alerts/summary')
+  findDueAlertsSummary(
+    @ActiveUserId() userId: string,
+    @Query('month', ParseIntPipe) month: number,
+    @Query('year', ParseIntPipe) year: number,
+  ) {
+    return this.transactionsService.findDueAlertsSummaryByMonth(userId, {
+      month,
+      year,
+    })
+  }
+
   @Put(':transactionId')
   update(
     @ActiveUserId() userId: string,

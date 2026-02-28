@@ -50,4 +50,16 @@ export class CreateTransactionDto {
   @Min(2)
   @Max(60)
     repeatCount?: number
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(31)
+    dueDay?: number
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(15)
+    alertDaysBefore?: number
 }

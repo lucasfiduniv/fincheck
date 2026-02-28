@@ -129,6 +129,24 @@ export function NewTransactionModal() {
             <div className="space-y-2">
               <Input
                 type="number"
+                min={1}
+                max={31}
+                placeholder="Dia de vencimento"
+                error={errors.dueDay?.message}
+                {...register('dueDay')}
+              />
+
+              <Input
+                type="number"
+                min={0}
+                max={15}
+                placeholder="Alertar quantos dias antes"
+                error={errors.alertDaysBefore?.message}
+                {...register('alertDaysBefore')}
+              />
+
+              <Input
+                type="number"
                 min={2}
                 max={60}
                 placeholder={

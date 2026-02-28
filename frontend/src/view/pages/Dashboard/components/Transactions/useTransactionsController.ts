@@ -4,6 +4,7 @@ import { useTransactions } from '../../../../../app/hooks/useTransactions'
 import { TransactionsFilters } from '../../../../../app/services/transactionsService/getAll'
 import { Transaction } from '../../../../../app/entities/Transaction'
 import { useCategoryBudgets } from '../../../../../app/hooks/useCategoryBudgets'
+import { useTransactionDueAlerts } from '../../../../../app/hooks/useTransactionDueAlerts'
 
 export function useTransactionsController() {
   const { areValuesVisible } = useDashboard()
@@ -24,6 +25,8 @@ export function useTransactionsController() {
     isLoadingCategoryBudgets,
     refetchCategoryBudgets,
   } = useCategoryBudgets({ month: filters.month, year: filters.year })
+  const { dueAlerts, isLoadingDueAlerts, refetchDueAlerts } =
+    useTransactionDueAlerts({ month: filters.month, year: filters.year })
 
   useEffect(() => {
     refetchTransactions()
@@ -32,6 +35,10 @@ export function useTransactionsController() {
   useEffect(() => {
     refetchCategoryBudgets()
   }, [filters, refetchCategoryBudgets])
+
+  useEffect(() => {
+    refetchDueAlerts()
+  }, [filters, refetchDueAlerts])
 
   function handleChangeFilters<TFilter extends keyof TransactionsFilters>(
     filter: TFilter
@@ -86,6 +93,7 @@ export function useTransactionsController() {
 
   const hasTransactions = transactions.length > 0
   const alertBudgetsCount = categoryBudgets.filter((budget) => budget.hasAlert).length
+  const alertDueRemindersCount = dueAlerts.filter((alert) => alert.hasAlert).length
 
   return {
     areValuesVisible,
@@ -97,8 +105,11 @@ export function useTransactionsController() {
     isBudgetsModalOpen,
     filters,
     categoryBudgets,
+    dueAlerts,
     isLoadingCategoryBudgets,
+    isLoadingDueAlerts,
     alertBudgetsCount,
+    alertDueRemindersCount,
     handleOpenFiltersModal,
     handleCloseFiltersModal,
     handleOpenBudgetsModal,

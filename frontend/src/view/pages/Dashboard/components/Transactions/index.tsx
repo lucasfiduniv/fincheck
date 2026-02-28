@@ -38,6 +38,9 @@ export function Transactions() {
     isBudgetsModalOpen,
     handleOpenBudgetsModal,
     handleCloseBudgetsModal,
+    dueAlerts,
+    isLoadingDueAlerts,
+    alertDueRemindersCount,
   } = useTransactionsController()
 
   if (isInitialLoading) {
@@ -100,6 +103,60 @@ export function Transactions() {
           </Swiper>
         </div>
       </header>
+
+      <section className="mt-4 p-3 rounded-2xl bg-white space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <strong className="text-sm tracking-[-0.5px] text-gray-800 block">
+              Vencimentos
+            </strong>
+            <span className={cn(
+              'text-xs text-gray-600',
+              alertDueRemindersCount > 0 && 'text-red-800 font-medium'
+            )}>
+              {alertDueRemindersCount > 0
+                ? `${alertDueRemindersCount} vencimento(s) em alerta`
+                : 'Nenhum vencimento em alerta'}
+            </span>
+          </div>
+        </div>
+
+        <div className="space-y-2 max-h-24 overflow-y-auto">
+          {isLoadingDueAlerts && (
+            <div className="h-12 flex items-center justify-center">
+              <Spinner className="w-5 h-5" />
+            </div>
+          )}
+
+          {!isLoadingDueAlerts && dueAlerts.length === 0 && (
+            <div className="h-12 rounded-lg bg-gray-50 flex items-center justify-center text-xs text-gray-600">
+              Configure vencimento em transações recorrentes/parceladas para receber alertas.
+            </div>
+          )}
+
+          {!isLoadingDueAlerts && dueAlerts
+            .slice(0, 3)
+            .map((alert) => (
+              <div key={alert.id} className="flex items-center justify-between text-xs">
+                <span className="text-gray-700 truncate pr-2">
+                  {alert.name} · dia {alert.dueDay}
+                </span>
+                <span className={cn(
+                  'font-medium',
+                  alert.status === 'OVERDUE' && 'text-red-800',
+                  alert.status === 'DUE_TODAY' && 'text-yellow-700',
+                  alert.status === 'UPCOMING' && 'text-yellow-700',
+                  alert.status === 'FUTURE' && 'text-green-800'
+                )}>
+                  {alert.status === 'OVERDUE' && 'Atrasado'}
+                  {alert.status === 'DUE_TODAY' && 'Vence hoje'}
+                  {alert.status === 'UPCOMING' && `Em ${alert.daysUntilDue} dia(s)`}
+                  {alert.status === 'FUTURE' && 'No prazo'}
+                </span>
+              </div>
+            ))}
+        </div>
+      </section>
 
       <section className="mt-4 p-3 rounded-2xl bg-white space-y-3">
         <div className="flex items-center justify-between">
