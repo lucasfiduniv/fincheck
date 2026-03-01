@@ -39,10 +39,6 @@ class Env {
   @IsOptional()
   @IsString()
     evolutionInstance?: string
-
-  @IsOptional()
-  @IsString()
-    evolutionDefaultPhone?: string
 }
 
 export const env: Env = plainToInstance(Env, {
@@ -55,7 +51,6 @@ export const env: Env = plainToInstance(Env, {
   evolutionApiUrl: process.env.EVOLUTION_API_URL ?? process.env.NEXT_PUBLIC_EVOLUTION_API_URL,
   evolutionApiKey: process.env.EVOLUTION_API_KEY ?? process.env.NEXT_PUBLIC_EVOLUTION_API_KEY,
   evolutionInstance: process.env.EVOLUTION_INSTANCE ?? process.env.NEXT_PUBLIC_EVOLUTION_INSTANCE,
-  evolutionDefaultPhone: process.env.YOUR_PHONE ?? process.env.NEXT_PUBLIC_YOUR_PHONE,
 })
 
 const errors = validateSync(env)

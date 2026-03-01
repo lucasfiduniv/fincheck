@@ -74,13 +74,18 @@ export class NotificationsService {
       select: {
         name: true,
         phoneNumber: true,
+        notificationsEnabled: true,
       },
     })
 
-    const number = user?.phoneNumber ?? env.evolutionDefaultPhone
+    const number = user?.phoneNumber
 
     if (!number) {
       throw new BadRequestException('Cadastre um telefone para enviar notificações de teste.')
+    }
+
+    if (!user?.notificationsEnabled) {
+      throw new BadRequestException('Ative as notificações para enviar teste.')
     }
 
     const message =
