@@ -3,7 +3,7 @@ import { CreateBankAccountDto } from '../dto/create-bank-account.dto'
 import { UpdateBankAccountDto } from '../dto/update-bank-account.dto'
 import { BankAccountsRepository } from 'src/shared/database/repositories/bank-accounts.repository'
 import { ValidateBankAccountOwnershipService } from './validate-bank-account-ownership.service'
-import { TransactionStatus } from 'src/modules/transactions/entities/Transaction'
+import { TransactionStatus, TransactionType } from 'src/modules/transactions/entities/Transaction'
 
 @Injectable()
 export class BankAccountsService {
@@ -44,6 +44,10 @@ export class BankAccountsService {
         (acc, transaction) => {
           if (transaction.status !== TransactionStatus.POSTED) {
             return acc
+          }
+
+          if (transaction.type === TransactionType.TRANSFER) {
+            return acc + transaction.value
           }
 
           return acc +

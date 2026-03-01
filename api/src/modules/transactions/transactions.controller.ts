@@ -22,6 +22,7 @@ import { TransactionType } from './entities/Transaction'
 import { OptionalParseEnumPipe } from 'src/shared/pipes/OptionalParseEnumPipe'
 import { UpdateTransactionStatusDto } from './dto/update-transaction-status.dto'
 import { AdjustRecurrenceFutureValuesDto } from './dto/adjust-recurrence-future-values.dto'
+import { CreateTransferDto } from './dto/create-transfer.dto'
 
 @Controller('transactions')
 export class TransactionsController {
@@ -33,6 +34,14 @@ export class TransactionsController {
     @Body() createTransactionDto: CreateTransactionDto,
   ) {
     return this.transactionsService.create(userId, createTransactionDto)
+  }
+
+  @Post('transfers')
+  createTransfer(
+    @ActiveUserId() userId: string,
+    @Body() createTransferDto: CreateTransferDto,
+  ) {
+    return this.transactionsService.createTransfer(userId, createTransferDto)
   }
 
   @Get()

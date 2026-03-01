@@ -14,6 +14,7 @@ export function Fab() {
   const {
     openNewAccountModal,
     openNewTransactionModal,
+    openNewTransferModal,
     openCategoriesModal,
     openNewCreditCardModal,
     openNewCreditCardPurchaseModal,
@@ -39,6 +40,11 @@ export function Fab() {
           <BankAccountIcon />
         </div>
       ),
+    },
+    {
+      label: 'Transferência',
+      onSelect: openNewTransferModal,
+      renderIcon: () => <BankAccountIcon />,
     },
     {
       label: 'Categorias',

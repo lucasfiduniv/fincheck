@@ -1,5 +1,6 @@
 import {
   IsInt,
+  IsIn,
   IsDateString,
   IsEnum,
   IsNotEmpty,
@@ -39,6 +40,7 @@ export class CreateTransactionDto {
 
   @IsNotEmpty()
   @IsEnum(TransactionType)
+  @IsIn([TransactionType.INCOME, TransactionType.EXPENSE])
     type: TransactionType
 
   @IsOptional()

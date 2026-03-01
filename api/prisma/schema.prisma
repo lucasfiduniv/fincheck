@@ -139,6 +139,7 @@ model CreditCardInstallment {
 enum TransactionType {
   INCOME
   EXPENSE
+  TRANSFER
 
   @@map("transaction_type")
 }

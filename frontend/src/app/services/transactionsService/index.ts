@@ -1,5 +1,6 @@
 import { adjustFutureValuesByGroup } from './adjustFutureValuesByGroup'
 import { create } from './create'
+import { createTransfer } from './createTransfer'
 import { getAll } from './getAll'
 import { getDueAlertsSummary } from './getDueAlertsSummary'
 import { remove } from './remove'
@@ -9,6 +10,7 @@ import { updateStatus } from './updateStatus'
 export const transactionsService = {
   adjustFutureValuesByGroup,
   create,
+  createTransfer,
   getAll,
   getDueAlertsSummary,
   update,

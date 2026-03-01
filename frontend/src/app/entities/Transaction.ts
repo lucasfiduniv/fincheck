@@ -1,10 +1,10 @@
 export interface Transaction {
   id: string
   name: string
-  categoryId: string
+  categoryId: string | null
   bankAccountId: string
   value: number
-  type: 'INCOME' | 'EXPENSE'
+  type: 'INCOME' | 'EXPENSE' | 'TRANSFER'
   date: string
   status: 'POSTED' | 'PLANNED'
   entryType?: 'SINGLE' | 'RECURRING' | 'INSTALLMENT'

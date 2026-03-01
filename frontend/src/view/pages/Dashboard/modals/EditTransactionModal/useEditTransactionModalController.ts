@@ -36,6 +36,11 @@ export function useEditTransactionModalController(
   transaction: Transaction | null,
   onClose: () => void
 ) {
+  const editableTransactionType =
+    transaction?.type === 'INCOME' || transaction?.type === 'EXPENSE'
+      ? transaction.type
+      : null
+
   const {
     register,
     handleSubmit: hookFormSubmit,
@@ -47,7 +52,7 @@ export function useEditTransactionModalController(
       name: transaction?.name,
       value: transaction?.value,
       bankAccountId: transaction?.bankAccountId,
-      categoryId: transaction?.categoryId,
+      categoryId: transaction?.categoryId ?? '',
       date: transaction ? new Date(transaction.date) : new Date(),
     },
   })
@@ -85,11 +90,16 @@ export function useEditTransactionModalController(
   }
 
   const handleSubmit = hookFormSubmit(async (data) => {
+    if (!editableTransactionType) {
+      toast.error('Transferências devem ser gerenciadas pelo fluxo de transferência entre contas.')
+      return
+    }
+
     try {
       await updateTransaction({
         ...data,
         id: transaction!.id,
-        type: transaction!.type,
+        type: editableTransactionType,
         value: currencyStringToNumber(data.value),
         date: new Date(
           Date.UTC(
@@ -104,14 +114,14 @@ export function useEditTransactionModalController(
       queryClient.invalidateQueries({ queryKey: ['bankAccounts'] })
 
       toast.success(
-        transaction!.type === 'EXPENSE'
+        editableTransactionType === 'EXPENSE'
           ? 'Despesa editada com sucesso!'
           : 'Receita editada com sucesso!'
       )
       onClose()
     } catch {
-      toast.success(
-        transaction!.type === 'EXPENSE'
+      toast.error(
+        editableTransactionType === 'EXPENSE'
           ? 'Erro ao editar despesa!'
           : 'Erro ao editar receita!'
       )

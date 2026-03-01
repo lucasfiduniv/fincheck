@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
 import { CreateTransactionDto } from '../dto/create-transaction.dto'
+import { CreateTransferDto } from '../dto/create-transfer.dto'
 import { UpdateTransactionDto } from '../dto/update-transaction.dto'
 import { TransactionsRepository } from 'src/shared/database/repositories/transactions.repository'
 import { ValidateBankAccountOwnershipService } from '../../bank-accounts/services/validate-bank-account-ownership.service'
@@ -46,6 +47,10 @@ export class TransactionsService {
       bankAccountId,
       categoryId,
     })
+
+    if (type === TransactionType.TRANSFER) {
+      throw new BadRequestException('Use o endpoint de transferências para criar transferências entre contas.')
+    }
 
     const creationType = repeatType ?? TransactionCreationType.ONCE
 
@@ -113,6 +118,61 @@ export class TransactionsService {
     return createdTransactions[0]
   }
 
+  async createTransfer(userId: string, createTransferDto: CreateTransferDto) {
+    const {
+      fromBankAccountId,
+      toBankAccountId,
+      value,
+      date,
+      description,
+    } = createTransferDto
+
+    if (fromBankAccountId === toBankAccountId) {
+      throw new BadRequestException('Transfer accounts must be different.')
+    }
+
+    await Promise.all([
+      this.validateBankAccountOwnershipService.validate(userId, fromBankAccountId),
+      this.validateBankAccountOwnershipService.validate(userId, toBankAccountId),
+    ])
+
+    const normalizedDate = this.toUTCDate(date)
+    const transferLabel = description?.trim() || 'Transferência entre contas'
+
+    const outgoingTransaction = await this.transactionsRepo.create({
+      data: {
+        userId,
+        bankAccountId: fromBankAccountId,
+        categoryId: null,
+        name: `${transferLabel} (saída)`,
+        value: -value,
+        date: normalizedDate,
+        type: TransactionType.TRANSFER,
+        status: TransactionStatus.POSTED,
+        entryType: 'SINGLE',
+      },
+    })
+
+    const incomingTransaction = await this.transactionsRepo.create({
+      data: {
+        userId,
+        bankAccountId: toBankAccountId,
+        categoryId: null,
+        name: `${transferLabel} (entrada)`,
+        value,
+        date: normalizedDate,
+        type: TransactionType.TRANSFER,
+        status: TransactionStatus.POSTED,
+        entryType: 'SINGLE',
+      },
+    })
+
+    return {
+      fromTransactionId: outgoingTransaction.id,
+      toTransactionId: incomingTransaction.id,
+    }
+  }
+
   findAllByUserId(
     userId: string,
     filters: {
@@ -158,6 +218,20 @@ export class TransactionsService {
       categoryId,
       transactionId,
     })
+
+    const currentTransaction = await this.transactionsRepo.findFirst({
+      where: {
+        id: transactionId,
+        userId,
+      },
+      select: {
+        type: true,
+      },
+    })
+
+    if (currentTransaction?.type === TransactionType.TRANSFER || type === TransactionType.TRANSFER) {
+      throw new BadRequestException('Transferências entre contas não podem ser editadas por esta rota.')
+    }
 
     return this.transactionsRepo.update({
       where: { id: transactionId },

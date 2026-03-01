@@ -9,6 +9,7 @@ import { CategoriesModal } from './modals/CategoriesModal'
 import { EditAccountModal } from './modals/EditAccountModal'
 import { NewAccountModal } from './modals/NewAccountModal'
 import { NewTransactionModal } from './modals/NewTransactionModal'
+import { NewTransferModal } from './modals/NewTransferModal'
 import { NewCreditCardModal } from './modals/NewCreditCardModal'
 import { NewCreditCardPurchaseModal } from './modals/NewCreditCardPurchaseModal'
 import { PayCreditCardStatementModal } from './modals/PayCreditCardStatementModal'
@@ -38,6 +39,7 @@ function DashboardContent() {
 
       <NewAccountModal />
       <NewTransactionModal />
+      <NewTransferModal />
       <NewCreditCardModal />
       <NewCreditCardPurchaseModal />
       <PayCreditCardStatementModal />

@@ -1,4 +1,6 @@
+import { useMemo } from 'react'
 import { FilterIcon } from '../../../../components/icons/FilterIcon'
+import { TransactionsIcon } from '../../../../components/icons/TransactionsIcon'
 import { Swiper, SwiperSlide } from 'swiper/react'
 import { MONTHS } from '../../../../../app/config/constants'
 import { SliderOption } from './SliderOption'
@@ -16,12 +18,15 @@ import { EditTransactionModal } from '../../modals/EditTransactionModal/index.ts
 import { BudgetsModal } from '../../modals/BudgetsModal/index.tsx'
 import { formatStatusLabel } from '../../../../../app/utils/formatStatusLabel.ts'
 import { useDashboard } from '../DashboardContext/useDashboard.ts'
+import { useBankAccounts } from '../../../../../app/hooks/useBankAccounts.ts'
+import { resolveBankBrand } from '../../../../../app/utils/resolveBankBrand.ts'
 
 export function Transactions() {
   const {
     openCategoriesModal,
     openNewTransactionModal,
   } = useDashboard()
+  const { accounts } = useBankAccounts()
 
   const {
     areValuesVisible,
@@ -54,6 +59,11 @@ export function Transactions() {
     isAdjustingFutureValues,
   } = useTransactionsController()
 
+  const accountsById = useMemo(
+    () => new Map(accounts.map((account) => [account.id, account])),
+    [accounts],
+  )
+
   if (isInitialLoading) {
     return (
       <div className="bg-gray-100 rounded-2xl w-full h-full px-4 py-8 lg:p-10 flex flex-col">
@@ -82,7 +92,7 @@ export function Transactions() {
         <div className="flex justify-between items-center">
           <TransactionTypeDropdown
             onSelect={handleChangeFilters('type')}
-            selectedType={filters.type}
+            selectedType={filters.type === 'TRANSFER' ? undefined : filters.type}
           />
 
           <button onClick={handleOpenFiltersModal}>
@@ -294,18 +304,43 @@ export function Transactions() {
               />
             )}
 
-            {transactions.map((transaction) => (
+            {transactions.map((transaction) => {
+              const account = accountsById.get(transaction.bankAccountId)
+              const bankBrand = account ? resolveBankBrand(account.name) : null
+              const isTransfer = transaction.type === 'TRANSFER'
+              const isIncome = transaction.type === 'INCOME'
+              const categoryType = isIncome ? 'INCOME' : 'EXPENSE'
+              const transferIsOutgoing = transaction.value < 0
+              const amountClassName = isTransfer
+                ? 'text-gray-700'
+                : isIncome
+                  ? 'text-green-800'
+                  : 'text-red-800'
+              const amountSignal = isTransfer
+                ? transferIsOutgoing
+                  ? '- '
+                  : '+ '
+                : isIncome
+                  ? '+ '
+                  : '- '
+
+              return (
               <div
                 key={transaction.id}
-                className="bg-white p-4 rounded-2xl flex items-center justify-between gap-4"
-                role="button"
-                onClick={() => handleOpenEditModal(transaction)}
+                className={cn(
+                  'bg-white p-4 rounded-2xl flex items-center justify-between gap-4',
+                  !isTransfer && 'cursor-pointer'
+                )}
+                role={!isTransfer ? 'button' : undefined}
+                onClick={!isTransfer ? () => handleOpenEditModal(transaction) : undefined}
               >
                 <div className="flex-1 flex items-center gap-3">
-                  <CategoryIcon
-                    type={transaction.type}
-                    category={transaction.category?.icon}
-                  />
+                  {isTransfer ? <TransactionsIcon /> : (
+                    <CategoryIcon
+                      type={categoryType}
+                      category={transaction.category?.icon}
+                    />
+                  )}
                   <div>
                     <strong className="font-bold tracking-[-0.5px] block">
                       {transaction.name}
@@ -314,6 +349,17 @@ export function Transactions() {
                       <span className="text-sm text-gray-600">
                         {formatDate(new Date(transaction.date))}
                       </span>
+
+                      {bankBrand && (
+                        <span className="inline-flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 max-w-[160px]">
+                          <img
+                            src={bankBrand.logoSrc}
+                            alt={bankBrand.displayName}
+                            className="w-3.5 h-3.5 rounded-full object-contain bg-white"
+                          />
+                          <span className="truncate">{account?.name}</span>
+                        </span>
+                      )}
 
                       {transaction.status === 'PLANNED' && (
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 font-medium">
@@ -341,18 +387,17 @@ export function Transactions() {
                   <span
                     className={cn(
                       'tracking-[-0.5px] font-medium',
-                      transaction.type === 'EXPENSE'
-                        ? 'text-red-800'
-                        : 'text-green-800',
+                      amountClassName,
                       !areValuesVisible && 'blur-md'
                     )}
                   >
-                    {transaction.type === 'EXPENSE' ? '- ' : '+ '}
-                    {formatCurrency(transaction.value)}
+                    {amountSignal}
+                    {formatCurrency(Math.abs(transaction.value))}
                   </span>
                 </div>
               </div>
-            ))}
+              )
+            })}
           </>
         )}
       </div>

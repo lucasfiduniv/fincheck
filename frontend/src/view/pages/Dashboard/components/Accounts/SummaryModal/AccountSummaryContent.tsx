@@ -74,8 +74,23 @@ export function AccountSummaryContent({
               <span className="text-gray-600">{formatDate(new Date(transaction.date))}</span>
             </div>
 
-            <strong className={transaction.type === 'INCOME' ? 'text-green-800' : 'text-red-800'}>
-              {transaction.type === 'INCOME' ? '+' : '-'} {formatCurrency(transaction.value)}
+            <strong
+              className={
+                transaction.type === 'INCOME'
+                  ? 'text-green-800'
+                  : transaction.type === 'EXPENSE'
+                    ? 'text-red-800'
+                    : 'text-gray-700'
+              }
+            >
+              {transaction.type === 'INCOME'
+                ? '+'
+                : transaction.type === 'EXPENSE'
+                  ? '-'
+                  : transaction.value < 0
+                    ? '-'
+                    : '+'}{' '}
+              {formatCurrency(Math.abs(transaction.value))}
             </strong>
           </div>
         ))}

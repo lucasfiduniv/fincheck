@@ -9,6 +9,7 @@ interface DashboardContextValue {
   isNewAccountModalOpen: boolean
   isEditAccountModalOpen: boolean
   isNewTransactionModalOpen: boolean
+  isNewTransferModalOpen: boolean
   isCategoriesModalOpen: boolean
   isNewCreditCardModalOpen: boolean
   isNewCreditCardPurchaseModalOpen: boolean
@@ -27,6 +28,8 @@ interface DashboardContextValue {
   closeEditAccountModal: () => void
   openNewTransactionModal: (type: TransactionType, bankAccountId?: string) => void
   closeNewTransactionModal: () => void
+  openNewTransferModal: () => void
+  closeNewTransferModal: () => void
   openCategoriesModal: () => void
   closeCategoriesModal: () => void
   openNewCreditCardModal: () => void
@@ -47,6 +50,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const [isEditAccountModalOpen, setIsEditAccountModalOpen] = useState(false)
   const [accountBeingEdited, setAccountBeingEdited] = useState<BankAccount | null>(null)
   const [isNewTransactionModalOpen, setIsNewTransactionModalOpen] = useState(false)
+  const [isNewTransferModalOpen, setIsNewTransferModalOpen] = useState(false)
   const [newTransactionType, setNewTransactionType] = useState<TransactionType | null>(null)
   const [isCategoriesModalOpen, setIsCategoriesModalOpen] = useState(false)
   const [isNewCreditCardModalOpen, setIsNewCreditCardModalOpen] = useState(false)
@@ -90,6 +94,14 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     setNewTransactionType(null)
     setTransactionPresetBankAccountId(null)
     setIsNewTransactionModalOpen(false)
+  }, [])
+
+  const openNewTransferModal = useCallback(() => {
+    setIsNewTransferModalOpen(true)
+  }, [])
+
+  const closeNewTransferModal = useCallback(() => {
+    setIsNewTransferModalOpen(false)
   }, [])
 
   const openCategoriesModal = useCallback(() => {
@@ -145,6 +157,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       isNewAccountModalOpen,
       isEditAccountModalOpen,
       isNewTransactionModalOpen,
+      isNewTransferModalOpen,
       isCategoriesModalOpen,
       isNewCreditCardModalOpen,
       isNewCreditCardPurchaseModalOpen,
@@ -162,6 +175,8 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       creditCardBeingEdited,
       openNewTransactionModal,
       closeNewTransactionModal,
+      openNewTransferModal,
+      closeNewTransferModal,
       openCategoriesModal,
       closeCategoriesModal,
       openNewCreditCardModal,
@@ -179,6 +194,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       isNewAccountModalOpen,
       isEditAccountModalOpen,
       isNewTransactionModalOpen,
+      isNewTransferModalOpen,
       isCategoriesModalOpen,
       isNewCreditCardModalOpen,
       isNewCreditCardPurchaseModalOpen,
@@ -196,6 +212,8 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       creditCardBeingEdited,
       openNewTransactionModal,
       closeNewTransactionModal,
+      openNewTransferModal,
+      closeNewTransferModal,
       openCategoriesModal,
       closeCategoriesModal,
       openNewCreditCardModal,
