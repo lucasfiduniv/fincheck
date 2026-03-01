@@ -11,6 +11,7 @@ import { ConfirmDeleteModal } from '../../../../components/ConfirmDeleteModal'
 import { TrashIcon } from '../../../../components/icons/TrashIcon'
 import { useState } from 'react'
 import { RecurrenceAdjustmentScope } from '../../../../../app/services/transactionsService/adjustFutureValuesByGroup'
+import { cn } from '../../../../../app/utils/cn'
 
 interface EditTransactionModalProps {
   open: boolean
@@ -90,17 +91,19 @@ export function EditTransactionModal({
       title={isExpense ? 'Editar Despesa' : 'Editar Receita'}
       open={open}
       onClose={onClose}
+      contentClassName="max-w-[420px] lg:max-w-[880px] lg:px-8 max-h-[92vh] overflow-y-auto"
       rightAction={
         <button onClick={handleOpenDeleteModal}>
           <TrashIcon className="w-6 h-6 text-red-900" />
         </button>
       }
     >
-      <form onSubmit={handleSubmit}>
-        <div>
-          <span className="text-gray-600 tracking-[-0.5px] text-xs">
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="rounded-2xl bg-gray-50 p-4 lg:p-5">
+          <span className="text-gray-600 tracking-[-0.5px] text-xs block mb-1">
             Valor da {isExpense ? 'despesa' : 'receita'}
           </span>
+
           <div className="flex items-center gap-2">
             <span className="text-gray-600 tracking-[-0.5px] text-lg">R$</span>
 
@@ -118,74 +121,91 @@ export function EditTransactionModal({
           </div>
         </div>
 
-        <div className="mt-10 flex flex-col gap-4">
-          <Input
-            type="text"
-            placeholder={isExpense ? 'Nome da Despesa' : 'Nome da Receita'}
-            error={errors.name?.message}
-            {...register('name')}
-          />
+        <div className="rounded-2xl border border-gray-200 p-4 lg:p-5 space-y-4">
+          <strong className="text-sm tracking-[-0.5px] text-gray-800 block">
+            Dados da transação
+          </strong>
 
-          <Controller
-            control={control}
-            name="categoryId"
-            defaultValue=""
-            render={({ field: { onChange, value } }) => (
-              <Select
-                placeholder="Categoria"
-                onChange={onChange}
-                value={value}
-                error={errors.categoryId?.message}
-                options={categories.map((category) => ({
-                  value: category.id,
-                  label: category.name,
-                }))}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="lg:col-span-2">
+              <Input
+                type="text"
+                placeholder={isExpense ? 'Nome da Despesa' : 'Nome da Receita'}
+                error={errors.name?.message}
+                {...register('name')}
               />
-            )}
-          />
+            </div>
 
-          <Controller
-            control={control}
-            name="bankAccountId"
-            defaultValue=""
-            render={({ field: { onChange, value } }) => (
-              <Select
-                placeholder={isExpense ? 'Pagar com' : 'Receber com'}
-                onChange={onChange}
-                value={value}
-                error={errors.bankAccountId?.message}
-                options={accounts.map((account) => ({
-                  value: account.id,
-                  label: account.name,
-                }))}
+            <Controller
+              control={control}
+              name="categoryId"
+              defaultValue=""
+              render={({ field: { onChange, value } }) => (
+                <Select
+                  placeholder="Categoria"
+                  onChange={onChange}
+                  value={value}
+                  error={errors.categoryId?.message}
+                  options={categories.map((category) => ({
+                    value: category.id,
+                    label: category.name,
+                  }))}
+                />
+              )}
+            />
+
+            <Controller
+              control={control}
+              name="bankAccountId"
+              defaultValue=""
+              render={({ field: { onChange, value } }) => (
+                <Select
+                  placeholder={isExpense ? 'Pagar com' : 'Receber com'}
+                  onChange={onChange}
+                  value={value}
+                  error={errors.bankAccountId?.message}
+                  options={accounts.map((account) => ({
+                    value: account.id,
+                    label: account.name,
+                  }))}
+                />
+              )}
+            />
+
+            <div className="lg:col-span-2">
+              <Controller
+                control={control}
+                name="date"
+                render={({ field: { value, onChange } }) => (
+                  <DatePickerInput
+                    value={value}
+                    onChange={onChange}
+                    error={errors.date?.message}
+                  />
+                )}
               />
-            )}
-          />
+            </div>
+          </div>
+        </div>
 
-          <Controller
-            control={control}
-            name="date"
-            render={({ field: { value, onChange } }) => (
-              <DatePickerInput
-                value={value}
-                onChange={onChange}
-                error={errors.date?.message}
-              />
-            )}
-          />
-
-          {canAdjustFutureValues && (
-            <div className="rounded-xl border border-gray-200 p-3 space-y-3">
+        {canAdjustFutureValues && (
+          <div className="rounded-2xl border border-gray-200 p-4 lg:p-5 space-y-4">
+            <div>
               <strong className="text-sm tracking-[-0.5px] text-gray-800 block">
                 Reajustar valores futuros
               </strong>
+              <span className="text-xs text-gray-600">
+                Atualize esta transação e/ou as próximas da mesma série.
+              </span>
+            </div>
 
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <Input
                 name="futureValue"
                 type="number"
                 min={0.01}
                 step="0.01"
-                placeholder="Novo valor para as próximas"
+                placeholder="Novo valor"
                 value={futureValue}
                 onChange={(event) => setFutureValue(event.target.value)}
               />
@@ -202,26 +222,36 @@ export function EditTransactionModal({
               />
 
               {adjustmentScope === 'THIS_AND_NEXT' && (
-                <Input
-                  name="futureFromDate"
-                  type="date"
-                  placeholder="Aplicar a partir de"
-                  value={futureFromDate}
-                  onChange={(event) => setFutureFromDate(event.target.value)}
-                />
+                <div className="lg:col-span-2">
+                  <Input
+                    name="futureFromDate"
+                    type="date"
+                    placeholder="Aplicar a partir de"
+                    value={futureFromDate}
+                    onChange={(event) => setFutureFromDate(event.target.value)}
+                  />
+                </div>
               )}
+            </div>
 
+            <div className="flex justify-end">
               <Button
                 type="button"
                 onClick={handleAdjustFutureValues}
                 isLoading={isAdjustingFutureValues}
+                variant="ghost"
+                className="w-full lg:w-auto"
               >
                 Aplicar reajuste
               </Button>
             </div>
-          )}
+          </div>
+        )}
 
-          <Button type="submit" isLoading={isLoading}>Salvar</Button>
+        <div className={cn('pt-1', canAdjustFutureValues && 'border-t border-gray-100')}>
+          <Button type="submit" isLoading={isLoading} className="w-full lg:w-[240px] lg:ml-auto">
+            Salvar alterações
+          </Button>
         </div>
       </form>
     </Modal>

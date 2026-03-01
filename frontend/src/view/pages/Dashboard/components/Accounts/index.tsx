@@ -100,7 +100,7 @@ export function Accounts() {
         onToggleValueVisibility={toggleValueVisibility}
       />
 
-      <div className="flex-1 flex flex-col justify-end mt-10 lg:mt-0">
+      <div className="flex-1 flex flex-col justify-end mt-4 lg:mt-0">
         {accounts.length === 0 && (
           <EmptyAccountsState onCreateAccount={openNewAccountModal} />
         )}
