@@ -18,7 +18,7 @@ export class CategoryBudgetsService {
   ) {}
 
   async create(userId: string, createCategoryBudgetDto: CreateCategoryBudgetDto) {
-    const { categoryId, limit, month, year } = createCategoryBudgetDto
+    const { categoryId, limit, month, year, carryOverEnabled } = createCategoryBudgetDto
 
     await this.validateExpenseCategoryOwnership(userId, categoryId)
 
@@ -42,6 +42,7 @@ export class CategoryBudgetsService {
         month,
         year,
         limit,
+        carryOverEnabled: carryOverEnabled ?? false,
       },
     })
   }
@@ -50,7 +51,11 @@ export class CategoryBudgetsService {
     userId: string,
     { month, year }: { month: number; year: number },
   ) {
-    const [expenseCategories, budgets] = await Promise.all([
+    const previousMonthDate = new Date(Date.UTC(year, month - 1, 1))
+    const previousMonth = previousMonthDate.getUTCMonth()
+    const previousYear = previousMonthDate.getUTCFullYear()
+
+    const [expenseCategories, budgets, previousBudgets] = await Promise.all([
       this.categoriesRepo.findMany({
         where: {
           userId,
@@ -64,10 +69,20 @@ export class CategoryBudgetsService {
           year,
         },
       }),
+      this.categoryBudgetsRepo.findMany({
+        where: {
+          userId,
+          month: previousMonth,
+          year: previousYear,
+        },
+      }),
     ])
 
     const budgetByCategory = new Map(
       budgets.map((budget) => [budget.categoryId, budget]),
+    )
+    const previousBudgetByCategory = new Map(
+      previousBudgets.map((budget) => [budget.categoryId, budget]),
     )
 
     const transactions = await this.transactionsRepo.findMany({
@@ -79,17 +94,41 @@ export class CategoryBudgetsService {
           in: expenseCategories.map((category) => category.id),
         },
         date: {
-          gte: new Date(Date.UTC(year, month)),
+          gte: new Date(Date.UTC(previousYear, previousMonth)),
           lt: new Date(Date.UTC(year, month + 1)),
         },
       },
       select: {
         categoryId: true,
         value: true,
+        date: true,
       },
     })
 
-    const spentByCategory = transactions.reduce(
+    const spentByCategory = transactions
+      .filter((transaction) =>
+        transaction.date >= new Date(Date.UTC(year, month))
+        && transaction.date < new Date(Date.UTC(year, month + 1)),
+      )
+      .reduce(
+        (acc, transaction) => {
+          const key = transaction.categoryId
+
+          if (!key) return acc
+
+          acc[key] = (acc[key] ?? 0) + transaction.value
+
+          return acc
+        },
+        {} as Record<string, number>,
+      )
+
+    const previousSpentByCategory = transactions
+      .filter((transaction) =>
+        transaction.date >= new Date(Date.UTC(previousYear, previousMonth))
+        && transaction.date < new Date(Date.UTC(year, month)),
+      )
+      .reduce(
       (acc, transaction) => {
         const key = transaction.categoryId
 
@@ -113,6 +152,9 @@ export class CategoryBudgetsService {
           categoryIcon: category.icon,
           categoryBudgetId: null,
           limit: null,
+          baseLimit: null,
+          carryOverAmount: 0,
+          carryOverEnabled: false,
           spent,
           remaining: null,
           percentageUsed: null,
@@ -121,11 +163,23 @@ export class CategoryBudgetsService {
         }
       }
 
-      const percentageUsed = budget.limit > 0
-        ? Number(((spent / budget.limit) * 100).toFixed(2))
+      const previousBudget = previousBudgetByCategory.get(category.id)
+      const previousSpent = previousSpentByCategory[category.id] ?? 0
+      const previousRemaining = previousBudget
+        ? Number((previousBudget.limit - previousSpent).toFixed(2))
         : 0
 
-      const remaining = Number((budget.limit - spent).toFixed(2))
+      const carryOverAmount = budget.carryOverEnabled && previousRemaining > 0
+        ? previousRemaining
+        : 0
+
+      const effectiveLimit = Number((budget.limit + carryOverAmount).toFixed(2))
+
+      const percentageUsed = effectiveLimit > 0
+        ? Number(((spent / effectiveLimit) * 100).toFixed(2))
+        : 0
+
+      const remaining = Number((effectiveLimit - spent).toFixed(2))
 
       const status =
         percentageUsed >= 100
@@ -139,7 +193,10 @@ export class CategoryBudgetsService {
         categoryName: category.name,
         categoryIcon: category.icon,
         categoryBudgetId: budget.id,
-        limit: budget.limit,
+        limit: effectiveLimit,
+        baseLimit: budget.limit,
+        carryOverAmount,
+        carryOverEnabled: budget.carryOverEnabled,
         spent,
         remaining,
         percentageUsed,
@@ -156,11 +213,14 @@ export class CategoryBudgetsService {
   ) {
     await this.validateCategoryBudgetOwnership(userId, categoryBudgetId)
 
-    const { limit } = updateCategoryBudgetDto
+    const { limit, carryOverEnabled } = updateCategoryBudgetDto
 
     return this.categoryBudgetsRepo.update({
       where: { id: categoryBudgetId },
-      data: { limit },
+      data: {
+        limit,
+        ...(carryOverEnabled !== undefined && { carryOverEnabled }),
+      },
     })
   }
 

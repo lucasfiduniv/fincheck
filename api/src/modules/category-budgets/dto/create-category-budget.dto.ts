@@ -1,7 +1,9 @@
 import {
+  IsBoolean,
   IsInt,
   IsNotEmpty,
   IsNumber,
+  IsOptional,
   IsPositive,
   IsString,
   IsUUID,
@@ -28,4 +30,8 @@ export class CreateCategoryBudgetDto {
   @IsNumber()
   @IsPositive()
     limit: number
+
+  @IsBoolean()
+  @IsOptional()
+    carryOverEnabled?: boolean
 }

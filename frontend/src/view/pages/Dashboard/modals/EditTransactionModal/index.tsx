@@ -10,6 +10,7 @@ import { Transaction } from '../../../../../app/entities/Transaction'
 import { ConfirmDeleteModal } from '../../../../components/ConfirmDeleteModal'
 import { TrashIcon } from '../../../../components/icons/TrashIcon'
 import { useState } from 'react'
+import { RecurrenceAdjustmentScope } from '../../../../../app/services/transactionsService/adjustFutureValuesByGroup'
 
 interface EditTransactionModalProps {
   open: boolean
@@ -17,7 +18,9 @@ interface EditTransactionModalProps {
   transaction: Transaction | null
   onAdjustFutureValuesByGroup(params: {
     recurrenceGroupId: string;
+    transactionId?: string;
     value: number;
+    scope?: RecurrenceAdjustmentScope;
     fromDate?: string;
   }): Promise<void>
   isAdjustingFutureValues: boolean
@@ -46,6 +49,7 @@ export function EditTransactionModal({
   } = useEditTransactionModalController(transaction, onClose)
   const [futureValue, setFutureValue] = useState('')
   const [futureFromDate, setFutureFromDate] = useState('')
+  const [adjustmentScope, setAdjustmentScope] = useState<RecurrenceAdjustmentScope>('THIS_AND_NEXT')
 
   const isExpense = transaction?.type === 'EXPENSE'
   const canAdjustFutureValues = !!transaction?.recurrenceGroupId
@@ -57,12 +61,18 @@ export function EditTransactionModal({
 
     await onAdjustFutureValuesByGroup({
       recurrenceGroupId: transaction.recurrenceGroupId,
+      transactionId: transaction.id,
       value: Number(futureValue),
-      fromDate: futureFromDate ? new Date(futureFromDate).toISOString() : undefined,
+      scope: adjustmentScope,
+      fromDate:
+        adjustmentScope === 'THIS_AND_NEXT' && futureFromDate
+          ? new Date(futureFromDate).toISOString()
+          : undefined,
     })
 
     setFutureValue('')
     setFutureFromDate('')
+    setAdjustmentScope('THIS_AND_NEXT')
   }
 
   if (isDeleteModalOpen)
@@ -180,20 +190,33 @@ export function EditTransactionModal({
                 onChange={(event) => setFutureValue(event.target.value)}
               />
 
-              <Input
-                name="futureFromDate"
-                type="date"
-                placeholder="Aplicar a partir de"
-                value={futureFromDate}
-                onChange={(event) => setFutureFromDate(event.target.value)}
+              <Select
+                placeholder="Escopo da alteração"
+                value={adjustmentScope}
+                onChange={(value) => setAdjustmentScope(value as RecurrenceAdjustmentScope)}
+                options={[
+                  { value: 'THIS', label: 'Só esta' },
+                  { value: 'THIS_AND_NEXT', label: 'Esta e próximas' },
+                  { value: 'ALL', label: 'Todas da série' },
+                ]}
               />
+
+              {adjustmentScope === 'THIS_AND_NEXT' && (
+                <Input
+                  name="futureFromDate"
+                  type="date"
+                  placeholder="Aplicar a partir de"
+                  value={futureFromDate}
+                  onChange={(event) => setFutureFromDate(event.target.value)}
+                />
+              )}
 
               <Button
                 type="button"
                 onClick={handleAdjustFutureValues}
                 isLoading={isAdjustingFutureValues}
               >
-                Aplicar nas futuras
+                Aplicar reajuste
               </Button>
             </div>
           )}

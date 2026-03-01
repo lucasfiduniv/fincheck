@@ -11,6 +11,7 @@ import { currencyStringToNumber } from '../../../../../app/utils/currencyStringT
 
 const schema = z.object({
   categoryId: z.string().nonempty('Selecione uma categoria'),
+  carryOverEnabled: z.boolean(),
   limit: z
     .union([z.string().nonempty('Informe o limite mensal'), z.number()])
     .transform((val, ctx) => {
@@ -58,6 +59,7 @@ export function useBudgetsModalController({
     defaultValues: {
       limit: '0',
       categoryId: '',
+      carryOverEnabled: false,
     },
   })
 
@@ -95,6 +97,7 @@ export function useBudgetsModalController({
         await updateBudget({
           id: budgetBeingEdited.categoryBudgetId,
           limit: parsedLimit,
+          carryOverEnabled: data.carryOverEnabled,
         })
 
         toast.success('Limite mensal atualizado com sucesso!')
@@ -104,6 +107,7 @@ export function useBudgetsModalController({
           limit: parsedLimit,
           month,
           year,
+          carryOverEnabled: data.carryOverEnabled,
         })
 
         toast.success('Limite mensal criado com sucesso!')
@@ -115,6 +119,7 @@ export function useBudgetsModalController({
       reset({
         categoryId: '',
         limit: '0',
+        carryOverEnabled: false,
       })
     } catch {
       toast.error('Erro ao salvar limite mensal!')
@@ -127,6 +132,7 @@ export function useBudgetsModalController({
     reset({
       categoryId: '',
       limit: '0',
+      carryOverEnabled: false,
     })
   }
 
@@ -136,6 +142,7 @@ export function useBudgetsModalController({
     reset({
       categoryId: '',
       limit: '0',
+      carryOverEnabled: false,
     })
   }
 
@@ -143,7 +150,8 @@ export function useBudgetsModalController({
     setBudgetBeingEdited(budget)
     setMode('form')
     setValue('categoryId', budget.categoryId)
-    setValue('limit', budget.limit ?? 0)
+    setValue('limit', budget.baseLimit ?? budget.limit ?? 0)
+    setValue('carryOverEnabled', budget.carryOverEnabled ?? false)
   }
 
   function handleCancelEdit() {

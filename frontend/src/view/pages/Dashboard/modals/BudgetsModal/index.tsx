@@ -103,6 +103,11 @@ export function BudgetsModal({
                         <span className="text-xs text-gray-600 block">
                           Limite {formatCurrency(budget.limit ?? 0)}
                         </span>
+                        {(budget.carryOverAmount ?? 0) > 0 && (
+                          <span className="text-[10px] text-teal-800 block">
+                            Inclui carry-over de {formatCurrency(budget.carryOverAmount ?? 0)}
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -200,6 +205,28 @@ export function BudgetsModal({
                 />
               </div>
             </div>
+
+            <Controller
+              control={control}
+              name="carryOverEnabled"
+              render={({ field: { value, onChange } }) => (
+                <label className="rounded-lg border border-gray-300 px-3 py-2 flex items-center justify-between gap-3 cursor-pointer">
+                  <div>
+                    <strong className="text-sm text-gray-800 block">Carry-over</strong>
+                    <span className="text-xs text-gray-600">
+                      Levar saldo não utilizado para o próximo mês
+                    </span>
+                  </div>
+
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 accent-teal-900"
+                    checked={Boolean(value)}
+                    onChange={(event) => onChange(event.target.checked)}
+                  />
+                </label>
+              )}
+            />
 
             <Button
               className="w-full"

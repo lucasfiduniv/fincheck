@@ -5,6 +5,7 @@ export interface PayCreditCardStatementParams {
   month: number
   year: number
   bankAccountId?: string
+  amount?: number
 }
 
 export async function payStatement({ creditCardId, ...params }: PayCreditCardStatementParams) {

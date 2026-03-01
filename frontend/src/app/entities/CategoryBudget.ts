@@ -4,6 +4,9 @@ export interface CategoryBudgetSummary {
   categoryIcon: string
   categoryBudgetId: string | null
   limit: number | null
+  baseLimit?: number | null
+  carryOverAmount?: number
+  carryOverEnabled?: boolean
   spent: number
   remaining: number | null
   percentageUsed: number | null

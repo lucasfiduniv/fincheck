@@ -1,0 +1,2 @@
+-- RenameIndex
+ALTER INDEX "credit_card_installments_user_id_credit_card_id_statement_year_" RENAME TO "credit_card_installments_user_id_credit_card_id_statement_y_idx";

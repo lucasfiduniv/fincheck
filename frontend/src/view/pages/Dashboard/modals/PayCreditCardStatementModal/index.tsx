@@ -23,6 +23,8 @@ export function PayCreditCardStatementModal() {
     accounts,
     statement,
     isLoadingStatement,
+    handleCancelPurchase,
+    isCancelingPurchase,
   } = usePayCreditCardStatementModalController()
 
   return (
@@ -93,6 +95,15 @@ export function PayCreditCardStatementModal() {
             )}
           />
 
+          <Input
+            type="number"
+            min={0.01}
+            step="0.01"
+            placeholder="Valor a pagar"
+            error={errors.amount?.message}
+            {...register('amount')}
+          />
+
           <div className="rounded-xl bg-gray-50 p-3 min-h-[86px]">
             {isLoadingStatement && (
               <div className="h-full flex items-center justify-center">
@@ -107,19 +118,47 @@ export function PayCreditCardStatementModal() {
             )}
 
             {!isLoadingStatement && statement && (
-              <div className="space-y-1 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-600">Status</span>
-                  <strong className="text-gray-800">{formatStatusLabel(statement.status)}</strong>
+              <div className="space-y-2 text-sm">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">Status</span>
+                    <strong className="text-gray-800">{formatStatusLabel(statement.status)}</strong>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">Vencimento</span>
+                    <strong className="text-gray-800">{formatDate(new Date(statement.dueDate))}</strong>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">Pendente</span>
+                    <strong className="text-red-800">{formatCurrency(statement.pending)}</strong>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-600">Vencimento</span>
-                  <strong className="text-gray-800">{formatDate(new Date(statement.dueDate))}</strong>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-600">Pendente</span>
-                  <strong className="text-red-800">{formatCurrency(statement.pending)}</strong>
-                </div>
+
+                {statement.installments.filter((installment) => installment.status === 'PENDING').length > 0 && (
+                  <div className="border-t border-gray-200 pt-2 space-y-2 max-h-36 overflow-y-auto">
+                    <span className="text-xs text-gray-700 block">Itens pendentes (cancelável)</span>
+
+                    {statement.installments
+                      .filter((installment) => installment.status === 'PENDING')
+                      .slice(0, 5)
+                      .map((installment) => (
+                        <div key={installment.id} className="flex items-center justify-between gap-2 text-xs">
+                          <span className="text-gray-700 truncate">
+                            {installment.description} ({installment.installmentNumber}/{installment.installmentCount})
+                          </span>
+
+                          <button
+                            type="button"
+                            className="text-red-800 font-medium disabled:opacity-50"
+                            disabled={isCancelingPurchase}
+                            onClick={() => handleCancelPurchase(installment.purchaseId)}
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

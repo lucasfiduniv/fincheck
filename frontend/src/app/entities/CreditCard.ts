@@ -16,6 +16,7 @@ export interface CreditCard {
 
 export interface CreditCardStatementInstallment {
   id: string
+  purchaseId: string
   amount: number
   status: 'PENDING' | 'PAID' | 'CANCELED'
   installmentNumber: number

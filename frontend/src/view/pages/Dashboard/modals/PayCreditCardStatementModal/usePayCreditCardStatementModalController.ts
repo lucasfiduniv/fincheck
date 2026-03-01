@@ -17,6 +17,7 @@ const schema = z.object({
   month: z.coerce.number().min(0).max(11),
   year: z.coerce.number().min(2000),
   bankAccountId: z.string().optional(),
+  amount: z.coerce.number().positive('Informe um valor maior que zero').optional(),
 })
 
 type FormData = z.infer<typeof schema>
@@ -45,6 +46,7 @@ export function usePayCreditCardStatementModalController() {
       month: new Date().getMonth(),
       year: new Date().getFullYear(),
       bankAccountId: LINKED_BANK_ACCOUNT_OPTION,
+      amount: undefined,
     },
   })
 
@@ -62,6 +64,9 @@ export function usePayCreditCardStatementModalController() {
   })
 
   const { mutateAsync, isLoading } = useMutation(creditCardsService.payStatement)
+  const { mutateAsync: cancelPurchaseMutation, isLoading: isCancelingPurchase } = useMutation(
+    creditCardsService.cancelPurchase,
+  )
 
   useEffect(() => {
     if (!isOpen) {
@@ -105,12 +110,21 @@ export function usePayCreditCardStatementModalController() {
     }
   }, [isOpen, selectedCardId, setValue])
 
+  useEffect(() => {
+    if (!statement) {
+      return
+    }
+
+    setValue('amount', statement.pending)
+  }, [statement, setValue])
+
   const handleSubmit = hookFormSubmit(async (data) => {
     try {
       await mutateAsync({
         creditCardId: data.creditCardId,
         month: data.month,
         year: data.year,
+        amount: data.amount,
         bankAccountId:
           !data.bankAccountId || data.bankAccountId === LINKED_BANK_ACCOUNT_OPTION
             ? undefined
@@ -130,6 +144,28 @@ export function usePayCreditCardStatementModalController() {
     }
   })
 
+  async function handleCancelPurchase(purchaseId: string) {
+    if (!selectedCardId) {
+      return
+    }
+
+    try {
+      await cancelPurchaseMutation({
+        creditCardId: selectedCardId,
+        purchaseId,
+      })
+
+      queryClient.invalidateQueries({ queryKey: ['creditCards'] })
+      queryClient.invalidateQueries({ queryKey: ['bankAccounts'] })
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['creditCardStatement'] })
+
+      toast.success('Compra cancelada com sucesso!')
+    } catch {
+      toast.error('Erro ao cancelar compra!')
+    }
+  }
+
   return {
     isOpen,
     onClose,
@@ -142,5 +178,7 @@ export function usePayCreditCardStatementModalController() {
     accounts,
     statement,
     isLoadingStatement,
+    handleCancelPurchase,
+    isCancelingPurchase,
   }
 }

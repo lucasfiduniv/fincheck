@@ -5,6 +5,7 @@ export interface CreateCategoryBudgetParams {
   month: number
   year: number
   limit: number
+  carryOverEnabled?: boolean
 }
 
 export async function create(params: CreateCategoryBudgetParams) {

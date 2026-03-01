@@ -206,6 +206,7 @@ model CategoryBudget {
   month      Int
   year       Int
   limit      Float
+  carryOverEnabled Boolean @default(false) @map("carry_over_enabled")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)

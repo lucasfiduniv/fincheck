@@ -1,4 +1,4 @@
-import { IsInt, IsNotEmpty, IsOptional, IsUUID, Max, Min } from 'class-validator'
+import { IsInt, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsUUID, Max, Min } from 'class-validator'
 
 export class PayCreditCardStatementDto {
   @IsInt()
@@ -13,4 +13,9 @@ export class PayCreditCardStatementDto {
   @IsOptional()
   @IsUUID()
     bankAccountId?: string
+
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+    amount?: number
 }

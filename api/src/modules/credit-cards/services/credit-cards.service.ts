@@ -202,7 +202,11 @@ export class CreditCardsService {
       orderBy: [{ dueDate: 'asc' }, { installmentNumber: 'asc' }],
     })
 
-    const total = installments.reduce((acc, installment) => acc + installment.amount, 0)
+    const nonCanceledInstallments = installments.filter(
+      (installment) => installment.status !== 'CANCELED',
+    )
+
+    const total = nonCanceledInstallments.reduce((acc, installment) => acc + installment.amount, 0)
     const paid = installments
       .filter((installment) => installment.status === 'PAID')
       .reduce((acc, installment) => acc + installment.amount, 0)
@@ -232,6 +236,7 @@ export class CreditCardsService {
       status: statementStatus,
       installments: installments.map((installment) => ({
         id: installment.id,
+        purchaseId: installment.purchaseId,
         amount: installment.amount,
         status: installment.status,
         installmentNumber: installment.installmentNumber,
@@ -249,7 +254,7 @@ export class CreditCardsService {
     payCreditCardStatementDto: PayCreditCardStatementDto,
   ) {
     const card = await this.validateCreditCardOwnership(userId, creditCardId)
-    const { month, year, bankAccountId } = payCreditCardStatementDto
+    const { month, year, bankAccountId, amount } = payCreditCardStatementDto
 
     const accountToUse = bankAccountId ?? card.bankAccountId
     await this.validateBankAccountOwnershipService.validate(userId, accountToUse)
@@ -269,10 +274,21 @@ export class CreditCardsService {
       throw new BadRequestException('No pending installments for this statement.')
     }
 
-    const totalToPay = pendingInstallments.reduce(
+    const totalPending = pendingInstallments.reduce(
       (acc, installment) => acc + installment.amount,
       0,
     )
+
+    const requestedPaymentAmount = Number((amount ?? totalPending).toFixed(2))
+
+    if (requestedPaymentAmount <= 0) {
+      throw new BadRequestException('Payment amount must be greater than zero.')
+    }
+
+    const totalToPay = Math.min(requestedPaymentAmount, Number(totalPending.toFixed(2)))
+
+    const { fullyPaidInstallmentIds, partialInstallmentAdjustment, remainingPending } =
+      this.allocateStatementPayment(pendingInstallments, totalToPay)
 
     const paymentDate = new Date()
 
@@ -282,7 +298,7 @@ export class CreditCardsService {
         bankAccountId: accountToUse,
         categoryId: null,
         name: `Pagamento fatura ${card.name} ${String(month + 1).padStart(2, '0')}/${year}`,
-        value: Number(totalToPay.toFixed(2)),
+        value: totalToPay,
         date: paymentDate,
         type: 'EXPENSE',
         status: 'POSTED',
@@ -290,23 +306,111 @@ export class CreditCardsService {
       },
     })
 
+    if (fullyPaidInstallmentIds.length > 0) {
+      await this.creditCardInstallmentsRepo.updateMany({
+        where: {
+          id: {
+            in: fullyPaidInstallmentIds,
+          },
+        },
+        data: {
+          status: 'PAID',
+          paidAt: paymentDate,
+          paymentTransactionId: paymentTransaction.id,
+        },
+      })
+    }
+
+    if (partialInstallmentAdjustment) {
+      await this.creditCardInstallmentsRepo.update({
+        where: {
+          id: partialInstallmentAdjustment.installmentId,
+        },
+        data: {
+          amount: partialInstallmentAdjustment.newAmount,
+        },
+      })
+    }
+
+    return {
+      paidInstallments: fullyPaidInstallmentIds.length,
+      totalPaid: totalToPay,
+      paymentTransactionId: paymentTransaction.id,
+      remainingPending,
+      partialAppliedToInstallmentId: partialInstallmentAdjustment?.installmentId ?? null,
+    }
+  }
+
+  async cancelPurchase(userId: string, creditCardId: string, purchaseId: string) {
+    await this.validateCreditCardOwnership(userId, creditCardId)
+
+    const purchase = await this.creditCardPurchasesRepo.findFirst({
+      where: {
+        id: purchaseId,
+        userId,
+        creditCardId,
+      },
+    })
+
+    if (!purchase) {
+      throw new NotFoundException('Credit card purchase not found.')
+    }
+
+    const installments = await this.creditCardInstallmentsRepo.findMany({
+      where: {
+        userId,
+        creditCardId,
+        purchaseId,
+      },
+      orderBy: [{ installmentNumber: 'asc' }],
+    })
+
+    if (installments.length === 0) {
+      throw new BadRequestException('No installments found for this purchase.')
+    }
+
+    const paidInstallments = installments.filter((installment) => installment.status === 'PAID')
+    const refundableAmount = Number(
+      paidInstallments.reduce((acc, installment) => acc + installment.amount, 0).toFixed(2),
+    )
+
+    let refundTransactionId: string | null = null
+
+    if (refundableAmount > 0) {
+      const card = await this.validateCreditCardOwnership(userId, creditCardId)
+
+      const refundTransaction = await this.transactionsRepo.create({
+        data: {
+          userId,
+          bankAccountId: card.bankAccountId,
+          categoryId: null,
+          name: `Estorno compra cartão ${card.name}: ${purchase.description}`,
+          value: refundableAmount,
+          date: new Date(),
+          type: 'INCOME',
+          status: 'POSTED',
+          entryType: 'SINGLE',
+        },
+      })
+
+      refundTransactionId = refundTransaction.id
+    }
+
     await this.creditCardInstallmentsRepo.updateMany({
       where: {
         id: {
-          in: pendingInstallments.map((installment) => installment.id),
+          in: installments.map((installment) => installment.id),
         },
       },
       data: {
-        status: 'PAID',
-        paidAt: paymentDate,
-        paymentTransactionId: paymentTransaction.id,
+        status: 'CANCELED',
       },
     })
 
     return {
-      paidInstallments: pendingInstallments.length,
-      totalPaid: Number(totalToPay.toFixed(2)),
-      paymentTransactionId: paymentTransaction.id,
+      canceledInstallments: installments.length,
+      refundedAmount: refundableAmount,
+      refundTransactionId,
     }
   }
 
@@ -388,6 +492,55 @@ export class CreditCardsService {
     return {
       month: now.getUTCMonth(),
       year: now.getUTCFullYear(),
+    }
+  }
+
+  private allocateStatementPayment(
+    pendingInstallments: Array<{ id: string; amount: number }>,
+    paymentAmount: number,
+  ) {
+    const fullyPaidInstallmentIds: string[] = []
+    let partialInstallmentAdjustment:
+      | { installmentId: string; newAmount: number }
+      | null = null
+
+    let remainingPaymentAmountCents = Math.round(paymentAmount * 100)
+    const totalPendingCents = pendingInstallments.reduce(
+      (acc, installment) => acc + Math.round(installment.amount * 100),
+      0,
+    )
+
+    for (const installment of pendingInstallments) {
+      if (remainingPaymentAmountCents <= 0) {
+        break
+      }
+
+      const installmentAmountCents = Math.round(installment.amount * 100)
+
+      if (remainingPaymentAmountCents >= installmentAmountCents) {
+        fullyPaidInstallmentIds.push(installment.id)
+        remainingPaymentAmountCents -= installmentAmountCents
+      } else {
+        const newAmount = Number(
+          ((installmentAmountCents - remainingPaymentAmountCents) / 100).toFixed(2),
+        )
+
+        partialInstallmentAdjustment = {
+          installmentId: installment.id,
+          newAmount,
+        }
+        remainingPaymentAmountCents = 0
+      }
+    }
+
+    const remainingPending = Number(
+      ((totalPendingCents - Math.round(paymentAmount * 100)) / 100).toFixed(2),
+    )
+
+    return {
+      fullyPaidInstallmentIds,
+      partialInstallmentAdjustment,
+      remainingPending: Math.max(0, remainingPending),
     }
   }
 }

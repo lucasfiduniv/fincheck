@@ -92,4 +92,13 @@ export class CreditCardsController {
       payCreditCardStatementDto,
     )
   }
+
+  @Post(':creditCardId/purchases/:purchaseId/cancel')
+  cancelPurchase(
+    @ActiveUserId() userId: string,
+    @Param('creditCardId', ParseUUIDPipe) creditCardId: string,
+    @Param('purchaseId', ParseUUIDPipe) purchaseId: string,
+  ) {
+    return this.creditCardsService.cancelPurchase(userId, creditCardId, purchaseId)
+  }
 }

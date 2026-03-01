@@ -8,6 +8,7 @@ import { useTransactionDueAlerts } from '../../../../../app/hooks/useTransaction
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { transactionsService } from '../../../../../app/services/transactionsService'
 import { toast } from 'react-hot-toast'
+import { RecurrenceAdjustmentScope } from '../../../../../app/services/transactionsService/adjustFutureValuesByGroup'
 
 export function useTransactionsController() {
   const { areValuesVisible } = useDashboard()
@@ -119,7 +120,9 @@ export function useTransactionsController() {
 
   async function handleAdjustFutureValuesByGroup(params: {
     recurrenceGroupId: string;
+    transactionId?: string;
     value: number;
+    scope?: RecurrenceAdjustmentScope;
     fromDate?: string;
   }) {
     try {
@@ -127,7 +130,13 @@ export function useTransactionsController() {
 
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
 
-      toast.success('Reajuste aplicado nas transações futuras!')
+      if (params.scope === 'THIS') {
+        toast.success('Reajuste aplicado nesta transação!')
+      } else if (params.scope === 'ALL') {
+        toast.success('Reajuste aplicado em toda a série!')
+      } else {
+        toast.success('Reajuste aplicado nesta e nas próximas transações!')
+      }
     } catch {
       toast.error('Erro ao reajustar transações futuras!')
     }
