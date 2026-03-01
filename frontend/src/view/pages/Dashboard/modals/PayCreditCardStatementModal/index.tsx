@@ -6,7 +6,9 @@ import { Select } from '../../../../components/Select'
 import { Spinner } from '../../../../components/Spinner'
 import { formatCurrency } from '../../../../../app/utils/formatCurrency'
 import { formatDate } from '../../../../../app/utils/formatDate'
+import { formatStatusLabel } from '../../../../../app/utils/formatStatusLabel'
 import { usePayCreditCardStatementModalController } from './usePayCreditCardStatementModalController'
+import { LINKED_BANK_ACCOUNT_OPTION, PAY_STATEMENT_MONTH_OPTIONS } from './constants'
 
 export function PayCreditCardStatementModal() {
   const {
@@ -46,13 +48,19 @@ export function PayCreditCardStatementModal() {
           />
 
           <div className="grid grid-cols-2 gap-3">
-            <Input
-              type="number"
-              min={0}
-              max={11}
-              placeholder="Mês (0-11)"
-              error={errors.month?.message}
-              {...register('month')}
+            <Controller
+              control={control}
+              name="month"
+              defaultValue={new Date().getMonth()}
+              render={({ field: { onChange, value } }) => (
+                <Select
+                  placeholder="Mês"
+                  onChange={(selectedValue) => onChange(Number(selectedValue))}
+                  value={String(value)}
+                  error={errors.month?.message}
+                  options={PAY_STATEMENT_MONTH_OPTIONS}
+                />
+              )}
             />
 
             <Input
@@ -75,7 +83,7 @@ export function PayCreditCardStatementModal() {
                 value={value}
                 error={errors.bankAccountId?.message}
                 options={[
-                  { value: 'LINKED', label: 'Conta vinculada ao cartão' },
+                  { value: LINKED_BANK_ACCOUNT_OPTION, label: 'Conta vinculada ao cartão' },
                   ...accounts.map((account) => ({
                     value: account.id,
                     label: account.name,
@@ -102,7 +110,7 @@ export function PayCreditCardStatementModal() {
               <div className="space-y-1 text-sm">
                 <div className="flex items-center justify-between">
                   <span className="text-gray-600">Status</span>
-                  <strong className="text-gray-800">{statement.status}</strong>
+                  <strong className="text-gray-800">{formatStatusLabel(statement.status)}</strong>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-gray-600">Vencimento</span>

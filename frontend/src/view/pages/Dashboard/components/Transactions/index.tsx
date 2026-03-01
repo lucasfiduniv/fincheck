@@ -14,6 +14,7 @@ import { FiltersModal } from './FiltersModal/index.tsx'
 import { formatDate } from '../../../../../app/utils/formatDate.ts'
 import { EditTransactionModal } from '../../modals/EditTransactionModal/index.tsx'
 import { BudgetsModal } from '../../modals/BudgetsModal/index.tsx'
+import { formatStatusLabel } from '../../../../../app/utils/formatStatusLabel.ts'
 
 export function Transactions() {
   const {
@@ -152,10 +153,7 @@ export function Transactions() {
                   alert.status === 'UPCOMING' && 'text-yellow-700',
                   alert.status === 'FUTURE' && 'text-green-800'
                 )}>
-                  {alert.status === 'OVERDUE' && 'Atrasado'}
-                  {alert.status === 'DUE_TODAY' && 'Vence hoje'}
-                  {alert.status === 'UPCOMING' && `Em ${alert.daysUntilDue} dia(s)`}
-                  {alert.status === 'FUTURE' && 'No prazo'}
+                  {formatStatusLabel(alert.status, { daysUntilDue: alert.daysUntilDue })}
                 </span>
               </div>
             ))}
@@ -279,7 +277,7 @@ export function Transactions() {
 
                       {transaction.status === 'PLANNED' && (
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 font-medium">
-                          Planejada
+                          {formatStatusLabel(transaction.status)}
                         </span>
                       )}
                     </div>
