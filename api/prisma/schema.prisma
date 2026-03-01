@@ -15,6 +15,8 @@ model User {
   name     String
   email    String @unique
   password String
+  phoneNumber String? @map("phone_number")
+  notificationsEnabled Boolean @default(false) @map("notifications_enabled")
 
   bankAccounts BankAccount[]
   creditCards CreditCard[]

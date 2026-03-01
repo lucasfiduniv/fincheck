@@ -1,9 +1,11 @@
 import { ExitIcon } from '@radix-ui/react-icons'
 import { DropdownMenu } from '../DropdownMenu'
 import { useAuth } from '../../../app/hooks/useAuth'
+import { useNavigate } from 'react-router-dom'
 
 export function UserMenu() {
   const { signout, user } = useAuth()
+  const navigate = useNavigate()
 
   return (
     <DropdownMenu.Root>
@@ -15,7 +17,11 @@ export function UserMenu() {
         </div>
       </DropdownMenu.Trigger>
 
-      <DropdownMenu.Content className="w-32">
+      <DropdownMenu.Content className="w-44">
+        <DropdownMenu.Item onSelect={() => navigate('/settings')}>
+          Configurações
+        </DropdownMenu.Item>
+
         <DropdownMenu.Item
           className="flex items-center justify-between"
           onSelect={signout}

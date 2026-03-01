@@ -1,5 +1,5 @@
 import { plainToInstance } from 'class-transformer'
-import { IsNotEmpty, IsString, NotEquals, validateSync } from 'class-validator'
+import { IsNotEmpty, IsOptional, IsString, NotEquals, validateSync } from 'class-validator'
 
 class Env {
   @IsString()
@@ -27,6 +27,22 @@ class Env {
   @IsString()
   @IsNotEmpty()
     frontendUrl: string
+
+  @IsOptional()
+  @IsString()
+    evolutionApiUrl?: string
+
+  @IsOptional()
+  @IsString()
+    evolutionApiKey?: string
+
+  @IsOptional()
+  @IsString()
+    evolutionInstance?: string
+
+  @IsOptional()
+  @IsString()
+    evolutionDefaultPhone?: string
 }
 
 export const env: Env = plainToInstance(Env, {
@@ -35,7 +51,11 @@ export const env: Env = plainToInstance(Env, {
   dbURL: process.env.DATABASE_URL,
   emailUser: process.env.EMAIL_USER,
   emailPassword: process.env.EMAIL_PASSWORD,
-  frontendUrl: process.env.FRONTEND_URL
+  frontendUrl: process.env.FRONTEND_URL,
+  evolutionApiUrl: process.env.EVOLUTION_API_URL ?? process.env.NEXT_PUBLIC_EVOLUTION_API_URL,
+  evolutionApiKey: process.env.EVOLUTION_API_KEY ?? process.env.NEXT_PUBLIC_EVOLUTION_API_KEY,
+  evolutionInstance: process.env.EVOLUTION_INSTANCE ?? process.env.NEXT_PUBLIC_EVOLUTION_INSTANCE,
+  evolutionDefaultPhone: process.env.YOUR_PHONE ?? process.env.NEXT_PUBLIC_YOUR_PHONE,
 })
 
 const errors = validateSync(env)

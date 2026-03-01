@@ -11,6 +11,8 @@ export class UsersService {
       select: {
         name: true,
         email: true,
+        phoneNumber: true,
+        notificationsEnabled: true,
       },
     })
   }
