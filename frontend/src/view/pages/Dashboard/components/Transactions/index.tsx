@@ -15,8 +15,14 @@ import { formatDate } from '../../../../../app/utils/formatDate.ts'
 import { EditTransactionModal } from '../../modals/EditTransactionModal/index.tsx'
 import { BudgetsModal } from '../../modals/BudgetsModal/index.tsx'
 import { formatStatusLabel } from '../../../../../app/utils/formatStatusLabel.ts'
+import { useDashboard } from '../DashboardContext/useDashboard.ts'
 
 export function Transactions() {
+  const {
+    openCategoriesModal,
+    openNewTransactionModal,
+  } = useDashboard()
+
   const {
     areValuesVisible,
     isLoading,
@@ -192,8 +198,26 @@ export function Transactions() {
           )}
 
           {!isLoadingCategoryBudgets && categoryBudgets.filter((budget) => budget.limit !== null).length === 0 && (
-            <div className="h-12 rounded-lg bg-gray-50 flex items-center justify-center text-xs text-gray-600">
-              Você ainda não definiu limites para este mês.
+            <div className="rounded-lg bg-gray-50 p-3 space-y-2">
+              <p className="text-xs text-gray-600">
+                Você ainda não definiu limites para este mês.
+              </p>
+
+              <div className="flex items-center gap-2">
+                <button
+                  className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors"
+                  onClick={openCategoriesModal}
+                >
+                  Criar primeira categoria
+                </button>
+
+                <button
+                  className="text-xs px-2.5 py-1.5 rounded-lg bg-teal-900 text-white hover:bg-teal-800 transition-colors"
+                  onClick={handleOpenBudgetsModal}
+                >
+                  Definir orçamento
+                </button>
+              </div>
             </div>
           )}
 
@@ -236,9 +260,25 @@ export function Transactions() {
         )}
 
         {!hasTransactions && !isLoading && (
-          <div className="flex flex-col items-center justify-center h-full">
+          <div className="flex flex-col items-center justify-center h-full text-center">
             <img src={emptyStateImage} alt="Empty state" />
-            <p className="text-gray-700">Não encontramos nenhuma transação!</p>
+            <p className="text-gray-700 mt-1">Não encontramos nenhuma transação!</p>
+
+            <div className="mt-4 flex items-center gap-2">
+              <button
+                className="text-sm px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors"
+                onClick={openCategoriesModal}
+              >
+                Criar primeira categoria
+              </button>
+
+              <button
+                className="text-sm px-3 py-2 rounded-lg bg-teal-900 text-white hover:bg-teal-800 transition-colors"
+                onClick={() => openNewTransactionModal('EXPENSE')}
+              >
+                Lançar compra
+              </button>
+            </div>
           </div>
         )}
 
