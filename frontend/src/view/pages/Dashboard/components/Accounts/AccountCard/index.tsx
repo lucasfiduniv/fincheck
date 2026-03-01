@@ -1,47 +1,12 @@
 import { BankAccount } from '../../../../../../app/entities/BankAccount'
 import { cn } from '../../../../../../app/utils/cn'
 import { formatCurrency } from '../../../../../../app/utils/formatCurrency'
+import { resolveBankBrand } from '../../../../../../app/utils/resolveBankBrand'
 import { useDashboard } from '../../DashboardContext/useDashboard'
 
 interface AccountCardProps {
   data: BankAccount
   onClick?: (data: BankAccount) => void
-}
-
-interface BankBrand {
-  displayName: string
-  logoSrc: string
-  aliases: string[]
-}
-
-const BANK_BRANDS: BankBrand[] = [
-  {
-    displayName: 'Nubank',
-    logoSrc: '/bancos/nubank.svg',
-    aliases: ['nubank', 'nu bank', 'nu'],
-  },
-  {
-    displayName: 'Sicoob',
-    logoSrc: '/bancos/sicoob.svg',
-    aliases: ['sicoob'],
-  },
-]
-
-function resolveBankBrand(accountName: string) {
-  const normalizedName = accountName.toLowerCase().trim()
-
-  const matchedBrand = BANK_BRANDS.find((brand) =>
-    brand.aliases.some((alias) => normalizedName.includes(alias))
-  )
-
-  if (matchedBrand) {
-    return matchedBrand
-  }
-
-  return {
-    displayName: accountName,
-    logoSrc: '/bancos/default-bank.svg',
-  }
 }
 
 export function AccountCard({ data, onClick }: AccountCardProps) {
