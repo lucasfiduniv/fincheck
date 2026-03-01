@@ -4,6 +4,12 @@ import { CategoryIcon } from '../../../../components/icons/categories/CategoryIc
 import { BankAccountIcon } from '../../../../components/icons/BankAccountIcon'
 import { useDashboard } from '../DashboardContext/useDashboard'
 
+interface FabAction {
+  label: string
+  onSelect(): void
+  renderIcon(): React.ReactNode
+}
+
 export function Fab() {
   const {
     openNewAccountModal,
@@ -13,6 +19,48 @@ export function Fab() {
     openNewCreditCardPurchaseModal,
     openPayCreditCardStatementModal,
   } = useDashboard()
+
+  const actions: FabAction[] = [
+    {
+      label: 'Nova Despesa',
+      onSelect: () => openNewTransactionModal('EXPENSE'),
+      renderIcon: () => <CategoryIcon type="EXPENSE" />,
+    },
+    {
+      label: 'Nova Receita',
+      onSelect: () => openNewTransactionModal('INCOME'),
+      renderIcon: () => <CategoryIcon type="INCOME" />,
+    },
+    {
+      label: 'Nova Conta',
+      onSelect: openNewAccountModal,
+      renderIcon: () => (
+        <div className="flex items-center justify-center">
+          <BankAccountIcon />
+        </div>
+      ),
+    },
+    {
+      label: 'Categorias',
+      onSelect: openCategoriesModal,
+      renderIcon: () => <CategoryIcon type="EXPENSE" />,
+    },
+    {
+      label: 'Novo Cartão',
+      onSelect: openNewCreditCardModal,
+      renderIcon: () => <CategoryIcon type="INCOME" />,
+    },
+    {
+      label: 'Compra no Cartão',
+      onSelect: openNewCreditCardPurchaseModal,
+      renderIcon: () => <CategoryIcon type="EXPENSE" />,
+    },
+    {
+      label: 'Pagar Fatura',
+      onSelect: openPayCreditCardStatementModal,
+      renderIcon: () => <BankAccountIcon />,
+    },
+  ]
 
   return (
     <div className="fixed right-4 bottom-4">
@@ -24,36 +72,12 @@ export function Fab() {
         </DropdownMenu.Trigger>
 
         <DropdownMenu.Content className="data-[side=bottom]:animate-slide-down-and-fade">
-          <DropdownMenu.Item className="gap-2" onSelect={() => openNewTransactionModal('EXPENSE')}>
-            <CategoryIcon type="EXPENSE" />
-            Nova Despesa
-          </DropdownMenu.Item>
-          <DropdownMenu.Item className="gap-2" onSelect={() => openNewTransactionModal('INCOME')}>
-            <CategoryIcon type="INCOME" />
-            Nova Receita
-          </DropdownMenu.Item>
-          <DropdownMenu.Item className="gap-2" onSelect={openNewAccountModal}>
-            <div className="flex items-center justify-center">
-              <BankAccountIcon />
-            </div>
-            Nova Conta
-          </DropdownMenu.Item>
-          <DropdownMenu.Item className="gap-2" onSelect={openCategoriesModal}>
-            <CategoryIcon type="EXPENSE" />
-            Categorias
-          </DropdownMenu.Item>
-          <DropdownMenu.Item className="gap-2" onSelect={openNewCreditCardModal}>
-            <CategoryIcon type="INCOME" />
-            Novo Cartão
-          </DropdownMenu.Item>
-          <DropdownMenu.Item className="gap-2" onSelect={openNewCreditCardPurchaseModal}>
-            <CategoryIcon type="EXPENSE" />
-            Compra no Cartão
-          </DropdownMenu.Item>
-          <DropdownMenu.Item className="gap-2" onSelect={openPayCreditCardStatementModal}>
-            <BankAccountIcon />
-            Pagar Fatura
-          </DropdownMenu.Item>
+          {actions.map((action) => (
+            <DropdownMenu.Item key={action.label} className="gap-2" onSelect={action.onSelect}>
+              {action.renderIcon()}
+              {action.label}
+            </DropdownMenu.Item>
+          ))}
         </DropdownMenu.Content>
       </DropdownMenu.Root>
     </div>

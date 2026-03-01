@@ -9,6 +9,7 @@ import { useCreditCards } from '../../../../../app/hooks/useCreditCards'
 import { creditCardsService } from '../../../../../app/services/creditCardsService'
 import { currencyStringToNumber } from '../../../../../app/utils/currencyStringToNumber'
 import { useEffect } from 'react'
+import { toUTCDateISOString } from '../../../../../app/utils/toUTCDateISOString'
 
 const schema = z.object({
   creditCardId: z.string().nonempty('Informe o cartão'),
@@ -66,13 +67,7 @@ export function useNewCreditCardPurchaseModalController() {
         creditCardId: data.creditCardId,
         description: data.description,
         amount: currencyStringToNumber(data.amount),
-        purchaseDate: new Date(
-          Date.UTC(
-            data.purchaseDate.getFullYear(),
-            data.purchaseDate.getMonth(),
-            data.purchaseDate.getDate(),
-          ),
-        ).toISOString(),
+        purchaseDate: toUTCDateISOString(data.purchaseDate),
         categoryId: data.categoryId === 'NONE' ? undefined : data.categoryId,
         installmentCount: data.installmentCount,
       })

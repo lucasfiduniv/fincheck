@@ -1,6 +1,8 @@
-import { createContext, useCallback, useState } from 'react'
+import { createContext, useCallback, useMemo, useState } from 'react'
 import { BankAccount } from '../../../../../app/entities/BankAccount'
 import { CreditCard } from '../../../../../app/entities/CreditCard'
+
+type TransactionType = 'INCOME' | 'EXPENSE'
 
 interface DashboardContextValue {
   areValuesVisible: boolean
@@ -14,7 +16,7 @@ interface DashboardContextValue {
   isEditCreditCardModalOpen: boolean
   accountBeingEdited: BankAccount | null
   creditCardBeingEdited: CreditCard | null
-  newTransactionType: 'INCOME' | 'EXPENSE' | null
+  newTransactionType: TransactionType | null
   transactionPresetBankAccountId: string | null
   creditCardPurchasePresetId: string | null
   payStatementPresetCardId: string | null
@@ -23,7 +25,7 @@ interface DashboardContextValue {
   closeNewAccountModal: () => void
   openEditAccountModal: (bankAccount: BankAccount) => void
   closeEditAccountModal: () => void
-  openNewTransactionModal: (type: 'INCOME' | 'EXPENSE', bankAccountId?: string) => void
+  openNewTransactionModal: (type: TransactionType, bankAccountId?: string) => void
   closeNewTransactionModal: () => void
   openCategoriesModal: () => void
   closeCategoriesModal: () => void
@@ -45,7 +47,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const [isEditAccountModalOpen, setIsEditAccountModalOpen] = useState(false)
   const [accountBeingEdited, setAccountBeingEdited] = useState<BankAccount | null>(null)
   const [isNewTransactionModalOpen, setIsNewTransactionModalOpen] = useState(false)
-  const [newTransactionType, setNewTransactionType] = useState<'INCOME' | 'EXPENSE' | null>(null)
+  const [newTransactionType, setNewTransactionType] = useState<TransactionType | null>(null)
   const [isCategoriesModalOpen, setIsCategoriesModalOpen] = useState(false)
   const [isNewCreditCardModalOpen, setIsNewCreditCardModalOpen] = useState(false)
   const [isNewCreditCardPurchaseModalOpen, setIsNewCreditCardPurchaseModalOpen] = useState(false)
@@ -78,7 +80,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     setIsEditAccountModalOpen(false)
   }, [])
 
-  const openNewTransactionModal = useCallback((type: 'INCOME' | 'EXPENSE', bankAccountId?: string) => {
+  const openNewTransactionModal = useCallback((type: TransactionType, bankAccountId?: string) => {
     setNewTransactionType(type)
     setTransactionPresetBankAccountId(bankAccountId ?? null)
     setIsNewTransactionModalOpen(true)
@@ -136,43 +138,79 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     setIsEditCreditCardModalOpen(false)
   }, [])
 
+  const value = useMemo(
+    () => ({
+      areValuesVisible,
+      toggleValueVisibility,
+      isNewAccountModalOpen,
+      isEditAccountModalOpen,
+      isNewTransactionModalOpen,
+      isCategoriesModalOpen,
+      isNewCreditCardModalOpen,
+      isNewCreditCardPurchaseModalOpen,
+      isPayCreditCardStatementModalOpen,
+      isEditCreditCardModalOpen,
+      newTransactionType,
+      transactionPresetBankAccountId,
+      creditCardPurchasePresetId,
+      payStatementPresetCardId,
+      openNewAccountModal,
+      closeNewAccountModal,
+      openEditAccountModal,
+      closeEditAccountModal,
+      accountBeingEdited,
+      creditCardBeingEdited,
+      openNewTransactionModal,
+      closeNewTransactionModal,
+      openCategoriesModal,
+      closeCategoriesModal,
+      openNewCreditCardModal,
+      closeNewCreditCardModal,
+      openNewCreditCardPurchaseModal,
+      closeNewCreditCardPurchaseModal,
+      openPayCreditCardStatementModal,
+      closePayCreditCardStatementModal,
+      openEditCreditCardModal,
+      closeEditCreditCardModal,
+    }),
+    [
+      areValuesVisible,
+      toggleValueVisibility,
+      isNewAccountModalOpen,
+      isEditAccountModalOpen,
+      isNewTransactionModalOpen,
+      isCategoriesModalOpen,
+      isNewCreditCardModalOpen,
+      isNewCreditCardPurchaseModalOpen,
+      isPayCreditCardStatementModalOpen,
+      isEditCreditCardModalOpen,
+      newTransactionType,
+      transactionPresetBankAccountId,
+      creditCardPurchasePresetId,
+      payStatementPresetCardId,
+      openNewAccountModal,
+      closeNewAccountModal,
+      openEditAccountModal,
+      closeEditAccountModal,
+      accountBeingEdited,
+      creditCardBeingEdited,
+      openNewTransactionModal,
+      closeNewTransactionModal,
+      openCategoriesModal,
+      closeCategoriesModal,
+      openNewCreditCardModal,
+      closeNewCreditCardModal,
+      openNewCreditCardPurchaseModal,
+      closeNewCreditCardPurchaseModal,
+      openPayCreditCardStatementModal,
+      closePayCreditCardStatementModal,
+      openEditCreditCardModal,
+      closeEditCreditCardModal,
+    ],
+  )
+
   return (
-    <DashboardContext.Provider
-      value={{
-        areValuesVisible,
-        toggleValueVisibility,
-        isNewAccountModalOpen,
-        isEditAccountModalOpen,
-        isNewTransactionModalOpen,
-        isCategoriesModalOpen,
-        isNewCreditCardModalOpen,
-        isNewCreditCardPurchaseModalOpen,
-        isPayCreditCardStatementModalOpen,
-        isEditCreditCardModalOpen,
-        newTransactionType,
-        transactionPresetBankAccountId,
-        creditCardPurchasePresetId,
-        payStatementPresetCardId,
-        openNewAccountModal,
-        closeNewAccountModal,
-        openEditAccountModal,
-        closeEditAccountModal,
-        accountBeingEdited,
-        creditCardBeingEdited,
-        openNewTransactionModal,
-        closeNewTransactionModal,
-        openCategoriesModal,
-        closeCategoriesModal,
-        openNewCreditCardModal,
-        closeNewCreditCardModal,
-        openNewCreditCardPurchaseModal,
-        closeNewCreditCardPurchaseModal,
-        openPayCreditCardStatementModal,
-        closePayCreditCardStatementModal,
-        openEditCreditCardModal,
-        closeEditCreditCardModal,
-      }}
-    >
+    <DashboardContext.Provider value={value}>
       {children}
     </DashboardContext.Provider>
   )

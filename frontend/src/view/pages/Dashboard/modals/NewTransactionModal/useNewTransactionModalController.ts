@@ -10,6 +10,7 @@ import { useEffect } from 'react'
 import { transactionsService } from '../../../../../app/services/transactionsService'
 import { toast } from 'react-hot-toast'
 import { currencyStringToNumber } from '../../../../../app/utils/currencyStringToNumber'
+import { toUTCDateISOString } from '../../../../../app/utils/toUTCDateISOString'
 
 const schema = z.object({
   value: z.
@@ -141,13 +142,7 @@ export function useNewTransactionModalController() {
         ...data,
         value: currencyStringToNumber(data.value),
         type: newTransactionType!,
-        date: new Date(
-          Date.UTC(
-            data.date.getFullYear(),
-            data.date.getMonth(),
-            data.date.getDate(),
-          ),
-        ).toISOString(),
+        date: toUTCDateISOString(data.date),
         repeatCount:
           data.repeatType === 'ONCE'
             ? undefined
@@ -180,7 +175,7 @@ export function useNewTransactionModalController() {
         alertDaysBefore: 3,
       })
     } catch {
-      toast.success(
+      toast.error(
         newTransactionType === 'EXPENSE'
           ? 'Erro ao cadastrar despesa!'
           : 'Erro ao cadastrar receita!'
