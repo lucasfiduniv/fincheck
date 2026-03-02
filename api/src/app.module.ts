@@ -10,6 +10,7 @@ import { TransactionsModule } from './modules/transactions/transactions.module'
 import { CategoryBudgetsModule } from './modules/category-budgets/category-budgets.module'
 import { CreditCardsModule } from './modules/credit-cards/credit-cards.module'
 import { NotificationsModule } from './modules/notifications/notifications.module'
+import { SavingsBoxesModule } from './modules/savings-boxes/savings-boxes.module'
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     CategoryBudgetsModule,
     CreditCardsModule,
     NotificationsModule,
+    SavingsBoxesModule,
   ],
   controllers: [],
   providers: [

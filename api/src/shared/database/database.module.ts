@@ -8,6 +8,10 @@ import { CategoryBudgetsRepository } from './repositories/category-budgets.repos
 import { CreditCardsRepository } from './repositories/credit-cards.repository'
 import { CreditCardPurchasesRepository } from './repositories/credit-card-purchases.repository'
 import { CreditCardInstallmentsRepository } from './repositories/credit-card-installments.repository'
+import { NotificationEventsRepository } from './repositories/notification-events.repository'
+import { SavingsBoxesRepository } from './repositories/savings-boxes.repository'
+import { SavingsBoxTransactionsRepository } from './repositories/savings-box-transactions.repository'
+import { SavingsBoxAlertsRepository } from './repositories/savings-box-alerts.repository'
 
 @Global()
 @Module({
@@ -21,6 +25,10 @@ import { CreditCardInstallmentsRepository } from './repositories/credit-card-ins
     CreditCardsRepository,
     CreditCardPurchasesRepository,
     CreditCardInstallmentsRepository,
+    NotificationEventsRepository,
+    SavingsBoxesRepository,
+    SavingsBoxTransactionsRepository,
+    SavingsBoxAlertsRepository,
   ],
   exports: [
     UsersRepository,
@@ -31,6 +39,10 @@ import { CreditCardInstallmentsRepository } from './repositories/credit-card-ins
     CreditCardsRepository,
     CreditCardPurchasesRepository,
     CreditCardInstallmentsRepository,
+    NotificationEventsRepository,
+    SavingsBoxesRepository,
+    SavingsBoxTransactionsRepository,
+    SavingsBoxAlertsRepository,
   ],
 })
 export class DatabaseModule {}

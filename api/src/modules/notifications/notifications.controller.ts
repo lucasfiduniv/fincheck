@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, Post } from '@nestjs/common'
+import { Body, Controller, Get, Patch, Post, Query } from '@nestjs/common'
 import { ActiveUserId } from 'src/shared/decorators/ActiveUserId'
 import { NotificationsService } from './notifications.service'
 import { UpdateNotificationSettingsDto } from './dto/update-notification-settings.dto'
@@ -19,6 +19,19 @@ export class NotificationsController {
     @Body() updateNotificationSettingsDto: UpdateNotificationSettingsDto,
   ) {
     return this.notificationsService.updateSettings(userId, updateNotificationSettingsDto)
+  }
+
+  @Get('history')
+  getHistory(
+    @ActiveUserId() userId: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedLimit = Number(limit)
+
+    return this.notificationsService.getHistory(
+      userId,
+      Number.isFinite(parsedLimit) ? parsedLimit : undefined,
+    )
   }
 
   @Post('test')
