@@ -7,6 +7,11 @@ import { Button } from '../../components/Button'
 import { notificationsService } from '../../../app/services/notificationsService'
 import { toast } from 'react-hot-toast'
 import { NotificationPreferences } from '../../../app/entities/NotificationSettings'
+import { SettingsSection } from './components/SettingsSection'
+import { SettingsToggleItem } from './components/SettingsToggleItem'
+import { NotificationHistoryPanel } from './components/NotificationHistoryPanel'
+import { SettingsHero } from './components/SettingsHero'
+import { SettingsMenu, SettingsMenuItem } from './components/SettingsMenu'
 
 function toLocalDigits(value: string) {
   const digits = value.replace(/\D/g, '')
@@ -94,45 +99,33 @@ const preferenceOptions: Array<{
   },
 ]
 
-const statusConfig: Record<'PENDING' | 'SENT' | 'FAILED', { label: string; className: string }> = {
-  PENDING: {
-    label: 'Pendente',
-    className: 'bg-yellow-100 text-yellow-800',
+const settingsMenuItems: SettingsMenuItem[] = [
+  {
+    key: 'notifications',
+    label: 'Notificações',
+    description: 'WhatsApp, alertas e histórico de envio.',
+    available: true,
   },
-  SENT: {
-    label: 'Enviado',
-    className: 'bg-green-100 text-green-800',
+  {
+    key: 'account',
+    label: 'Conta',
+    description: 'Dados pessoais e preferências da conta.',
+    available: false,
   },
-  FAILED: {
-    label: 'Falhou',
-    className: 'bg-red-100 text-red-800',
+  {
+    key: 'security',
+    label: 'Segurança',
+    description: 'Senha, sessão e proteção da conta.',
+    available: false,
   },
-}
-
-const typeLabel: Record<string, string> = {
-  GENERAL: 'Geral',
-  DUE_REMINDERS: 'Vencimentos',
-  CREDIT_CARD_DUE: 'Fatura do cartão',
-  BUDGET_ALERTS: 'Orçamento',
-  LOW_BALANCE: 'Saldo baixo',
-  WEEKLY_SUMMARY: 'Resumo semanal',
-}
-
-function formatDateTime(value: string) {
-  return new Date(value).toLocaleString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
+]
 
 export function Settings() {
   const queryClient = useQueryClient()
   const [phoneNumber, setPhoneNumber] = useState('')
   const [notificationsEnabled, setNotificationsEnabled] = useState(false)
   const [preferences, setPreferences] = useState<NotificationPreferences>(EMPTY_PREFERENCES)
+  const [activeMenuKey, setActiveMenuKey] = useState('notifications')
 
   const { data, isLoading } = useQuery({
     queryKey: ['notifications', 'settings'],
@@ -173,6 +166,10 @@ export function Settings() {
       || JSON.stringify(data.preferences) !== JSON.stringify(preferences)
     )
   }, [data, phoneNumber, notificationsEnabled, preferences])
+
+  const enabledPreferencesCount = useMemo(() => (
+    Object.values(preferences).filter(Boolean).length
+  ), [preferences])
 
   async function handleSave() {
     try {
@@ -216,155 +213,121 @@ export function Settings() {
       </header>
 
       <main className="max-w-[840px] mx-auto mt-6">
-        <div className="bg-white rounded-2xl border border-gray-200 p-5 lg:p-6 space-y-6">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900 tracking-[-0.8px]">
-              Configurações de Notificações
-            </h1>
-            <p className="text-sm text-gray-600 mt-1">
-              Configure seu telefone e controle alertas pelo WhatsApp.
-            </p>
-          </div>
+        <div className="space-y-4">
+          <SettingsHero
+            enabledCount={enabledPreferencesCount}
+            totalCount={preferenceOptions.length}
+            notificationsEnabled={notificationsEnabled}
+          />
 
-          {!data?.hasEvolutionConfigured && !isLoading && (
-            <div className="rounded-xl border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-900">
-              O servidor ainda não está com Evolution API configurada. Você pode salvar o telefone,
-              mas o envio de notificações ficará indisponível até ajustar as variáveis de ambiente.
-            </div>
-          )}
+          <div className="grid grid-cols-1 xl:grid-cols-[260px_1fr] gap-4 items-start">
+            <SettingsMenu
+              items={settingsMenuItems}
+              activeKey={activeMenuKey}
+              onSelect={setActiveMenuKey}
+            />
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="lg:col-span-2">
-              <Input
-                name="phoneNumber"
-                placeholder="Telefone (WhatsApp)"
-                value={formatPhoneMask(phoneNumber)}
-                onChange={(event) => setPhoneNumber(toStoragePhone(event.target.value))}
-              />
-            </div>
+            {activeMenuKey === 'notifications' && (
+              <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_0.85fr] gap-4 items-start">
+                <div className="space-y-4">
+                  <SettingsSection
+                    title="Canal de envio"
+                    description="Configure seu telefone e a ativação geral de notificações via WhatsApp."
+                  >
+                    <div className="space-y-3">
+                      <Input
+                        name="phoneNumber"
+                        placeholder="Telefone (WhatsApp)"
+                        value={formatPhoneMask(phoneNumber)}
+                        onChange={(event) => setPhoneNumber(toStoragePhone(event.target.value))}
+                      />
 
-            <label className="lg:col-span-2 rounded-xl border border-gray-200 px-4 py-3 flex items-center justify-between cursor-pointer">
-              <div>
-                <strong className="text-sm text-gray-800 block">Habilitar notificações</strong>
-                <span className="text-xs text-gray-600">
-                  Ativa envio de alertas automáticos para seu WhatsApp.
-                </span>
-              </div>
+                      <SettingsToggleItem
+                        title="Habilitar notificações"
+                        description="Ativa envio de alertas automáticos para seu WhatsApp."
+                        checked={notificationsEnabled}
+                        onChange={setNotificationsEnabled}
+                      />
+                    </div>
+                  </SettingsSection>
 
-              <input
-                type="checkbox"
-                checked={notificationsEnabled}
-                onChange={(event) => setNotificationsEnabled(event.target.checked)}
-                className="w-5 h-5 accent-teal-900"
-              />
-            </label>
-          </div>
+                  <SettingsSection
+                    title="Preferências"
+                    description="Escolha exatamente quais alertas você quer receber."
+                  >
+                    <div className="space-y-2">
+                      {preferenceOptions.map((preference) => (
+                        <SettingsToggleItem
+                          key={preference.key}
+                          title={preference.title}
+                          description={preference.description}
+                          checked={preferences[preference.key]}
+                          onChange={(checked) => {
+                            setPreferences((prevState) => ({
+                              ...prevState,
+                              [preference.key]: checked,
+                            }))
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </SettingsSection>
 
-          <div className="rounded-2xl border border-gray-200 p-4 lg:p-5 space-y-3">
-            <div>
-              <strong className="text-sm text-gray-800 block">Menu de notificações</strong>
-              <span className="text-xs text-gray-600">
-                Escolha exatamente quais alertas você quer receber.
-              </span>
-            </div>
+                  <SettingsSection title="Ações">
+                    <div className="flex flex-col lg:flex-row gap-3 lg:justify-end">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={handleSendTest}
+                        isLoading={isSendingTest}
+                        disabled={!phoneNumber || !data?.hasEvolutionConfigured}
+                        className="w-full lg:w-auto"
+                      >
+                        Enviar teste
+                      </Button>
 
-            <div className="space-y-2">
-              {preferenceOptions.map((preference) => (
-                <label
-                  key={preference.key}
-                  className="rounded-xl border border-gray-200 px-4 py-3 flex items-center justify-between cursor-pointer"
-                >
-                  <div className="pr-3">
-                    <strong className="text-sm text-gray-800 block">{preference.title}</strong>
-                    <span className="text-xs text-gray-600">{preference.description}</span>
-                  </div>
+                      <Button
+                        type="button"
+                        onClick={handleSave}
+                        isLoading={isSaving}
+                        disabled={!canSave}
+                        className="w-full lg:w-auto"
+                      >
+                        Salvar configurações
+                      </Button>
+                    </div>
+                  </SettingsSection>
+                </div>
 
-                  <input
-                    type="checkbox"
-                    checked={preferences[preference.key]}
-                    onChange={(event) => {
-                      setPreferences((prevState) => ({
-                        ...prevState,
-                        [preference.key]: event.target.checked,
-                      }))
-                    }}
-                    className="w-5 h-5 accent-teal-900"
-                  />
-                </label>
-              ))}
-            </div>
-          </div>
+                <div className="space-y-4 xl:sticky xl:top-0">
+                  {!data?.hasEvolutionConfigured && !isLoading && (
+                    <SettingsSection title="Status da integração">
+                      <div className="rounded-xl border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-900">
+                        O servidor ainda não está com Evolution API configurada. Você pode salvar o telefone,
+                        mas o envio de notificações ficará indisponível até ajustar as variáveis de ambiente.
+                      </div>
+                    </SettingsSection>
+                  )}
 
-          <div className="flex flex-col lg:flex-row gap-3 lg:justify-end">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={handleSendTest}
-              isLoading={isSendingTest}
-              disabled={!phoneNumber || !data?.hasEvolutionConfigured}
-              className="w-full lg:w-auto"
-            >
-              Enviar teste
-            </Button>
-
-            <Button
-              type="button"
-              onClick={handleSave}
-              isLoading={isSaving}
-              disabled={!canSave}
-              className="w-full lg:w-auto"
-            >
-              Salvar configurações
-            </Button>
-          </div>
-
-          <div className="rounded-2xl border border-gray-200 p-4 lg:p-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <strong className="text-sm text-gray-800 block">Central de notificações</strong>
-                <span className="text-xs text-gray-600">
-                  Histórico de envios no app (WhatsApp): enviados, falhas e pendentes.
-                </span>
-              </div>
-
-              {isLoadingHistory && (
-                <span className="text-xs text-gray-500">Atualizando...</span>
-              )}
-            </div>
-
-            {history.length === 0 && !isLoadingHistory && (
-              <div className="rounded-xl bg-gray-50 px-4 py-3 text-xs text-gray-600">
-                Ainda não há eventos de notificação para este usuário.
+                  <SettingsSection title="Histórico">
+                    <NotificationHistoryPanel
+                      history={history}
+                      isLoading={isLoadingHistory}
+                    />
+                  </SettingsSection>
+                </div>
               </div>
             )}
 
-            {history.length > 0 && (
-              <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
-                {history.map((event) => (
-                  <div key={event.id} className="rounded-xl border border-gray-200 p-3 space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs text-gray-600 truncate">
-                        {typeLabel[event.type] ?? event.type}
-                      </span>
-
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${statusConfig[event.status].className}`}>
-                        {statusConfig[event.status].label}
-                      </span>
-                    </div>
-
-                    <p className="text-sm text-gray-800">{event.message}</p>
-
-                    <div className="text-xs text-gray-600 space-y-0.5">
-                      <p>Destino: +{event.destination}</p>
-                      <p>Criado em: {formatDateTime(event.createdAt)}</p>
-                      {event.sentAt && <p>Enviado em: {formatDateTime(event.sentAt)}</p>}
-                      {event.errorMessage && (
-                        <p className="text-red-800">Erro: {event.errorMessage}</p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+            {activeMenuKey !== 'notifications' && (
+              <SettingsSection
+                title="Em breve"
+                description="Esta seção já está preparada no menu e será implementada nos próximos passos."
+              >
+                <div className="rounded-xl bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">
+                  Por enquanto, apenas as configurações de notificações estão disponíveis.
+                </div>
+              </SettingsSection>
             )}
           </div>
         </div>
