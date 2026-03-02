@@ -18,6 +18,10 @@ export function UserMenu() {
       </DropdownMenu.Trigger>
 
       <DropdownMenu.Content className="w-44">
+        <DropdownMenu.Item onSelect={() => navigate('/savings-boxes')}>
+          Caixinhas
+        </DropdownMenu.Item>
+
         <DropdownMenu.Item onSelect={() => navigate('/settings')}>
           Configurações
         </DropdownMenu.Item>

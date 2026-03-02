@@ -6,19 +6,142 @@ import { Input } from '../../components/Input'
 import { Button } from '../../components/Button'
 import { notificationsService } from '../../../app/services/notificationsService'
 import { toast } from 'react-hot-toast'
+import { NotificationPreferences } from '../../../app/entities/NotificationSettings'
 
-function normalizePhoneInput(value: string) {
-  return value.replace(/[^0-9]/g, '')
+function toLocalDigits(value: string) {
+  const digits = value.replace(/\D/g, '')
+
+  if (!digits) {
+    return ''
+  }
+
+  if (digits.startsWith('55')) {
+    return digits.slice(2, 13)
+  }
+
+  return digits.slice(0, 11)
+}
+
+function toStoragePhone(value: string) {
+  const localDigits = toLocalDigits(value)
+
+  if (!localDigits) {
+    return ''
+  }
+
+  return `55${localDigits}`
+}
+
+function formatPhoneMask(value: string) {
+  const localDigits = toLocalDigits(value)
+
+  if (!localDigits) {
+    return ''
+  }
+
+  if (localDigits.length <= 2) {
+    return `+55 (${localDigits}`
+  }
+
+  if (localDigits.length <= 6) {
+    return `+55 (${localDigits.slice(0, 2)}) ${localDigits.slice(2)}`
+  }
+
+  const frontLength = localDigits.length === 11 ? 7 : 6
+  const front = localDigits.slice(2, frontLength)
+  const back = localDigits.slice(frontLength)
+
+  return `+55 (${localDigits.slice(0, 2)}) ${front}${back ? `-${back}` : ''}`
+}
+
+const EMPTY_PREFERENCES: NotificationPreferences = {
+  dueReminders: true,
+  creditCardDue: true,
+  budgetAlerts: true,
+  lowBalance: false,
+  weeklySummary: false,
+}
+
+const preferenceOptions: Array<{
+  key: keyof NotificationPreferences;
+  title: string;
+  description: string;
+}> = [
+  {
+    key: 'dueReminders',
+    title: 'Vencimentos próximos',
+    description: 'Avisa quando recorrências e parcelas estiverem perto do vencimento.',
+  },
+  {
+    key: 'creditCardDue',
+    title: 'Fatura do cartão',
+    description: 'Receba lembrete antes da data de pagamento da fatura.',
+  },
+  {
+    key: 'budgetAlerts',
+    title: 'Alertas de orçamento',
+    description: 'Notifica quando categorias chegam perto ou passam do limite.',
+  },
+  {
+    key: 'lowBalance',
+    title: 'Saldo baixo',
+    description: 'Dispara aviso quando alguma conta ficar com saldo baixo.',
+  },
+  {
+    key: 'weeklySummary',
+    title: 'Resumo semanal',
+    description: 'Envia um resumo da semana com entradas e saídas.',
+  },
+]
+
+const statusConfig: Record<'PENDING' | 'SENT' | 'FAILED', { label: string; className: string }> = {
+  PENDING: {
+    label: 'Pendente',
+    className: 'bg-yellow-100 text-yellow-800',
+  },
+  SENT: {
+    label: 'Enviado',
+    className: 'bg-green-100 text-green-800',
+  },
+  FAILED: {
+    label: 'Falhou',
+    className: 'bg-red-100 text-red-800',
+  },
+}
+
+const typeLabel: Record<string, string> = {
+  GENERAL: 'Geral',
+  DUE_REMINDERS: 'Vencimentos',
+  CREDIT_CARD_DUE: 'Fatura do cartão',
+  BUDGET_ALERTS: 'Orçamento',
+  LOW_BALANCE: 'Saldo baixo',
+  WEEKLY_SUMMARY: 'Resumo semanal',
+}
+
+function formatDateTime(value: string) {
+  return new Date(value).toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 export function Settings() {
   const queryClient = useQueryClient()
   const [phoneNumber, setPhoneNumber] = useState('')
   const [notificationsEnabled, setNotificationsEnabled] = useState(false)
+  const [preferences, setPreferences] = useState<NotificationPreferences>(EMPTY_PREFERENCES)
 
   const { data, isLoading } = useQuery({
     queryKey: ['notifications', 'settings'],
     queryFn: notificationsService.getSettings,
+  })
+
+  const { data: history = [], isFetching: isLoadingHistory } = useQuery({
+    queryKey: ['notifications', 'history'],
+    queryFn: () => notificationsService.getHistory(20),
   })
 
   useEffect(() => {
@@ -28,6 +151,7 @@ export function Settings() {
 
     setPhoneNumber(data.phoneNumber ?? '')
     setNotificationsEnabled(data.notificationsEnabled)
+    setPreferences(data.preferences)
   }, [data])
 
   const { mutateAsync: updateSettings, isLoading: isSaving } = useMutation(
@@ -46,17 +170,20 @@ export function Settings() {
     return (
       (data.phoneNumber ?? '') !== phoneNumber
       || data.notificationsEnabled !== notificationsEnabled
+      || JSON.stringify(data.preferences) !== JSON.stringify(preferences)
     )
-  }, [data, phoneNumber, notificationsEnabled])
+  }, [data, phoneNumber, notificationsEnabled, preferences])
 
   async function handleSave() {
     try {
       await updateSettings({
         phoneNumber,
         notificationsEnabled,
+        preferences,
       })
 
       queryClient.invalidateQueries({ queryKey: ['notifications', 'settings'] })
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'history'] })
       queryClient.invalidateQueries({ queryKey: ['users', 'me'] })
 
       toast.success('Configurações de notificação salvas!')
@@ -68,6 +195,7 @@ export function Settings() {
   async function handleSendTest() {
     try {
       await sendTest({})
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'history'] })
       toast.success('Notificação de teste enviada no WhatsApp!')
     } catch {
       toast.error('Falha ao enviar notificação de teste.')
@@ -109,9 +237,9 @@ export function Settings() {
             <div className="lg:col-span-2">
               <Input
                 name="phoneNumber"
-                placeholder="Telefone com DDI (ex.: 5542991317112)"
-                value={phoneNumber}
-                onChange={(event) => setPhoneNumber(normalizePhoneInput(event.target.value))}
+                placeholder="Telefone (WhatsApp)"
+                value={formatPhoneMask(phoneNumber)}
+                onChange={(event) => setPhoneNumber(toStoragePhone(event.target.value))}
               />
             </div>
 
@@ -130,6 +258,41 @@ export function Settings() {
                 className="w-5 h-5 accent-teal-900"
               />
             </label>
+          </div>
+
+          <div className="rounded-2xl border border-gray-200 p-4 lg:p-5 space-y-3">
+            <div>
+              <strong className="text-sm text-gray-800 block">Menu de notificações</strong>
+              <span className="text-xs text-gray-600">
+                Escolha exatamente quais alertas você quer receber.
+              </span>
+            </div>
+
+            <div className="space-y-2">
+              {preferenceOptions.map((preference) => (
+                <label
+                  key={preference.key}
+                  className="rounded-xl border border-gray-200 px-4 py-3 flex items-center justify-between cursor-pointer"
+                >
+                  <div className="pr-3">
+                    <strong className="text-sm text-gray-800 block">{preference.title}</strong>
+                    <span className="text-xs text-gray-600">{preference.description}</span>
+                  </div>
+
+                  <input
+                    type="checkbox"
+                    checked={preferences[preference.key]}
+                    onChange={(event) => {
+                      setPreferences((prevState) => ({
+                        ...prevState,
+                        [preference.key]: event.target.checked,
+                      }))
+                    }}
+                    className="w-5 h-5 accent-teal-900"
+                  />
+                </label>
+              ))}
+            </div>
           </div>
 
           <div className="flex flex-col lg:flex-row gap-3 lg:justify-end">
@@ -153,6 +316,56 @@ export function Settings() {
             >
               Salvar configurações
             </Button>
+          </div>
+
+          <div className="rounded-2xl border border-gray-200 p-4 lg:p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <strong className="text-sm text-gray-800 block">Central de notificações</strong>
+                <span className="text-xs text-gray-600">
+                  Histórico de envios no app (WhatsApp): enviados, falhas e pendentes.
+                </span>
+              </div>
+
+              {isLoadingHistory && (
+                <span className="text-xs text-gray-500">Atualizando...</span>
+              )}
+            </div>
+
+            {history.length === 0 && !isLoadingHistory && (
+              <div className="rounded-xl bg-gray-50 px-4 py-3 text-xs text-gray-600">
+                Ainda não há eventos de notificação para este usuário.
+              </div>
+            )}
+
+            {history.length > 0 && (
+              <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+                {history.map((event) => (
+                  <div key={event.id} className="rounded-xl border border-gray-200 p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-gray-600 truncate">
+                        {typeLabel[event.type] ?? event.type}
+                      </span>
+
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${statusConfig[event.status].className}`}>
+                        {statusConfig[event.status].label}
+                      </span>
+                    </div>
+
+                    <p className="text-sm text-gray-800">{event.message}</p>
+
+                    <div className="text-xs text-gray-600 space-y-0.5">
+                      <p>Destino: +{event.destination}</p>
+                      <p>Criado em: {formatDateTime(event.createdAt)}</p>
+                      {event.sentAt && <p>Enviado em: {formatDateTime(event.sentAt)}</p>}
+                      {event.errorMessage && (
+                        <p className="text-red-800">Erro: {event.errorMessage}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </main>

@@ -8,6 +8,7 @@ import { ResetPassword } from '../view/pages/ResetPassword'
 import { ForgetPassword } from '../view/pages/ForgetPassword'
 import { NotFound } from '../view/pages/NotFound'
 import { Settings } from '../view/pages/Settings'
+import { SavingsBoxes } from '../view/pages/SavingsBoxes'
 
 export function Router() {
   return (
@@ -26,6 +27,7 @@ export function Router() {
         <Route element={<AuthGuard isPrivate={true} />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/savings-boxes" element={<SavingsBoxes />} />
         </Route>
       </Routes>
     </BrowserRouter>

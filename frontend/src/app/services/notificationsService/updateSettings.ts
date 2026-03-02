@@ -4,6 +4,7 @@ import { httpClient } from '../httpClient'
 export interface UpdateSettingsParams {
   phoneNumber?: string
   notificationsEnabled?: boolean
+  preferences?: Partial<NotificationSettings['preferences']>
 }
 
 type UpdateSettingsResponse = Pick<NotificationSettings, 'phoneNumber' | 'notificationsEnabled'>
