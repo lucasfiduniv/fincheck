@@ -201,18 +201,18 @@ export function Settings() {
 
   return (
     <div className="w-full h-full p-4 lg:px-8 lg:pt-6 lg:pb-8 overflow-y-auto">
-      <header className="h-12 flex items-center justify-between">
+      <header className="min-h-[48px] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <Logo className="h-6 text-teal-900" />
 
         <Link
           to="/"
-          className="text-sm px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors"
+          className="text-sm px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors w-full sm:w-auto text-center"
         >
           Voltar ao dashboard
         </Link>
       </header>
 
-      <main className="max-w-[840px] mx-auto mt-6">
+      <main className="max-w-[1120px] mx-auto mt-6">
         <div className="space-y-4">
           <SettingsHero
             enabledCount={enabledPreferencesCount}

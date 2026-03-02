@@ -20,7 +20,7 @@ function DashboardContent() {
 
   return (
     <div className="w-full h-full p-4 lg:px-8 lg:pt-6 lg:pb-8 flex flex-col gap-4">
-      <header className="h-12 flex items-center justify-between">
+      <header className="min-h-[48px] flex items-center justify-between gap-3">
         <Logo className="h-6 text-teal-900" />
         <UserMenu />
       </header>

@@ -731,19 +731,19 @@ export function SavingsBoxes() {
         </form>
       </Modal>
 
-      <header className="flex items-start justify-between gap-3">
+      <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <Logo className="h-6 text-teal-900" />
           <p className="text-sm text-gray-600 mt-2">Organize metas, aportes e evolução das suas caixinhas.</p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button type="button" className="h-10 px-4 rounded-xl" onClick={() => setIsCreateModalOpen(true)}>
+        <div className="w-full sm:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+          <Button type="button" className="h-10 px-4 rounded-xl w-full sm:w-auto" onClick={() => setIsCreateModalOpen(true)}>
             Nova caixinha
           </Button>
           <Link
             to="/"
-            className="text-sm px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors"
+            className="text-sm px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors text-center"
           >
             Voltar ao dashboard
           </Link>
@@ -804,7 +804,7 @@ export function SavingsBoxes() {
           <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
             <strong className="text-gray-900 block">Amigos</strong>
 
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <Input
                 name="friendEmail"
                 type="email"
@@ -814,7 +814,7 @@ export function SavingsBoxes() {
               />
               <Button
                 type="button"
-                className="h-[52px] px-4 rounded-lg"
+                className="h-[52px] px-4 rounded-lg w-full sm:w-auto"
                 isLoading={isSendingFriendRequest}
                 onClick={handleSendFriendRequest}
               >
@@ -871,8 +871,8 @@ export function SavingsBoxes() {
 
           {selectedBox && (
             <>
-              <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-2">
-                <div className="flex items-center justify-between gap-3">
+              <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-5 space-y-2">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <strong className="text-xl text-gray-900 block">{selectedBox.name}</strong>
                   {!selectedBox.isOwner && (
                     <span className="text-xs px-2 py-1 rounded-full bg-teal-100 text-teal-800">
@@ -902,24 +902,24 @@ export function SavingsBoxes() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-4">
-                  <Button type="button" onClick={() => setIsEntryModalOpen(true)} className="h-10 rounded-xl px-3 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-4">
+                  <Button type="button" onClick={() => setIsEntryModalOpen(true)} className="h-10 rounded-xl px-3 text-sm w-full">
                     Aportar/Resgatar
                   </Button>
-                  <Button type="button" variant="ghost" onClick={() => setIsGoalModalOpen(true)} className="h-10 rounded-xl px-3 text-sm" disabled={!selectedBox.isOwner}>
+                  <Button type="button" variant="ghost" onClick={() => setIsGoalModalOpen(true)} className="h-10 rounded-xl px-3 text-sm w-full" disabled={!selectedBox.isOwner}>
                     Meta
                   </Button>
-                  <Button type="button" variant="ghost" onClick={() => setIsRecurrenceModalOpen(true)} className="h-10 rounded-xl px-3 text-sm" disabled={!selectedBox.isOwner}>
+                  <Button type="button" variant="ghost" onClick={() => setIsRecurrenceModalOpen(true)} className="h-10 rounded-xl px-3 text-sm w-full" disabled={!selectedBox.isOwner}>
                     Recorrência
                   </Button>
-                  <Button type="button" variant="ghost" onClick={() => setIsYieldModalOpen(true)} className="h-10 rounded-xl px-3 text-sm" disabled={!selectedBox.isOwner}>
+                  <Button type="button" variant="ghost" onClick={() => setIsYieldModalOpen(true)} className="h-10 rounded-xl px-3 text-sm w-full" disabled={!selectedBox.isOwner}>
                     Rendimento
                   </Button>
                 </div>
 
                 {selectedBox.isOwner && (
                   <div className="pt-1">
-                    <Button type="button" variant="ghost" className="h-10 rounded-xl px-3 text-sm" onClick={() => setIsShareModalOpen(true)}>
+                    <Button type="button" variant="ghost" className="h-10 rounded-xl px-3 text-sm w-full sm:w-auto" onClick={() => setIsShareModalOpen(true)}>
                       Compartilhar com amigo
                     </Button>
                   </div>
@@ -1009,7 +1009,7 @@ export function SavingsBoxes() {
           )}
 
           <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <strong className="text-gray-900">Planejamento anual</strong>
               <Input
                 name="planningYear"
@@ -1017,7 +1017,7 @@ export function SavingsBoxes() {
                 placeholder="Ano"
                 value={String(planningYear)}
                 onChange={(e) => setPlanningYear(Number(e.target.value) || new Date().getFullYear())}
-                className="max-w-[140px]"
+                className="w-full sm:max-w-[140px]"
               />
             </div>
 
@@ -1029,7 +1029,7 @@ export function SavingsBoxes() {
 
             {!isLoadingPlanning && annualPlanning?.planning.map((plan) => (
               <div key={plan.savingsBoxId} className="rounded-xl border border-gray-200 p-3 space-y-2">
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <strong className="text-gray-800">{plan.name}</strong>
                   <span className="text-sm text-gray-600">Fim do ano: {formatCurrency(plan.projectedEndOfYearBalance)}</span>
                 </div>

@@ -18,7 +18,7 @@ export function SavingsBoxCard({ data }: SavingsBoxCardProps) {
   return (
     <Link
       to="/savings-boxes"
-      className="block p-4 bg-white rounded-2xl h-[188px] border border-gray-100 overflow-hidden"
+      className="block p-4 bg-white rounded-2xl h-[176px] sm:h-[188px] border border-gray-100 overflow-hidden"
     >
       <div className="h-full flex flex-col justify-between">
         <div>

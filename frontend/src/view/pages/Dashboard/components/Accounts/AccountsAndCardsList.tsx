@@ -33,7 +33,7 @@ export function AccountsAndCardsList({
   onOpenCreditCardSummary,
 }: AccountsAndCardsListProps) {
   return (
-    <div className="h-full overflow-y-auto pr-1 space-y-5">
+    <div className="h-full overflow-y-auto pr-1 space-y-4 lg:space-y-5">
       <Swiper
         spaceBetween={16}
         slidesPerView={slidesPerView}
@@ -44,8 +44,8 @@ export function AccountsAndCardsList({
           })
         }}
       >
-        <div className="flex items-center justify-between mb-4" slot="container-start">
-          <strong className="text-white tracking-[-1px] text-lg font-bold">
+        <div className="flex items-center justify-between mb-3" slot="container-start">
+          <strong className="text-white tracking-[-1px] text-base lg:text-lg font-bold">
             Minhas contas
           </strong>
 
@@ -70,13 +70,13 @@ export function AccountsAndCardsList({
 
       {creditCards.length > 0 && (
         <div>
-          <strong className="text-white tracking-[-1px] text-lg font-bold block mb-3">
+          <strong className="text-white tracking-[-1px] text-base lg:text-lg font-bold block mb-3">
             Meus cartões
           </strong>
 
-          <div className="flex gap-4 overflow-x-auto pb-2">
+          <div className="flex gap-3 lg:gap-4 overflow-x-auto pb-2">
             {creditCards.map((creditCard) => (
-              <div key={creditCard.id} className="min-w-[280px] max-w-[320px] flex-1">
+              <div key={creditCard.id} className="min-w-[250px] sm:min-w-[280px] max-w-[320px] flex-1">
                 <CreditCardCard
                   data={creditCard}
                   onClick={onOpenCreditCardSummary}
@@ -89,7 +89,7 @@ export function AccountsAndCardsList({
 
       <div className="pb-1">
         <div className="flex items-center justify-between mb-3">
-          <strong className="text-white tracking-[-1px] text-lg font-bold block">
+          <strong className="text-white tracking-[-1px] text-base lg:text-lg font-bold block">
             Minhas caixinhas
           </strong>
 
@@ -108,9 +108,9 @@ export function AccountsAndCardsList({
         )}
 
         {savingsBoxes.length > 0 && (
-          <div className="flex gap-4 overflow-x-auto pb-2">
+          <div className="flex gap-3 lg:gap-4 overflow-x-auto pb-2">
             {savingsBoxes.map((savingsBox) => (
-              <div key={savingsBox.id} className="min-w-[280px] max-w-[320px] flex-1">
+              <div key={savingsBox.id} className="min-w-[250px] sm:min-w-[280px] max-w-[320px] flex-1">
                 <SavingsBoxCard data={savingsBox} />
               </div>
             ))}
