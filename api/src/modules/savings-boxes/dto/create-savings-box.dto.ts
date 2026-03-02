@@ -25,6 +25,11 @@ export class CreateSavingsBoxDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
+    initialBalance?: number
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
     targetAmount?: number
 
   @IsOptional()

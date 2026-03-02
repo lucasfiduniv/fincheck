@@ -32,8 +32,12 @@ model User {
   categoryBudgets CategoryBudget[]
   notificationEvents NotificationEvent[]
   savingsBoxes SavingsBox[]
+  savingsBoxCollaborations SavingsBoxCollaborator[]
   savingsBoxTransactions SavingsBoxTransaction[]
   savingsBoxAlerts SavingsBoxAlert[]
+  friendshipRequestsSent Friendship[] @relation("FriendshipRequester")
+  friendshipRequestsReceived Friendship[] @relation("FriendshipAddressee")
+  savingsBoxCollaborationsInvited SavingsBoxCollaborator[] @relation("SavingsBoxCollaboratorInvitedBy")
 
   @@map("users")
 }
@@ -43,6 +47,31 @@ enum SavingsBoxStatus {
   ARCHIVED
 
   @@map("savings_box_status")
+}
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+
+  @@map("friendship_status")
+}
+
+model Friendship {
+  id          String           @id @default(uuid()) @db.Uuid
+  requesterId String           @map("requester_id") @db.Uuid
+  addresseeId String           @map("addressee_id") @db.Uuid
+  status      FriendshipStatus @default(PENDING)
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  requester User @relation("FriendshipRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  addressee User @relation("FriendshipAddressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+
+  @@unique([requesterId, addresseeId])
+  @@index([addresseeId, status])
+  @@index([requesterId, status])
+  @@map("friendships")
 }
 
 enum SavingsBoxTransactionType {
@@ -99,11 +128,28 @@ model SavingsBox {
   updatedAt           DateTime         @updatedAt @map("updated_at")
 
   user         User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  collaborators SavingsBoxCollaborator[]
   transactions SavingsBoxTransaction[]
   alerts       SavingsBoxAlert[]
 
   @@index([userId, status])
   @@map("savings_boxes")
+}
+
+model SavingsBoxCollaborator {
+  id              String    @id @default(uuid()) @db.Uuid
+  savingsBoxId    String    @map("savings_box_id") @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  invitedByUserId String    @map("invited_by_user_id") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  savingsBox SavingsBox @relation(fields: [savingsBoxId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invitedBy User @relation("SavingsBoxCollaboratorInvitedBy", fields: [invitedByUserId], references: [id], onDelete: Cascade)
+
+  @@unique([savingsBoxId, userId])
+  @@index([userId])
+  @@map("savings_box_collaborators")
 }
 
 model SavingsBoxTransaction {

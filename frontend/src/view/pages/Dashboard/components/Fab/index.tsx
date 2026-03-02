@@ -3,6 +3,7 @@ import { DropdownMenu } from '../../../../components/DropdownMenu'
 import { CategoryIcon } from '../../../../components/icons/categories/CategoryIcon'
 import { BankAccountIcon } from '../../../../components/icons/BankAccountIcon'
 import { useDashboard } from '../DashboardContext/useDashboard'
+import { useNavigate } from 'react-router-dom'
 
 interface FabAction {
   label: string
@@ -11,6 +12,8 @@ interface FabAction {
 }
 
 export function Fab() {
+  const navigate = useNavigate()
+
   const {
     openNewAccountModal,
     openNewTransactionModal,
@@ -55,6 +58,11 @@ export function Fab() {
       label: 'Novo Cartão',
       onSelect: openNewCreditCardModal,
       renderIcon: () => <CategoryIcon type="INCOME" />,
+    },
+    {
+      label: 'Nova Caixinha',
+      onSelect: () => navigate('/savings-boxes?create=1'),
+      renderIcon: () => <BankAccountIcon />,
     },
     {
       label: 'Compra no Cartão',

@@ -8,6 +8,7 @@ import {
 export interface CreateSavingsBoxParams {
   name: string
   description?: string
+  initialBalance?: number
   targetAmount?: number
   targetDate?: string
 }
@@ -33,6 +34,11 @@ export interface SetSavingsBoxRecurrenceParams {
 export interface SetSavingsBoxYieldParams {
   monthlyYieldRate?: number
   yieldMode?: 'PERCENT' | 'FIXED'
+}
+
+export interface ShareSavingsBoxParams {
+  savingsBoxId: string
+  friendUserId: string
 }
 
 export const savingsBoxesService = {
@@ -112,6 +118,14 @@ export const savingsBoxesService = {
       params: {
         year,
       },
+    })
+
+    return data
+  },
+
+  async shareWithFriend({ savingsBoxId, friendUserId }: ShareSavingsBoxParams) {
+    const { data } = await httpClient.post(`/savings-boxes/${savingsBoxId}/share`, {
+      friendUserId,
     })
 
     return data

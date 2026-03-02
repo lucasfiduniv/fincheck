@@ -17,6 +17,7 @@ import { CreateSavingsBoxEntryDto } from './dto/create-savings-box-entry.dto'
 import { SetSavingsBoxGoalDto } from './dto/set-savings-box-goal.dto'
 import { SetSavingsBoxRecurrenceDto } from './dto/set-savings-box-recurrence.dto'
 import { SetSavingsBoxYieldDto } from './dto/set-savings-box-yield.dto'
+import { ShareSavingsBoxDto } from './dto/share-savings-box.dto'
 
 @Controller('savings-boxes')
 export class SavingsBoxesController {
@@ -140,6 +141,19 @@ export class SavingsBoxesController {
     @Body() createSavingsBoxEntryDto: CreateSavingsBoxEntryDto,
   ) {
     return this.savingsBoxesService.withdraw(userId, savingsBoxId, createSavingsBoxEntryDto)
+  }
+
+  @Post(':savingsBoxId/share')
+  shareWithFriend(
+    @ActiveUserId() userId: string,
+    @Param('savingsBoxId', ParseUUIDPipe) savingsBoxId: string,
+    @Body() shareSavingsBoxDto: ShareSavingsBoxDto,
+  ) {
+    return this.savingsBoxesService.shareWithFriend(
+      userId,
+      savingsBoxId,
+      shareSavingsBoxDto.friendUserId,
+    )
   }
 
   @Get(':savingsBoxId/transactions')

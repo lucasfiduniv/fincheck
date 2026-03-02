@@ -11,6 +11,7 @@ import { CategoryBudgetsModule } from './modules/category-budgets/category-budge
 import { CreditCardsModule } from './modules/credit-cards/credit-cards.module'
 import { NotificationsModule } from './modules/notifications/notifications.module'
 import { SavingsBoxesModule } from './modules/savings-boxes/savings-boxes.module'
+import { FriendshipsModule } from './modules/friendships/friendships.module'
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { SavingsBoxesModule } from './modules/savings-boxes/savings-boxes.module
     CreditCardsModule,
     NotificationsModule,
     SavingsBoxesModule,
+    FriendshipsModule,
   ],
   controllers: [],
   providers: [

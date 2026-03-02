@@ -3,6 +3,7 @@ import 'swiper/css'
 import { useAccountsController } from './useAccountsController'
 import { Spinner } from '../../../../components/Spinner'
 import { useCreditCards } from '../../../../../app/hooks/useCreditCards'
+import { useSavingsBoxes } from '../../../../../app/hooks/useSavingsBoxes'
 import { SummaryModal } from './SummaryModal'
 import { ConfirmDeleteModal } from '../../../../components/ConfirmDeleteModal'
 import { useAccountsSummaryController } from './useAccountsSummaryController'
@@ -45,8 +46,11 @@ export function Accounts() {
   } = useAccountsSummaryController()
 
   const { creditCards } = useCreditCards()
+  const { savingsBoxes, isLoadingSavingsBoxes } = useSavingsBoxes()
+  const hasAnyFinancialItem =
+    accounts.length > 0 || creditCards.length > 0 || savingsBoxes.length > 0
 
-  if (isLoading) {
+  if (isLoading || isLoadingSavingsBoxes) {
     return (
       <div className="bg-teal-900 rounded-2xl w-full h-full px-4 py-8 lg:p-10 flex flex-col">
         <div className="w-full h-full flex items-center justify-center">
@@ -57,7 +61,7 @@ export function Accounts() {
   }
 
   return (
-    <div className="bg-teal-900 rounded-2xl w-full h-full px-4 py-8 lg:p-10 flex flex-col">
+    <div className="bg-teal-900 rounded-2xl w-full h-full px-4 py-8 lg:p-10 flex flex-col overflow-hidden">
       {confirmAction === 'DELETE_ACCOUNT' && (
         <ConfirmDeleteModal
           title="Tem certeza que deseja excluir esta conta?"
@@ -100,14 +104,15 @@ export function Accounts() {
         onToggleValueVisibility={toggleValueVisibility}
       />
 
-      <div className="flex-1 flex flex-col justify-end mt-4 lg:mt-0">
-        {accounts.length === 0 && (
+      <div className="flex-1 min-h-0 mt-4 lg:mt-0">
+        {!hasAnyFinancialItem && (
           <EmptyAccountsState onCreateAccount={openNewAccountModal} />
         )}
-        {accounts.length > 0 && (
+        {hasAnyFinancialItem && (
           <AccountsAndCardsList
             accounts={accounts}
             creditCards={creditCards}
+            savingsBoxes={savingsBoxes}
             sliderState={sliderState}
             onSliderChange={setSliderState}
             slidesPerView={windowWidth >= 500 ? 2.1 : 1.2}

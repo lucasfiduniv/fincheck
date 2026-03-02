@@ -6,6 +6,8 @@ export type SavingsBoxAlertStatus = 'PENDING' | 'SENT' | 'FAILED'
 export interface SavingsBox {
   id: string
   userId: string
+  isOwner?: boolean
+  ownerName?: string
   name: string
   description: string | null
   status: SavingsBoxStatus
@@ -22,6 +24,12 @@ export interface SavingsBox {
   lastYieldAppliedAt: string | null
   createdAt: string
   updatedAt: string
+}
+
+export interface SavingsBoxCollaborator {
+  userId: string
+  name: string
+  email: string
 }
 
 export interface SavingsBoxTransaction {
@@ -71,6 +79,7 @@ export interface SavingsBoxProjection {
 export interface SavingsBoxDetails extends SavingsBox {
   progress: SavingsBoxProgress
   projection: SavingsBoxProjection
+  collaborators?: SavingsBoxCollaborator[]
   transactions: SavingsBoxTransaction[]
   alerts: SavingsBoxAlert[]
 }

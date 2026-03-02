@@ -12,6 +12,8 @@ import { NotificationEventsRepository } from './repositories/notification-events
 import { SavingsBoxesRepository } from './repositories/savings-boxes.repository'
 import { SavingsBoxTransactionsRepository } from './repositories/savings-box-transactions.repository'
 import { SavingsBoxAlertsRepository } from './repositories/savings-box-alerts.repository'
+import { FriendshipsRepository } from './repositories/friendships.repository'
+import { SavingsBoxCollaboratorsRepository } from './repositories/savings-box-collaborators.repository'
 
 @Global()
 @Module({
@@ -29,6 +31,8 @@ import { SavingsBoxAlertsRepository } from './repositories/savings-box-alerts.re
     SavingsBoxesRepository,
     SavingsBoxTransactionsRepository,
     SavingsBoxAlertsRepository,
+    FriendshipsRepository,
+    SavingsBoxCollaboratorsRepository,
   ],
   exports: [
     UsersRepository,
@@ -43,6 +47,8 @@ import { SavingsBoxAlertsRepository } from './repositories/savings-box-alerts.re
     SavingsBoxesRepository,
     SavingsBoxTransactionsRepository,
     SavingsBoxAlertsRepository,
+    FriendshipsRepository,
+    SavingsBoxCollaboratorsRepository,
   ],
 })
 export class DatabaseModule {}

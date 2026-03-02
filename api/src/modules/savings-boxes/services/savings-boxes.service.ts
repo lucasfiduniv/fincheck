@@ -1,9 +1,11 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common'
 import {
+  FriendshipStatus,
   SavingsBoxAlertStatus,
   SavingsBoxAlertType,
   SavingsBoxStatus,
@@ -12,9 +14,12 @@ import {
 } from '@prisma/client'
 import { randomUUID } from 'crypto'
 import { NotificationsService } from 'src/modules/notifications/notifications.service'
+import { FriendshipsRepository } from 'src/shared/database/repositories/friendships.repository'
 import { SavingsBoxAlertsRepository } from 'src/shared/database/repositories/savings-box-alerts.repository'
+import { SavingsBoxCollaboratorsRepository } from 'src/shared/database/repositories/savings-box-collaborators.repository'
 import { SavingsBoxesRepository } from 'src/shared/database/repositories/savings-boxes.repository'
 import { SavingsBoxTransactionsRepository } from 'src/shared/database/repositories/savings-box-transactions.repository'
+import { UsersRepository } from 'src/shared/database/repositories/users.repository'
 import { CreateSavingsBoxDto } from '../dto/create-savings-box.dto'
 import { CreateSavingsBoxEntryDto } from '../dto/create-savings-box-entry.dto'
 import { SetSavingsBoxGoalDto } from '../dto/set-savings-box-goal.dto'
@@ -28,15 +33,21 @@ export class SavingsBoxesService {
     private readonly savingsBoxesRepo: SavingsBoxesRepository,
     private readonly savingsBoxTransactionsRepo: SavingsBoxTransactionsRepository,
     private readonly savingsBoxAlertsRepo: SavingsBoxAlertsRepository,
+    private readonly savingsBoxCollaboratorsRepo: SavingsBoxCollaboratorsRepository,
+    private readonly friendshipsRepo: FriendshipsRepository,
+    private readonly usersRepo: UsersRepository,
     private readonly notificationsService: NotificationsService,
   ) {}
 
   async create(userId: string, createSavingsBoxDto: CreateSavingsBoxDto) {
+    const initialBalance = Number((createSavingsBoxDto.initialBalance ?? 0).toFixed(2))
+
     const savingsBox = await this.savingsBoxesRepo.create({
       data: {
         userId,
         name: createSavingsBoxDto.name,
         description: createSavingsBoxDto.description,
+        currentBalance: initialBalance,
         targetAmount: createSavingsBoxDto.targetAmount,
         targetDate: createSavingsBoxDto.targetDate
           ? new Date(createSavingsBoxDto.targetDate)
@@ -50,13 +61,40 @@ export class SavingsBoxesService {
       },
     })
 
+    if (initialBalance > 0) {
+      await this.savingsBoxTransactionsRepo.create({
+        data: {
+          userId,
+          savingsBoxId: savingsBox.id,
+          type: SavingsBoxTransactionType.DEPOSIT,
+          amount: initialBalance,
+          date: new Date(),
+          description: 'Saldo inicial da caixinha',
+          isAutomatic: true,
+          idempotencyKey: `savings-box-initial-balance:${savingsBox.id}`,
+        },
+      })
+    }
+
     return savingsBox
   }
 
   async findAllByUserId(userId: string) {
     const savingsBoxes = await this.savingsBoxesRepo.findMany({
       where: {
-        userId,
+        OR: [
+          { userId },
+          {
+            collaborators: {
+              some: { userId },
+            },
+          },
+        ],
+      },
+      include: {
+        user: {
+          select: { id: true, name: true },
+        },
       },
       orderBy: {
         createdAt: 'desc',
@@ -70,17 +108,20 @@ export class SavingsBoxesService {
 
     return {
       totalBalance,
-      savingsBoxes,
+      savingsBoxes: savingsBoxes.map((savingsBox) => ({
+        ...savingsBox,
+        isOwner: savingsBox.userId === userId,
+        ownerName: savingsBox.user.name,
+      })),
     }
   }
 
   async findOneByUserId(userId: string, savingsBoxId: string) {
-    const savingsBox = await this.getOwnedSavingsBox(userId, savingsBoxId)
+    const savingsBox = await this.getAccessibleSavingsBox(userId, savingsBoxId)
 
     const [transactions, alerts, progress, projection] = await Promise.all([
       this.savingsBoxTransactionsRepo.findMany({
         where: {
-          userId,
           savingsBoxId,
         },
         orderBy: {
@@ -90,7 +131,6 @@ export class SavingsBoxesService {
       }),
       this.savingsBoxAlertsRepo.findMany({
         where: {
-          userId,
           savingsBoxId,
         },
         orderBy: {
@@ -104,6 +144,13 @@ export class SavingsBoxesService {
 
     return {
       ...savingsBox,
+      isOwner: savingsBox.userId === userId,
+      ownerName: savingsBox.user.name,
+      collaborators: savingsBox.collaborators.map((collaborator) => ({
+        userId: collaborator.user.id,
+        name: collaborator.user.name,
+        email: collaborator.user.email,
+      })),
       progress,
       projection,
       transactions,
@@ -160,7 +207,7 @@ export class SavingsBoxesService {
   }
 
   async getProgress(userId: string, savingsBoxId: string) {
-    const savingsBox = await this.getOwnedSavingsBox(userId, savingsBoxId)
+    const savingsBox = await this.getAccessibleSavingsBox(userId, savingsBoxId)
 
     return this.computeProgress(savingsBox)
   }
@@ -347,7 +394,7 @@ export class SavingsBoxesService {
   }
 
   async getProjection(userId: string, savingsBoxId: string) {
-    const savingsBox = await this.getOwnedSavingsBox(userId, savingsBoxId)
+    const savingsBox = await this.getAccessibleSavingsBox(userId, savingsBoxId)
 
     return this.computeProjection(savingsBox)
   }
@@ -410,7 +457,7 @@ export class SavingsBoxesService {
     savingsBoxId: string,
     createSavingsBoxEntryDto: CreateSavingsBoxEntryDto,
   ) {
-    const savingsBox = await this.getOwnedSavingsBox(userId, savingsBoxId)
+    const savingsBox = await this.getAccessibleSavingsBox(userId, savingsBoxId)
 
     const transaction = await this.createTransactionAndUpdateBalance({
       userId,
@@ -423,7 +470,7 @@ export class SavingsBoxesService {
       isAutomatic: false,
     })
 
-    const refreshedBox = await this.getOwnedSavingsBox(userId, savingsBoxId)
+    const refreshedBox = await this.getAccessibleSavingsBox(userId, savingsBoxId)
     await this.evaluateGoalAlerts(refreshedBox)
 
     return transaction
@@ -434,7 +481,7 @@ export class SavingsBoxesService {
     savingsBoxId: string,
     createSavingsBoxEntryDto: CreateSavingsBoxEntryDto,
   ) {
-    const savingsBox = await this.getOwnedSavingsBox(userId, savingsBoxId)
+    const savingsBox = await this.getAccessibleSavingsBox(userId, savingsBoxId)
 
     if (savingsBox.currentBalance < createSavingsBoxEntryDto.amount) {
       throw new BadRequestException('Saldo insuficiente na caixinha para resgate.')
@@ -453,11 +500,10 @@ export class SavingsBoxesService {
   }
 
   async findTransactions(userId: string, savingsBoxId: string) {
-    await this.getOwnedSavingsBox(userId, savingsBoxId)
+    await this.getAccessibleSavingsBox(userId, savingsBoxId)
 
     return this.savingsBoxTransactionsRepo.findMany({
       where: {
-        userId,
         savingsBoxId,
       },
       orderBy: {
@@ -467,15 +513,69 @@ export class SavingsBoxesService {
   }
 
   async findAlerts(userId: string, savingsBoxId: string) {
-    await this.getOwnedSavingsBox(userId, savingsBoxId)
+    await this.getAccessibleSavingsBox(userId, savingsBoxId)
 
     return this.savingsBoxAlertsRepo.findMany({
       where: {
-        userId,
         savingsBoxId,
       },
       orderBy: {
         createdAt: 'desc',
+      },
+    })
+  }
+
+  async shareWithFriend(userId: string, savingsBoxId: string, friendUserId: string) {
+    const savingsBox = await this.getOwnedSavingsBox(userId, savingsBoxId)
+
+    if (savingsBox.userId === friendUserId) {
+      throw new BadRequestException('Você já é o dono desta caixinha.')
+    }
+
+    const friendUser = await this.usersRepo.findUnique({
+      where: { id: friendUserId },
+      select: { id: true },
+    })
+
+    if (!friendUser) {
+      throw new NotFoundException('Amigo não encontrado.')
+    }
+
+    const friendship = await this.friendshipsRepo.findFirst({
+      where: {
+        status: FriendshipStatus.ACCEPTED,
+        OR: [
+          { requesterId: userId, addresseeId: friendUserId },
+          { requesterId: friendUserId, addresseeId: userId },
+        ],
+      },
+    })
+
+    if (!friendship) {
+      throw new BadRequestException('Vocês precisam ser amigos para compartilhar caixinhas.')
+    }
+
+    const existingCollaboration = await this.savingsBoxCollaboratorsRepo.findFirst({
+      where: {
+        savingsBoxId,
+        userId: friendUserId,
+      },
+    })
+
+    if (existingCollaboration) {
+      throw new ConflictException('Esta caixinha já está compartilhada com este amigo.')
+    }
+
+    return this.savingsBoxCollaboratorsRepo.create({
+      data: {
+        savingsBoxId,
+        userId: friendUserId,
+        invitedByUserId: userId,
+      },
+      include: {
+        user: {
+          select: { id: true, name: true, email: true },
+        },
       },
     })
   }
@@ -485,6 +585,54 @@ export class SavingsBoxesService {
       where: {
         id: savingsBoxId,
         userId,
+      },
+      include: {
+        user: {
+          select: { id: true, name: true },
+        },
+        collaborators: {
+          include: {
+            user: {
+              select: { id: true, name: true, email: true },
+            },
+          },
+        },
+      },
+    })
+
+    if (!savingsBox) {
+      throw new NotFoundException('Caixinha não encontrada.')
+    }
+
+    return savingsBox
+  }
+
+  private async getAccessibleSavingsBox(userId: string, savingsBoxId: string) {
+    const savingsBox = await this.savingsBoxesRepo.findFirst({
+      where: {
+        id: savingsBoxId,
+        OR: [
+          { userId },
+          {
+            collaborators: {
+              some: {
+                userId,
+              },
+            },
+          },
+        ],
+      },
+      include: {
+        user: {
+          select: { id: true, name: true },
+        },
+        collaborators: {
+          include: {
+            user: {
+              select: { id: true, name: true, email: true },
+            },
+          },
+        },
       },
     })
 
