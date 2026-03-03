@@ -18,6 +18,7 @@ import { CreateCreditCardDto } from './dto/create-credit-card.dto'
 import { UpdateCreditCardDto } from './dto/update-credit-card.dto'
 import { CreateCreditCardPurchaseDto } from './dto/create-credit-card-purchase.dto'
 import { PayCreditCardStatementDto } from './dto/pay-credit-card-statement.dto'
+import { UpdateCreditCardPurchaseDto } from './dto/update-credit-card-purchase.dto'
 
 @Controller('credit-cards')
 export class CreditCardsController {
@@ -64,6 +65,21 @@ export class CreditCardsController {
       userId,
       creditCardId,
       createCreditCardPurchaseDto,
+    )
+  }
+
+  @Put(':creditCardId/purchases/:purchaseId')
+  updatePurchase(
+    @ActiveUserId() userId: string,
+    @Param('creditCardId', ParseUUIDPipe) creditCardId: string,
+    @Param('purchaseId', ParseUUIDPipe) purchaseId: string,
+    @Body() updateCreditCardPurchaseDto: UpdateCreditCardPurchaseDto,
+  ) {
+    return this.creditCardsService.updatePurchase(
+      userId,
+      creditCardId,
+      purchaseId,
+      updateCreditCardPurchaseDto,
     )
   }
 

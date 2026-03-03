@@ -16,8 +16,11 @@ export function NewCreditCardPurchaseModal() {
     handleSubmit,
     errors,
     isLoading,
+    showFuelFields,
+    showMaintenanceFields,
     categories,
     creditCards,
+    vehicles,
   } = useNewCreditCardPurchaseModalController()
 
   return (
@@ -99,6 +102,86 @@ export function NewCreditCardPurchaseModal() {
               />
             )}
           />
+
+          {showFuelFields && (
+            <>
+              <p className="text-xs text-gray-600">
+                Use o valor total da compra acima. Ao alterar custo por litro ou litros, recalculamos automaticamente.
+              </p>
+
+              <Controller
+                control={control}
+                name="fuelVehicleId"
+                defaultValue=""
+                render={({ field: { onChange, value } }) => (
+                  <Select
+                    placeholder="Veículo"
+                    onChange={onChange}
+                    value={value}
+                    error={errors.fuelVehicleId?.message}
+                    options={vehicles.map((vehicle) => ({
+                      value: vehicle.id,
+                      label: vehicle.name,
+                    }))}
+                  />
+                )}
+              />
+
+              <Input
+                type="number"
+                step="0.1"
+                placeholder="Odômetro (km)"
+                error={errors.fuelOdometer?.message}
+                {...register('fuelOdometer')}
+              />
+
+              <Input
+                type="number"
+                step="0.01"
+                placeholder="Litros abastecidos"
+                error={errors.fuelLiters?.message}
+                {...register('fuelLiters')}
+              />
+
+              <Input
+                type="number"
+                step="0.01"
+                placeholder="Custo por litro"
+                error={errors.fuelPricePerLiter?.message}
+                {...register('fuelPricePerLiter')}
+              />
+            </>
+          )}
+
+          {showMaintenanceFields && (
+            <>
+              <Controller
+                control={control}
+                name="maintenanceVehicleId"
+                defaultValue=""
+                render={({ field: { onChange, value } }) => (
+                  <Select
+                    placeholder="Veículo da manutenção"
+                    onChange={onChange}
+                    value={value}
+                    error={errors.maintenanceVehicleId?.message}
+                    options={vehicles.map((vehicle) => ({
+                      value: vehicle.id,
+                      label: vehicle.name,
+                    }))}
+                  />
+                )}
+              />
+
+              <Input
+                type="number"
+                step="0.1"
+                placeholder="Odômetro (opcional)"
+                error={errors.maintenanceOdometer?.message}
+                {...register('maintenanceOdometer')}
+              />
+            </>
+          )}
 
           <Input
             type="number"

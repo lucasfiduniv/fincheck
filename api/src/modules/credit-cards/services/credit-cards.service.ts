@@ -9,6 +9,8 @@ import { ValidateCategoryOwnershipService } from '../../categories/services/vali
 import { CreateCreditCardPurchaseDto } from '../dto/create-credit-card-purchase.dto'
 import { PayCreditCardStatementDto } from '../dto/pay-credit-card-statement.dto'
 import { TransactionsRepository } from 'src/shared/database/repositories/transactions.repository'
+import { UpdateCreditCardPurchaseDto } from '../dto/update-credit-card-purchase.dto'
+import { VehiclesRepository } from 'src/shared/database/repositories/vehicles.repository'
 
 @Injectable()
 export class CreditCardsService {
@@ -17,6 +19,7 @@ export class CreditCardsService {
     private readonly creditCardPurchasesRepo: CreditCardPurchasesRepository,
     private readonly creditCardInstallmentsRepo: CreditCardInstallmentsRepository,
     private readonly transactionsRepo: TransactionsRepository,
+    private readonly vehiclesRepo: VehiclesRepository,
     private readonly validateBankAccountOwnershipService: ValidateBankAccountOwnershipService,
     private readonly validateCategoryOwnershipService: ValidateCategoryOwnershipService,
   ) {}
@@ -123,11 +126,33 @@ export class CreditCardsService {
       description,
       installmentCount,
       purchaseDate,
+      fuelVehicleId,
+      fuelOdometer,
+      fuelLiters,
+      fuelPricePerLiter,
+      maintenanceVehicleId,
+      maintenanceOdometer,
     } = createCreditCardPurchaseDto
 
     if (categoryId) {
       await this.validateCategoryOwnershipService.validate(userId, categoryId)
     }
+
+    await this.validateFuelMetadata(
+      userId,
+      {
+        fuelVehicleId,
+        fuelOdometer,
+        fuelLiters,
+        fuelPricePerLiter,
+      },
+      'cartão',
+    )
+
+    await this.validateMaintenanceMetadata(userId, {
+      maintenanceVehicleId,
+      maintenanceOdometer,
+    })
 
     const normalizedPurchaseDate = this.toUTCDate(purchaseDate)
     const installmentsAmounts = this.splitInstallments(amount, installmentCount)
@@ -137,6 +162,12 @@ export class CreditCardsService {
         userId,
         creditCardId,
         categoryId,
+        fuelVehicleId,
+        fuelOdometer,
+        fuelLiters,
+        fuelPricePerLiter,
+        maintenanceVehicleId,
+        maintenanceOdometer,
         description,
         amount,
         purchaseDate: normalizedPurchaseDate,
@@ -170,6 +201,129 @@ export class CreditCardsService {
     })
 
     return purchase
+  }
+
+  async updatePurchase(
+    userId: string,
+    creditCardId: string,
+    purchaseId: string,
+    updateCreditCardPurchaseDto: UpdateCreditCardPurchaseDto,
+  ) {
+    const card = await this.validateCreditCardOwnership(userId, creditCardId)
+
+    const purchase = await this.creditCardPurchasesRepo.findFirst({
+      where: {
+        id: purchaseId,
+        userId,
+        creditCardId,
+      },
+    })
+
+    if (!purchase) {
+      throw new NotFoundException('Credit card purchase not found.')
+    }
+
+    const installments = await this.creditCardInstallmentsRepo.findMany({
+      where: {
+        userId,
+        creditCardId,
+        purchaseId,
+      },
+      orderBy: [{ installmentNumber: 'asc' }],
+    })
+
+    if (installments.length === 0) {
+      throw new BadRequestException('No installments found for this purchase.')
+    }
+
+    const hasCanceledInstallments = installments.some(
+      (installment) => installment.status === 'CANCELED',
+    )
+
+    if (hasCanceledInstallments) {
+      throw new BadRequestException('Canceled purchases cannot be edited.')
+    }
+
+    const hasPaidInstallments = installments.some(
+      (installment) => installment.status === 'PAID',
+    )
+
+    const isAmountBeingUpdated = updateCreditCardPurchaseDto.amount !== undefined
+    const isPurchaseDateBeingUpdated = updateCreditCardPurchaseDto.purchaseDate !== undefined
+
+    if (hasPaidInstallments && (isAmountBeingUpdated || isPurchaseDateBeingUpdated)) {
+      throw new BadRequestException(
+        'Compras com parcelas já pagas só permitem editar descrição e categoria.',
+      )
+    }
+
+    if (updateCreditCardPurchaseDto.categoryId) {
+      await this.validateCategoryOwnershipService.validate(userId, updateCreditCardPurchaseDto.categoryId)
+    }
+
+    await this.validateFuelMetadata(
+      userId,
+      {
+        fuelVehicleId: updateCreditCardPurchaseDto.fuelVehicleId,
+        fuelOdometer: updateCreditCardPurchaseDto.fuelOdometer,
+        fuelLiters: updateCreditCardPurchaseDto.fuelLiters,
+        fuelPricePerLiter: updateCreditCardPurchaseDto.fuelPricePerLiter,
+      },
+      'cartão',
+    )
+
+    await this.validateMaintenanceMetadata(userId, {
+      maintenanceVehicleId: updateCreditCardPurchaseDto.maintenanceVehicleId,
+      maintenanceOdometer: updateCreditCardPurchaseDto.maintenanceOdometer,
+    })
+
+    const nextPurchaseDate = updateCreditCardPurchaseDto.purchaseDate
+      ? this.toUTCDate(updateCreditCardPurchaseDto.purchaseDate)
+      : purchase.purchaseDate
+    const nextAmount = updateCreditCardPurchaseDto.amount ?? purchase.amount
+
+    const updatedPurchase = await this.creditCardPurchasesRepo.update({
+      where: {
+        id: purchase.id,
+      },
+      data: {
+        description: updateCreditCardPurchaseDto.description,
+        categoryId: updateCreditCardPurchaseDto.categoryId,
+        amount: updateCreditCardPurchaseDto.amount,
+        fuelVehicleId: updateCreditCardPurchaseDto.fuelVehicleId,
+        fuelOdometer: updateCreditCardPurchaseDto.fuelOdometer,
+        fuelLiters: updateCreditCardPurchaseDto.fuelLiters,
+        fuelPricePerLiter: updateCreditCardPurchaseDto.fuelPricePerLiter,
+        maintenanceVehicleId: updateCreditCardPurchaseDto.maintenanceVehicleId,
+        maintenanceOdometer: updateCreditCardPurchaseDto.maintenanceOdometer,
+        purchaseDate: updateCreditCardPurchaseDto.purchaseDate
+          ? nextPurchaseDate
+          : undefined,
+      },
+    })
+
+    if (!hasPaidInstallments && (isAmountBeingUpdated || isPurchaseDateBeingUpdated)) {
+      const nextInstallmentAmounts = this.splitInstallments(nextAmount, purchase.installmentCount)
+      const firstStatement = this.resolveStatementForPurchase(nextPurchaseDate, card.closingDay)
+
+      await Promise.all(
+        installments.map((installment, index) => {
+          const statementRef = this.addMonthsToStatement(firstStatement, index)
+
+          return this.creditCardInstallmentsRepo.update({
+            where: { id: installment.id },
+            data: {
+              amount: nextInstallmentAmounts[index],
+              statementMonth: statementRef.month,
+              statementYear: statementRef.year,
+              dueDate: this.buildDueDate(statementRef.year, statementRef.month, card.dueDay),
+            },
+          })
+        }),
+      )
+    }
+
+    return updatedPurchase
   }
 
   async findStatementByMonth(
@@ -238,13 +392,100 @@ export class CreditCardsService {
         id: installment.id,
         purchaseId: installment.purchaseId,
         amount: installment.amount,
+        purchaseAmount: installment.purchase.amount,
         status: installment.status,
         installmentNumber: installment.installmentNumber,
         installmentCount: installment.installmentCount,
         description: installment.purchase.description,
         purchaseDate: installment.purchase.purchaseDate,
+        fuelVehicleId: installment.purchase.fuelVehicleId,
+        fuelOdometer: installment.purchase.fuelOdometer,
+        fuelLiters: installment.purchase.fuelLiters,
+        fuelPricePerLiter: installment.purchase.fuelPricePerLiter,
+        maintenanceVehicleId: installment.purchase.maintenanceVehicleId,
+        maintenanceOdometer: installment.purchase.maintenanceOdometer,
         category: installment.purchase.category,
       })),
+    }
+  }
+
+  private async validateMaintenanceMetadata(
+    userId: string,
+    metadata: {
+      maintenanceVehicleId?: string | null
+      maintenanceOdometer?: number | null
+    },
+  ) {
+    const hasAnyMaintenanceMetadata =
+      metadata.maintenanceVehicleId != null ||
+      metadata.maintenanceOdometer != null
+
+    if (!hasAnyMaintenanceMetadata) {
+      return
+    }
+
+    if (!metadata.maintenanceVehicleId) {
+      throw new BadRequestException('Para manutenção no cartão, informe o veículo.')
+    }
+
+    const vehicle = await this.vehiclesRepo.findFirst({
+      where: {
+        id: metadata.maintenanceVehicleId,
+        userId,
+      },
+      select: {
+        id: true,
+      },
+    })
+
+    if (!vehicle) {
+      throw new BadRequestException('Veículo informado não encontrado para este usuário.')
+    }
+  }
+
+  private async validateFuelMetadata(
+    userId: string,
+    metadata: {
+      fuelVehicleId?: string | null
+      fuelOdometer?: number | null
+      fuelLiters?: number | null
+      fuelPricePerLiter?: number | null
+    },
+    source: 'cartão' | 'conta',
+  ) {
+    const hasAnyFuelMetadata =
+      metadata.fuelVehicleId != null ||
+      metadata.fuelOdometer != null ||
+      metadata.fuelLiters != null ||
+      metadata.fuelPricePerLiter != null
+
+    if (!hasAnyFuelMetadata) {
+      return
+    }
+
+    if (
+      !metadata.fuelVehicleId ||
+      metadata.fuelOdometer == null ||
+      metadata.fuelLiters == null ||
+      metadata.fuelPricePerLiter == null
+    ) {
+      throw new BadRequestException(
+        `Para abastecimento no ${source}, informe veículo, odômetro, litros e preço por litro.`,
+      )
+    }
+
+    const vehicle = await this.vehiclesRepo.findFirst({
+      where: {
+        id: metadata.fuelVehicleId,
+        userId,
+      },
+      select: {
+        id: true,
+      },
+    })
+
+    if (!vehicle) {
+      throw new BadRequestException('Veículo informado não encontrado para este usuário.')
     }
   }
 

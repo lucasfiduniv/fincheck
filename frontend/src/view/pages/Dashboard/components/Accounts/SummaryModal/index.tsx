@@ -1,4 +1,5 @@
 import { CreditCard } from '../../../../../../app/entities/CreditCard'
+import { CreditCardStatementInstallment } from '../../../../../../app/entities/CreditCard'
 import { BankAccount } from '../../../../../../app/entities/BankAccount'
 import { useTransactions } from '../../../../../../app/hooks/useTransactions'
 import { Modal } from '../../../../../components/Modal'
@@ -19,6 +20,7 @@ interface SummaryModalProps {
   onNewCreditCardPurchase?(): void
   onPayCreditCardStatement?(): void
   onDeactivateCreditCard?(): void
+  onEditCreditCardPurchase?(purchase: CreditCardStatementInstallment): void
   isDeletingAccount?: boolean
   isDeactivatingCreditCard?: boolean
 }
@@ -35,6 +37,7 @@ export function SummaryModal({
   onNewCreditCardPurchase,
   onPayCreditCardStatement,
   onDeactivateCreditCard,
+  onEditCreditCardPurchase,
   isDeletingAccount = false,
   isDeactivatingCreditCard = false,
 }: SummaryModalProps) {
@@ -113,6 +116,7 @@ export function SummaryModal({
           onNewCreditCardPurchase={onNewCreditCardPurchase}
           onPayCreditCardStatement={onPayCreditCardStatement}
           onDeactivateCreditCard={onDeactivateCreditCard}
+          onEditCreditCardPurchase={onEditCreditCardPurchase}
           isDeactivatingCreditCard={isDeactivatingCreditCard}
         />
       )}

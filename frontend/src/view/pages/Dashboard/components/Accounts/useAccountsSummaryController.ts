@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { BankAccount } from '../../../../../app/entities/BankAccount'
-import { CreditCard } from '../../../../../app/entities/CreditCard'
+import { CreditCard, CreditCardStatementInstallment } from '../../../../../app/entities/CreditCard'
 import { useDashboard } from '../DashboardContext/useDashboard'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { bankAccountsService } from '../../../../../app/services/bankAccounts'
@@ -8,6 +8,21 @@ import toast from 'react-hot-toast'
 import { creditCardsService } from '../../../../../app/services/creditCardsService'
 
 type ConfirmAction = 'DELETE_ACCOUNT' | 'DEACTIVATE_CARD' | null
+
+interface PurchaseBeingEdited {
+  creditCardId: string
+  purchaseId: string
+  description: string
+  purchaseDate: string
+  purchaseAmount: number
+  categoryId?: string | null
+  fuelVehicleId?: string | null
+  fuelOdometer?: number | null
+  fuelLiters?: number | null
+  fuelPricePerLiter?: number | null
+  maintenanceVehicleId?: string | null
+  maintenanceOdometer?: number | null
+}
 
 export function useAccountsSummaryController() {
   const {
@@ -22,6 +37,7 @@ export function useAccountsSummaryController() {
 
   const [selectedAccount, setSelectedAccount] = useState<BankAccount | null>(null)
   const [selectedCreditCard, setSelectedCreditCard] = useState<CreditCard | null>(null)
+  const [purchaseBeingEdited, setPurchaseBeingEdited] = useState<PurchaseBeingEdited | null>(null)
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
 
   const { mutateAsync: removeAccount, isLoading: isRemovingAccount } = useMutation(bankAccountsService.remove)
@@ -40,6 +56,32 @@ export function useAccountsSummaryController() {
   function handleCloseSummary() {
     setSelectedAccount(null)
     setSelectedCreditCard(null)
+  }
+
+  function handleOpenEditPurchaseFromSummary(purchase: CreditCardStatementInstallment) {
+    if (!selectedCreditCard) {
+      return
+    }
+
+    setPurchaseBeingEdited({
+      creditCardId: selectedCreditCard.id,
+      purchaseId: purchase.purchaseId,
+      description: purchase.description,
+      purchaseDate: purchase.purchaseDate,
+      purchaseAmount: purchase.purchaseAmount,
+      categoryId: purchase.category?.id,
+      fuelVehicleId: purchase.fuelVehicleId,
+      fuelOdometer: purchase.fuelOdometer,
+      fuelLiters: purchase.fuelLiters,
+      fuelPricePerLiter: purchase.fuelPricePerLiter,
+      maintenanceVehicleId: purchase.maintenanceVehicleId,
+      maintenanceOdometer: purchase.maintenanceOdometer,
+    })
+    handleCloseSummary()
+  }
+
+  function handleCloseEditPurchaseModal() {
+    setPurchaseBeingEdited(null)
   }
 
   function handleOpenConfirmDeleteAccount() {
@@ -140,12 +182,15 @@ export function useAccountsSummaryController() {
   return {
     selectedAccount,
     selectedCreditCard,
+    purchaseBeingEdited,
     confirmAction,
     isRemovingAccount,
     isUpdatingCreditCard,
     handleOpenAccountSummary,
     handleOpenCreditCardSummary,
     handleCloseSummary,
+    handleOpenEditPurchaseFromSummary,
+    handleCloseEditPurchaseModal,
     handleOpenConfirmDeleteAccount,
     handleOpenConfirmDeactivateCard,
     handleCloseConfirmModal,

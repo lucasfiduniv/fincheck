@@ -20,4 +20,32 @@ export class CreateCreditCardPurchaseDto {
   @Min(1)
   @Max(360)
     installmentCount: number
+
+  @IsOptional()
+  @IsUUID()
+    fuelVehicleId?: string
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+    fuelOdometer?: number
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.01)
+    fuelLiters?: number
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.01)
+    fuelPricePerLiter?: number
+
+  @IsOptional()
+  @IsUUID()
+    maintenanceVehicleId?: string
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+    maintenanceOdometer?: number
 }

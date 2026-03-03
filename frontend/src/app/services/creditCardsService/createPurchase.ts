@@ -7,6 +7,12 @@ export interface CreateCreditCardPurchaseParams {
   purchaseDate: string
   categoryId?: string
   installmentCount: number
+  fuelVehicleId?: string
+  fuelOdometer?: number
+  fuelLiters?: number
+  fuelPricePerLiter?: number
+  maintenanceVehicleId?: string
+  maintenanceOdometer?: number
 }
 
 export async function createPurchase({ creditCardId, ...params }: CreateCreditCardPurchaseParams) {

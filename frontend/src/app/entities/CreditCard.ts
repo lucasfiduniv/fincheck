@@ -18,6 +18,13 @@ export interface CreditCardStatementInstallment {
   id: string
   purchaseId: string
   amount: number
+  purchaseAmount: number
+  fuelVehicleId?: string | null
+  fuelOdometer?: number | null
+  fuelLiters?: number | null
+  fuelPricePerLiter?: number | null
+  maintenanceVehicleId?: string | null
+  maintenanceOdometer?: number | null
   status: 'PENDING' | 'PAID' | 'CANCELED'
   installmentNumber: number
   installmentCount: number
