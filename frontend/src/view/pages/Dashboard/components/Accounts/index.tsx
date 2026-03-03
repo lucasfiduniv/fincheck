@@ -10,6 +10,7 @@ import { useAccountsSummaryController } from './useAccountsSummaryController'
 import { TotalBalanceHeader } from './TotalBalanceHeader'
 import { EmptyAccountsState } from './EmptyAccountsState'
 import { AccountsAndCardsList } from './AccountsAndCardsList'
+import { EditCreditCardPurchaseModal } from '../../modals/EditCreditCardPurchaseModal'
 
 export function Accounts() {
   const {
@@ -21,18 +22,22 @@ export function Accounts() {
     isLoading,
     accounts,
     openNewAccountModal,
+    openNewCreditCardModal,
     currentBalance
   } = useAccountsController()
 
   const {
     selectedAccount,
     selectedCreditCard,
+    purchaseBeingEdited,
     confirmAction,
     isRemovingAccount,
     isUpdatingCreditCard,
     handleOpenAccountSummary,
     handleOpenCreditCardSummary,
     handleCloseSummary,
+    handleOpenEditPurchaseFromSummary,
+    handleCloseEditPurchaseModal,
     handleOpenConfirmDeleteAccount,
     handleOpenConfirmDeactivateCard,
     handleCloseConfirmModal,
@@ -93,9 +98,16 @@ export function Accounts() {
         onEditCreditCard={handleEditCreditCardFromSummary}
         onNewCreditCardPurchase={handleNewPurchaseFromSummary}
         onPayCreditCardStatement={handlePayStatementFromSummary}
+        onEditCreditCardPurchase={handleOpenEditPurchaseFromSummary}
         onDeactivateCreditCard={handleOpenConfirmDeactivateCard}
         isDeletingAccount={isRemovingAccount && confirmAction === 'DELETE_ACCOUNT'}
         isDeactivatingCreditCard={isUpdatingCreditCard && confirmAction === 'DEACTIVATE_CARD'}
+      />
+
+      <EditCreditCardPurchaseModal
+        open={!!purchaseBeingEdited}
+        onClose={handleCloseEditPurchaseModal}
+        purchase={purchaseBeingEdited}
       />
 
       <TotalBalanceHeader
@@ -118,6 +130,8 @@ export function Accounts() {
             slidesPerView={windowWidth >= 500 ? 2.1 : 1.2}
             onOpenAccountSummary={handleOpenAccountSummary}
             onOpenCreditCardSummary={handleOpenCreditCardSummary}
+            onCreateAccount={openNewAccountModal}
+            onCreateCreditCard={openNewCreditCardModal}
           />
         )}
       </div>

@@ -15,11 +15,9 @@ export function Fab() {
   const navigate = useNavigate()
 
   const {
-    openNewAccountModal,
     openNewTransactionModal,
     openNewTransferModal,
     openCategoriesModal,
-    openNewCreditCardModal,
     openNewCreditCardPurchaseModal,
     openPayCreditCardStatementModal,
   } = useDashboard()
@@ -36,15 +34,6 @@ export function Fab() {
       renderIcon: () => <CategoryIcon type="INCOME" />,
     },
     {
-      label: 'Nova Conta',
-      onSelect: openNewAccountModal,
-      renderIcon: () => (
-        <div className="flex items-center justify-center">
-          <BankAccountIcon />
-        </div>
-      ),
-    },
-    {
       label: 'Transferência',
       onSelect: openNewTransferModal,
       renderIcon: () => <BankAccountIcon />,
@@ -53,11 +42,6 @@ export function Fab() {
       label: 'Categorias',
       onSelect: openCategoriesModal,
       renderIcon: () => <CategoryIcon type="EXPENSE" />,
-    },
-    {
-      label: 'Novo Cartão',
-      onSelect: openNewCreditCardModal,
-      renderIcon: () => <CategoryIcon type="INCOME" />,
     },
     {
       label: 'Nova Caixinha',
