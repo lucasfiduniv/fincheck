@@ -11,6 +11,7 @@ export function NewTransactionModal() {
   const {
     closeNewTransactionModal,
     isNewTransactionModalOpen,
+    openCategoriesModal,
     newTransactionType,
     control,
     errors,
@@ -18,7 +19,11 @@ export function NewTransactionModal() {
     register,
     accounts,
     categories,
+    vehicles,
     repeatType,
+    showFuelFields,
+    showMaintenanceFields,
+    hasFuelCategory,
     isLoading
   } = useNewTransactionModalController()
 
@@ -78,6 +83,21 @@ export function NewTransactionModal() {
             )}
           />
 
+          {isExpense && !hasFuelCategory && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+              <p className="text-xs text-amber-900">
+                Você ainda não tem categoria de combustível.
+              </p>
+              <button
+                type="button"
+                onClick={openCategoriesModal}
+                className="mt-1 text-xs font-medium text-amber-900 underline underline-offset-2"
+              >
+                Criar categoria “Combustível”
+              </button>
+            </div>
+          )}
+
           <Controller
             control={control}
             name="bankAccountId"
@@ -107,6 +127,82 @@ export function NewTransactionModal() {
               />
             )}
           />
+
+          {showFuelFields && (
+            <>
+              <Controller
+                control={control}
+                name="fuelVehicleId"
+                defaultValue=""
+                render={({ field: { onChange, value } }) => (
+                  <Select
+                    placeholder="Veículo"
+                    onChange={onChange}
+                    value={value}
+                    error={errors.fuelVehicleId?.message}
+                    options={vehicles.map((vehicle) => ({
+                      value: vehicle.id,
+                      label: vehicle.name,
+                    }))}
+                  />
+                )}
+              />
+
+              <Input
+                type="number"
+                step="0.1"
+                placeholder="Odômetro (km)"
+                error={errors.fuelOdometer?.message}
+                {...register('fuelOdometer')}
+              />
+
+              <Input
+                type="number"
+                step="0.01"
+                placeholder="Litros abastecidos"
+                error={errors.fuelLiters?.message}
+                {...register('fuelLiters')}
+              />
+
+              <Input
+                type="number"
+                step="0.01"
+                placeholder="Valor por litro"
+                error={errors.fuelPricePerLiter?.message}
+                {...register('fuelPricePerLiter')}
+              />
+            </>
+          )}
+
+          {showMaintenanceFields && (
+            <>
+              <Controller
+                control={control}
+                name="maintenanceVehicleId"
+                defaultValue=""
+                render={({ field: { onChange, value } }) => (
+                  <Select
+                    placeholder="Veículo da manutenção"
+                    onChange={onChange}
+                    value={value}
+                    error={errors.maintenanceVehicleId?.message}
+                    options={vehicles.map((vehicle) => ({
+                      value: vehicle.id,
+                      label: vehicle.name,
+                    }))}
+                  />
+                )}
+              />
+
+              <Input
+                type="number"
+                step="0.1"
+                placeholder="Odômetro (opcional)"
+                error={errors.maintenanceOdometer?.message}
+                {...register('maintenanceOdometer')}
+              />
+            </>
+          )}
 
           <Controller
             control={control}

@@ -38,6 +38,9 @@ model User {
   friendshipRequestsSent Friendship[] @relation("FriendshipRequester")
   friendshipRequestsReceived Friendship[] @relation("FriendshipAddressee")
   savingsBoxCollaborationsInvited SavingsBoxCollaborator[] @relation("SavingsBoxCollaboratorInvitedBy")
+  vehicles Vehicle[]
+  fuelRecords FuelRecord[]
+  vehicleParts VehiclePart[]
 
   @@map("users")
 }
@@ -305,6 +308,12 @@ model CreditCardPurchase {
   userId           String                 @map("user_id") @db.Uuid
   creditCardId     String                 @map("credit_card_id") @db.Uuid
   categoryId       String?                @map("category_id") @db.Uuid
+  fuelVehicleId    String?                @map("fuel_vehicle_id") @db.Uuid
+  fuelOdometer     Float?                 @map("fuel_odometer")
+  fuelLiters       Float?                 @map("fuel_liters")
+  fuelPricePerLiter Float?                @map("fuel_price_per_liter")
+  maintenanceVehicleId String?            @map("maintenance_vehicle_id") @db.Uuid
+  maintenanceOdometer Float?              @map("maintenance_odometer")
   description      String
   amount           Float
   purchaseDate     DateTime               @map("purchase_date")
@@ -316,6 +325,8 @@ model CreditCardPurchase {
   user         User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   creditCard   CreditCard              @relation(fields: [creditCardId], references: [id], onDelete: Cascade)
   category     Category?               @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  fuelVehicle  Vehicle?                @relation(fields: [fuelVehicleId], references: [id], onDelete: SetNull)
+  maintenanceVehicle Vehicle?          @relation("VehicleMaintenancePurchases", fields: [maintenanceVehicleId], references: [id], onDelete: SetNull)
   installments CreditCardInstallment[]
 
   @@map("credit_card_purchases")
@@ -392,6 +403,8 @@ model Transaction {
   userId        String          @map("user_id") @db.Uuid
   bankAccountId String          @map("bank_account_id") @db.Uuid
   categoryId    String?         @map("category_id") @db.Uuid
+  maintenanceVehicleId String?  @map("maintenance_vehicle_id") @db.Uuid
+  maintenanceOdometer Float?    @map("maintenance_odometer")
   name          String
   value         Float
   date          DateTime
@@ -403,13 +416,91 @@ model Transaction {
   installmentCount  Int?        @map("installment_count")
   dueDay            Int?        @map("due_day")
   alertDaysBefore   Int?        @map("alert_days_before")
+  fuelRecord FuelRecord?
 
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   bankAccount BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
   category    Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  maintenanceVehicle Vehicle? @relation("VehicleMaintenanceTransactions", fields: [maintenanceVehicleId], references: [id], onDelete: SetNull)
   paidCreditCardInstallments CreditCardInstallment[]
 
   @@map("transactions")
+}
+
+enum FuelType {
+  GASOLINE
+  ETHANOL
+  DIESEL
+  FLEX
+  ELECTRIC
+  HYBRID
+
+  @@map("fuel_type")
+}
+
+model Vehicle {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  name String
+  model String?
+  plate String?
+  photoUrl String? @map("photo_url")
+  fuelType FuelType @default(FLEX) @map("fuel_type")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fuelRecords FuelRecord[]
+  fuelPurchases CreditCardPurchase[]
+  maintenanceTransactions Transaction[] @relation("VehicleMaintenanceTransactions")
+  maintenancePurchases CreditCardPurchase[] @relation("VehicleMaintenancePurchases")
+  parts VehiclePart[]
+
+  @@index([userId, createdAt])
+  @@map("vehicles")
+}
+
+model VehiclePart {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  vehicleId String @map("vehicle_id") @db.Uuid
+  name String
+  brand String?
+  quantity Float @default(1)
+  totalCost Float @map("total_cost")
+  installedAt DateTime @map("installed_at")
+  installedOdometer Float? @map("installed_odometer")
+  lifetimeKm Float? @map("lifetime_km")
+  nextReplacementOdometer Float? @map("next_replacement_odometer")
+  notes String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([userId, vehicleId, installedAt])
+  @@map("vehicle_parts")
+}
+
+model FuelRecord {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  vehicleId String @map("vehicle_id") @db.Uuid
+  transactionId String @unique @map("transaction_id") @db.Uuid
+  odometer Float
+  liters Float
+  pricePerLiter Float @map("price_per_liter")
+  totalCost Float @map("total_cost")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@index([userId, vehicleId, createdAt])
+  @@map("fuel_records")
 }
 
 model CategoryBudget {

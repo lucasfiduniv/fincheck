@@ -9,6 +9,7 @@ import { ForgetPassword } from '../view/pages/ForgetPassword'
 import { NotFound } from '../view/pages/NotFound'
 import { Settings } from '../view/pages/Settings'
 import { SavingsBoxes } from '../view/pages/SavingsBoxes'
+import { Vehicles } from '../view/pages/Vehicles'
 
 export function Router() {
   return (
@@ -28,6 +29,7 @@ export function Router() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/savings-boxes" element={<SavingsBoxes />} />
+          <Route path="/vehicles" element={<Vehicles />} />
         </Route>
       </Routes>
     </BrowserRouter>

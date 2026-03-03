@@ -12,6 +12,7 @@ import { CreditCardsModule } from './modules/credit-cards/credit-cards.module'
 import { NotificationsModule } from './modules/notifications/notifications.module'
 import { SavingsBoxesModule } from './modules/savings-boxes/savings-boxes.module'
 import { FriendshipsModule } from './modules/friendships/friendships.module'
+import { VehiclesModule } from './modules/vehicles/vehicles.module'
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { FriendshipsModule } from './modules/friendships/friendships.module'
     NotificationsModule,
     SavingsBoxesModule,
     FriendshipsModule,
+    VehiclesModule,
   ],
   controllers: [],
   providers: [

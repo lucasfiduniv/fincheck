@@ -6,6 +6,8 @@ import { TransactionsRepository } from 'src/shared/database/repositories/transac
 import { ValidateBankAccountOwnershipService } from '../../bank-accounts/services/validate-bank-account-ownership.service'
 import { ValidateCategoryOwnershipService } from '../../categories/services/validate-category-ownership.service'
 import { ValidateTransactionOwnershipService } from './validate-transaction-ownership.service'
+import { VehiclesRepository } from 'src/shared/database/repositories/vehicles.repository'
+import { FuelRecordsRepository } from 'src/shared/database/repositories/fuel-records.repository'
 import {
   RecurrenceAdjustmentScope,
 } from '../dto/adjust-recurrence-future-values.dto'
@@ -25,6 +27,8 @@ export class TransactionsService {
     private readonly validateBankAccountOwnershipService: ValidateBankAccountOwnershipService,
     private readonly validateCategoryOwnershipService: ValidateCategoryOwnershipService,
     private readonly validateTransactionOwnershipService: ValidateTransactionOwnershipService,
+    private readonly vehiclesRepo: VehiclesRepository,
+    private readonly fuelRecordsRepo: FuelRecordsRepository,
   ) {}
 
   async create(userId: string, createTransactionDto: CreateTransactionDto) {
@@ -39,6 +43,12 @@ export class TransactionsService {
       repeatType,
       dueDay,
       alertDaysBefore,
+      fuelVehicleId,
+      fuelOdometer,
+      fuelLiters,
+      fuelPricePerLiter,
+      maintenanceVehicleId,
+      maintenanceOdometer,
     } =
       createTransactionDto
 
@@ -53,6 +63,68 @@ export class TransactionsService {
     }
 
     const creationType = repeatType ?? TransactionCreationType.ONCE
+
+    const hasFuelMetadata =
+      !!fuelVehicleId ||
+      fuelOdometer !== undefined ||
+      fuelLiters !== undefined ||
+      fuelPricePerLiter !== undefined
+
+    const hasMaintenanceMetadata =
+      !!maintenanceVehicleId ||
+      maintenanceOdometer !== undefined
+
+    if (hasFuelMetadata) {
+      if (type !== TransactionType.EXPENSE) {
+        throw new BadRequestException('Abastecimento só pode ser registrado em despesas.')
+      }
+
+      if (creationType !== TransactionCreationType.ONCE) {
+        throw new BadRequestException('Abastecimento deve ser um lançamento único.')
+      }
+
+      if (!fuelVehicleId || fuelOdometer === undefined || fuelLiters === undefined || fuelPricePerLiter === undefined) {
+        throw new BadRequestException('Para abastecimento informe veículo, odômetro, litros e preço por litro.')
+      }
+
+      const vehicle = await this.vehiclesRepo.findFirst({
+        where: {
+          id: fuelVehicleId,
+          userId,
+        },
+        select: {
+          id: true,
+        },
+      })
+
+      if (!vehicle) {
+        throw new BadRequestException('Veículo informado não encontrado para este usuário.')
+      }
+    }
+
+    if (hasMaintenanceMetadata) {
+      if (type !== TransactionType.EXPENSE) {
+        throw new BadRequestException('Manutenção só pode ser registrada em despesas.')
+      }
+
+      if (!maintenanceVehicleId) {
+        throw new BadRequestException('Para manutenção informe o veículo.')
+      }
+
+      const vehicle = await this.vehiclesRepo.findFirst({
+        where: {
+          id: maintenanceVehicleId,
+          userId,
+        },
+        select: {
+          id: true,
+        },
+      })
+
+      if (!vehicle) {
+        throw new BadRequestException('Veículo informado não encontrado para este usuário.')
+      }
+    }
 
     if (
       creationType === TransactionCreationType.INSTALLMENT &&
@@ -110,10 +182,28 @@ export class TransactionsService {
               creationType === TransactionCreationType.ONCE
                 ? null
                 : alertDaysBefore ?? 3,
+            maintenanceVehicleId,
+            maintenanceOdometer,
           },
         })
       }),
     )
+
+    if (hasFuelMetadata && fuelVehicleId && fuelOdometer !== undefined && fuelLiters !== undefined && fuelPricePerLiter !== undefined) {
+      const createdTransaction = createdTransactions[0]
+
+      await this.fuelRecordsRepo.create({
+        data: {
+          userId,
+          vehicleId: fuelVehicleId,
+          transactionId: createdTransaction.id,
+          odometer: fuelOdometer,
+          liters: fuelLiters,
+          pricePerLiter: fuelPricePerLiter,
+          totalCost: Number((fuelLiters * fuelPricePerLiter).toFixed(2)),
+        },
+      })
+    }
 
     return createdTransactions[0]
   }

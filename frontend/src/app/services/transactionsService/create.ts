@@ -11,6 +11,12 @@ export interface CreateTransactionParams {
   repeatCount?: number
   dueDay?: number
   alertDaysBefore?: number
+  fuelVehicleId?: string
+  fuelOdometer?: number
+  fuelLiters?: number
+  fuelPricePerLiter?: number
+  maintenanceVehicleId?: string
+  maintenanceOdometer?: number
 }
 
 export async function create(params: CreateTransactionParams) {

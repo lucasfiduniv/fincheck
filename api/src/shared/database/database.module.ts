@@ -14,6 +14,9 @@ import { SavingsBoxTransactionsRepository } from './repositories/savings-box-tra
 import { SavingsBoxAlertsRepository } from './repositories/savings-box-alerts.repository'
 import { FriendshipsRepository } from './repositories/friendships.repository'
 import { SavingsBoxCollaboratorsRepository } from './repositories/savings-box-collaborators.repository'
+import { VehiclesRepository } from './repositories/vehicles.repository'
+import { FuelRecordsRepository } from './repositories/fuel-records.repository'
+import { VehiclePartsRepository } from './repositories/vehicle-parts.repository'
 
 @Global()
 @Module({
@@ -33,6 +36,9 @@ import { SavingsBoxCollaboratorsRepository } from './repositories/savings-box-co
     SavingsBoxAlertsRepository,
     FriendshipsRepository,
     SavingsBoxCollaboratorsRepository,
+    VehiclesRepository,
+    FuelRecordsRepository,
+    VehiclePartsRepository,
   ],
   exports: [
     UsersRepository,
@@ -49,6 +55,9 @@ import { SavingsBoxCollaboratorsRepository } from './repositories/savings-box-co
     SavingsBoxAlertsRepository,
     FriendshipsRepository,
     SavingsBoxCollaboratorsRepository,
+    VehiclesRepository,
+    FuelRecordsRepository,
+    VehiclePartsRepository,
   ],
 })
 export class DatabaseModule {}

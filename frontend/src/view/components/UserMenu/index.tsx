@@ -22,6 +22,10 @@ export function UserMenu() {
           Caixinhas
         </DropdownMenu.Item>
 
+        <DropdownMenu.Item onSelect={() => navigate('/vehicles')}>
+          Veículos
+        </DropdownMenu.Item>
+
         <DropdownMenu.Item onSelect={() => navigate('/settings')}>
           Configurações
         </DropdownMenu.Item>

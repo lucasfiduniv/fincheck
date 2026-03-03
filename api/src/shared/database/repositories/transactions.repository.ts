@@ -6,19 +6,27 @@ import { PrismaService } from '../prisma.service'
 export class TransactionsRepository {
   constructor(private readonly prismaService: PrismaService) {}
 
-  findMany(findManyDto: Prisma.TransactionFindManyArgs) {
+  findMany<T extends Prisma.TransactionFindManyArgs>(
+    findManyDto: Prisma.SelectSubset<T, Prisma.TransactionFindManyArgs>,
+  ) {
     return this.prismaService.transaction.findMany(findManyDto)
   }
 
-  findFirst(findFirstDto: Prisma.TransactionFindFirstArgs) {
+  findFirst<T extends Prisma.TransactionFindFirstArgs>(
+    findFirstDto: Prisma.SelectSubset<T, Prisma.TransactionFindFirstArgs>,
+  ) {
     return this.prismaService.transaction.findFirst(findFirstDto)
   }
 
-  create(createDto: Prisma.TransactionCreateArgs) {
+  create<T extends Prisma.TransactionCreateArgs>(
+    createDto: Prisma.SelectSubset<T, Prisma.TransactionCreateArgs>,
+  ) {
     return this.prismaService.transaction.create(createDto)
   }
 
-  update(updateDto: Prisma.TransactionUpdateArgs) {
+  update<T extends Prisma.TransactionUpdateArgs>(
+    updateDto: Prisma.SelectSubset<T, Prisma.TransactionUpdateArgs>,
+  ) {
     return this.prismaService.transaction.update(updateDto)
   }
 
