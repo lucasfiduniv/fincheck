@@ -41,6 +41,7 @@ import { VehiclePartsRepository } from './repositories/vehicle-parts.repository'
     VehiclePartsRepository,
   ],
   exports: [
+    PrismaService,
     UsersRepository,
     CategoriesRepository,
     BankAccountsRepository,

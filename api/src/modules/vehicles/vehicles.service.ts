@@ -32,6 +32,7 @@ export class VehiclesService {
         model: createVehicleDto.model,
         plate: createVehicleDto.plate,
         photoUrl: createVehicleDto.photoUrl,
+        currentOdometer: createVehicleDto.currentOdometer,
         fuelType: createVehicleDto.fuelType,
       },
     })
@@ -365,6 +366,7 @@ export class VehiclesService {
         model: updateVehicleDto.model,
         plate: updateVehicleDto.plate,
         photoUrl: updateVehicleDto.photoUrl,
+        currentOdometer: updateVehicleDto.currentOdometer,
         fuelType: updateVehicleDto.fuelType,
       },
     })
@@ -373,7 +375,7 @@ export class VehiclesService {
   async createPart(userId: string, vehicleId: string, createVehiclePartDto: CreateVehiclePartDto) {
     const vehicle = await this.vehiclesRepo.findFirst({
       where: { id: vehicleId, userId },
-      select: { id: true, name: true },
+      select: { id: true, name: true, currentOdometer: true },
     })
 
     if (!vehicle) {
@@ -414,8 +416,8 @@ export class VehiclesService {
     const installedAt = this.toUTCDate(createVehiclePartDto.installedAt)
     const description = `Peça ${createVehiclePartDto.name} - ${vehicle.name}`
 
-    const [createdPart] = await this.prismaService.$transaction([
-      this.prismaService.vehiclePart.create({
+    return this.prismaService.$transaction(async (prisma) => {
+      const createdPart = await prisma.vehiclePart.create({
         data: {
           userId,
           vehicleId,
@@ -429,8 +431,9 @@ export class VehiclesService {
           nextReplacementOdometer: createVehiclePartDto.nextReplacementOdometer,
           notes: createVehiclePartDto.notes,
         },
-      }),
-      this.prismaService.transaction.create({
+      })
+
+      await prisma.transaction.create({
         data: {
           userId,
           bankAccountId: createVehiclePartDto.bankAccountId,
@@ -442,10 +445,27 @@ export class VehiclesService {
           date: installedAt,
           type: 'EXPENSE',
         },
-      }),
-    ])
+      })
 
-    return createdPart
+      if (
+        createVehiclePartDto.installedOdometer !== undefined
+        && createVehiclePartDto.installedOdometer !== null
+        && (
+          vehicle.currentOdometer === null
+          || vehicle.currentOdometer === undefined
+          || createVehiclePartDto.installedOdometer > vehicle.currentOdometer
+        )
+      ) {
+        await prisma.vehicle.update({
+          where: { id: vehicleId },
+          data: {
+            currentOdometer: createVehiclePartDto.installedOdometer,
+          },
+        })
+      }
+
+      return createdPart
+    })
   }
 
   private toUTCDate(date: string) {

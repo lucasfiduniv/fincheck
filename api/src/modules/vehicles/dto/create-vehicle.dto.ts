@@ -1,5 +1,5 @@
 import { FuelType } from '@prisma/client'
-import { IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator'
+import { IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator'
 
 export class CreateVehicleDto {
   @IsString()
@@ -24,4 +24,9 @@ export class CreateVehicleDto {
   @IsOptional()
   @IsString()
     photoUrl?: string
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+    currentOdometer?: number
 }

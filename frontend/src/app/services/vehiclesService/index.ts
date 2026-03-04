@@ -6,6 +6,7 @@ export interface CreateVehicleParams {
   model?: string
   plate?: string
   photoUrl?: string
+  currentOdometer?: number
   fuelType?: 'GASOLINE' | 'ETHANOL' | 'DIESEL' | 'FLEX' | 'ELECTRIC' | 'HYBRID'
 }
 
@@ -30,6 +31,7 @@ export interface UpdateVehicleParams {
   model?: string
   plate?: string
   photoUrl?: string
+  currentOdometer?: number
   fuelType?: 'GASOLINE' | 'ETHANOL' | 'DIESEL' | 'FLEX' | 'ELECTRIC' | 'HYBRID'
 }
 

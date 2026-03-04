@@ -445,6 +445,7 @@ model Vehicle {
   model String?
   plate String?
   photoUrl String? @map("photo_url")
+  currentOdometer Float? @map("current_odometer")
   fuelType FuelType @default(FLEX) @map("fuel_type")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

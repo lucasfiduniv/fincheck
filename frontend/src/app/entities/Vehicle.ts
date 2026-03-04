@@ -23,6 +23,7 @@ export interface Vehicle {
   model: string | null
   plate: string | null
   photoUrl: string | null
+  currentOdometer: number | null
   fuelType: FuelType
   createdAt: string
   updatedAt: string
