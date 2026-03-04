@@ -446,6 +446,10 @@ model Vehicle {
   plate String?
   photoUrl String? @map("photo_url")
   currentOdometer Float? @map("current_odometer")
+  autoOdometerEnabled Boolean @default(false) @map("auto_odometer_enabled")
+  averageDailyKm Float? @map("average_daily_km")
+  odometerBaseValue Float? @map("odometer_base_value")
+  odometerBaseDate DateTime? @map("odometer_base_date")
   fuelType FuelType @default(FLEX) @map("fuel_type")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

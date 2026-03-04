@@ -7,6 +7,10 @@ export interface CreateVehicleParams {
   plate?: string
   photoUrl?: string
   currentOdometer?: number
+  autoOdometerEnabled?: boolean
+  averageDailyKm?: number
+  odometerBaseValue?: number
+  odometerBaseDate?: string
   fuelType?: 'GASOLINE' | 'ETHANOL' | 'DIESEL' | 'FLEX' | 'ELECTRIC' | 'HYBRID'
 }
 
@@ -32,6 +36,10 @@ export interface UpdateVehicleParams {
   plate?: string
   photoUrl?: string
   currentOdometer?: number
+  autoOdometerEnabled?: boolean
+  averageDailyKm?: number
+  odometerBaseValue?: number
+  odometerBaseDate?: string
   fuelType?: 'GASOLINE' | 'ETHANOL' | 'DIESEL' | 'FLEX' | 'ELECTRIC' | 'HYBRID'
 }
 

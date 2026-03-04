@@ -1,5 +1,5 @@
 import { FuelType } from '@prisma/client'
-import { IsEnum, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator'
+import { IsBoolean, IsDateString, IsEnum, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator'
 
 export class UpdateVehicleDto {
   @IsOptional()
@@ -29,4 +29,22 @@ export class UpdateVehicleDto {
   @IsNumber()
   @Min(0)
     currentOdometer?: number
+
+  @IsOptional()
+  @IsBoolean()
+    autoOdometerEnabled?: boolean
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+    averageDailyKm?: number
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+    odometerBaseValue?: number
+
+  @IsOptional()
+  @IsDateString()
+    odometerBaseDate?: string
 }

@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
 import { PrismaService } from 'src/shared/database/prisma.service'
 import { BankAccountsRepository } from 'src/shared/database/repositories/bank-accounts.repository'
 import { CategoriesRepository } from 'src/shared/database/repositories/categories.repository'
@@ -25,6 +26,8 @@ export class VehiclesService {
   ) {}
 
   create(userId: string, createVehicleDto: CreateVehicleDto) {
+    const now = new Date()
+
     return this.vehiclesRepo.create({
       data: {
         userId,
@@ -33,6 +36,14 @@ export class VehiclesService {
         plate: createVehicleDto.plate,
         photoUrl: createVehicleDto.photoUrl,
         currentOdometer: createVehicleDto.currentOdometer,
+        autoOdometerEnabled: createVehicleDto.autoOdometerEnabled ?? false,
+        averageDailyKm: createVehicleDto.averageDailyKm,
+        odometerBaseValue: createVehicleDto.odometerBaseValue ?? createVehicleDto.currentOdometer,
+        odometerBaseDate: createVehicleDto.odometerBaseDate
+          ? this.toUTCDate(createVehicleDto.odometerBaseDate)
+          : createVehicleDto.currentOdometer !== undefined
+            ? now
+            : undefined,
         fuelType: createVehicleDto.fuelType,
       },
     })
@@ -176,8 +187,11 @@ export class VehiclesService {
         }
       }
 
+      const effectiveCurrentOdometer = this.calculateEffectiveCurrentOdometer(vehicle)
+
       return {
         ...vehicle,
+        effectiveCurrentOdometer,
         fuelStats: {
           recordsCount: allVehicleRecords.length,
           totalCost: Number(totalCost.toFixed(2)),
@@ -350,6 +364,7 @@ export class VehiclesService {
 
     return {
       ...vehicle,
+      effectiveCurrentOdometer: this.calculateEffectiveCurrentOdometer(vehicle),
       fuelRecords: mergedRecords,
       maintenances: maintenanceRecords,
       parts,
@@ -357,25 +372,69 @@ export class VehiclesService {
   }
 
   async update(userId: string, vehicleId: string, updateVehicleDto: UpdateVehicleDto) {
-    await this.validateOwnership(userId, vehicleId)
+    const vehicle = await this.vehiclesRepo.findFirst({
+      where: { id: vehicleId, userId },
+      select: {
+        id: true,
+        currentOdometer: true,
+        autoOdometerEnabled: true,
+        averageDailyKm: true,
+        odometerBaseValue: true,
+        odometerBaseDate: true,
+      },
+    })
+
+    if (!vehicle) {
+      throw new NotFoundException('Veículo não encontrado.')
+    }
+
+    const nextData: Prisma.VehicleUncheckedUpdateInput = {
+      name: updateVehicleDto.name,
+      model: updateVehicleDto.model,
+      plate: updateVehicleDto.plate,
+      photoUrl: updateVehicleDto.photoUrl,
+      currentOdometer: updateVehicleDto.currentOdometer,
+      fuelType: updateVehicleDto.fuelType,
+      autoOdometerEnabled: updateVehicleDto.autoOdometerEnabled,
+      averageDailyKm: updateVehicleDto.averageDailyKm,
+      odometerBaseValue: updateVehicleDto.odometerBaseValue,
+      odometerBaseDate: updateVehicleDto.odometerBaseDate
+        ? this.toUTCDate(updateVehicleDto.odometerBaseDate)
+        : undefined,
+    }
+
+    if (updateVehicleDto.currentOdometer !== undefined) {
+      nextData.odometerBaseValue = updateVehicleDto.currentOdometer
+      nextData.odometerBaseDate = new Date()
+    }
+
+    if (updateVehicleDto.autoOdometerEnabled === true && !nextData.odometerBaseValue) {
+      const baselineFromVehicle = vehicle.currentOdometer ?? this.calculateEffectiveCurrentOdometer(vehicle)
+
+      if (baselineFromVehicle !== null && baselineFromVehicle !== undefined) {
+        nextData.odometerBaseValue = baselineFromVehicle
+        nextData.odometerBaseDate = new Date()
+      }
+    }
 
     return this.vehiclesRepo.update({
       where: { id: vehicleId },
-      data: {
-        name: updateVehicleDto.name,
-        model: updateVehicleDto.model,
-        plate: updateVehicleDto.plate,
-        photoUrl: updateVehicleDto.photoUrl,
-        currentOdometer: updateVehicleDto.currentOdometer,
-        fuelType: updateVehicleDto.fuelType,
-      },
+      data: nextData,
     })
   }
 
   async createPart(userId: string, vehicleId: string, createVehiclePartDto: CreateVehiclePartDto) {
     const vehicle = await this.vehiclesRepo.findFirst({
       where: { id: vehicleId, userId },
-      select: { id: true, name: true, currentOdometer: true },
+      select: {
+        id: true,
+        name: true,
+        currentOdometer: true,
+        autoOdometerEnabled: true,
+        averageDailyKm: true,
+        odometerBaseValue: true,
+        odometerBaseDate: true,
+      },
     })
 
     if (!vehicle) {
@@ -447,19 +506,23 @@ export class VehiclesService {
         },
       })
 
+      const effectiveCurrentOdometer = this.calculateEffectiveCurrentOdometer(vehicle)
+
       if (
         createVehiclePartDto.installedOdometer !== undefined
         && createVehiclePartDto.installedOdometer !== null
         && (
-          vehicle.currentOdometer === null
-          || vehicle.currentOdometer === undefined
-          || createVehiclePartDto.installedOdometer > vehicle.currentOdometer
+          effectiveCurrentOdometer === null
+          || effectiveCurrentOdometer === undefined
+          || createVehiclePartDto.installedOdometer > effectiveCurrentOdometer
         )
       ) {
         await prisma.vehicle.update({
           where: { id: vehicleId },
           data: {
             currentOdometer: createVehiclePartDto.installedOdometer,
+            odometerBaseValue: createVehiclePartDto.installedOdometer,
+            odometerBaseDate: installedAt,
           },
         })
       }
@@ -473,6 +536,31 @@ export class VehiclesService {
     const [year, month, day] = datePortion.split('-').map(Number)
 
     return new Date(Date.UTC(year, month - 1, day))
+  }
+
+  private calculateEffectiveCurrentOdometer(vehicle: {
+    currentOdometer?: number | null
+    autoOdometerEnabled?: boolean
+    averageDailyKm?: number | null
+    odometerBaseValue?: number | null
+    odometerBaseDate?: Date | null
+  }) {
+    if (!vehicle.autoOdometerEnabled || !vehicle.averageDailyKm || !vehicle.odometerBaseDate) {
+      return vehicle.currentOdometer ?? null
+    }
+
+    const baseValue = vehicle.odometerBaseValue ?? vehicle.currentOdometer
+
+    if (baseValue === null || baseValue === undefined) {
+      return vehicle.currentOdometer ?? null
+    }
+
+    const now = new Date()
+    const elapsedMs = now.getTime() - vehicle.odometerBaseDate.getTime()
+    const elapsedDays = Math.max(0, elapsedMs / (1000 * 60 * 60 * 24))
+    const projected = baseValue + (elapsedDays * vehicle.averageDailyKm)
+
+    return Number(projected.toFixed(1))
   }
 
   private async validateOwnership(userId: string, vehicleId: string) {

@@ -24,6 +24,11 @@ export interface Vehicle {
   plate: string | null
   photoUrl: string | null
   currentOdometer: number | null
+  effectiveCurrentOdometer?: number | null
+  autoOdometerEnabled?: boolean
+  averageDailyKm?: number | null
+  odometerBaseValue?: number | null
+  odometerBaseDate?: string | null
   fuelType: FuelType
   createdAt: string
   updatedAt: string

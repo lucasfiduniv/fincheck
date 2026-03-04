@@ -80,6 +80,8 @@ export function Vehicles() {
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [isCreatePartModalOpen, setIsCreatePartModalOpen] = useState(false)
+  const [showCreateVehicleOptionalFields, setShowCreateVehicleOptionalFields] = useState(false)
+  const [showCreatePartOptionalFields, setShowCreatePartOptionalFields] = useState(false)
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null)
 
   const [name, setName] = useState('')
@@ -101,6 +103,8 @@ export function Vehicles() {
   const [partNextReplacementOdometer, setPartNextReplacementOdometer] = useState('')
   const [partNotes, setPartNotes] = useState('')
   const [currentOdometerInput, setCurrentOdometerInput] = useState('')
+  const [autoOdometerEnabledInput, setAutoOdometerEnabledInput] = useState(false)
+  const [averageDailyKmInput, setAverageDailyKmInput] = useState('')
 
   const [inlineFeedback, setInlineFeedback] = useState<string | null>(null)
   const [timelineFilter, setTimelineFilter] = useState<'ALL' | 'FUEL' | 'MAINTENANCE' | 'PART'>('ALL')
@@ -199,7 +203,9 @@ export function Vehicles() {
     )[0]
 
     const nextReplacementOdometer = nextPart.nextReplacementOdometer ?? 0
-    const lastOdometer = selectedVehicle.currentOdometer ?? selectedVehicle.fuelStats?.lastOdometer
+    const lastOdometer = selectedVehicle.effectiveCurrentOdometer
+      ?? selectedVehicle.currentOdometer
+      ?? selectedVehicle.fuelStats?.lastOdometer
 
     if (lastOdometer === null || lastOdometer === undefined) {
       return `Próxima troca: ${nextPart.name} aos ${nextReplacementOdometer.toFixed(0)} km`
@@ -301,8 +307,17 @@ export function Vehicles() {
         : '',
     )
 
-    if (!partInstalledOdometer && selectedVehicle.currentOdometer !== null && selectedVehicle.currentOdometer !== undefined) {
-      setPartInstalledOdometer(selectedVehicle.currentOdometer.toFixed(1))
+    setAutoOdometerEnabledInput(!!selectedVehicle.autoOdometerEnabled)
+    setAverageDailyKmInput(
+      selectedVehicle.averageDailyKm !== null && selectedVehicle.averageDailyKm !== undefined
+        ? selectedVehicle.averageDailyKm.toFixed(1)
+        : '',
+    )
+
+    const referenceOdometer = selectedVehicle.effectiveCurrentOdometer ?? selectedVehicle.currentOdometer
+
+    if (!partInstalledOdometer && referenceOdometer !== null && referenceOdometer !== undefined) {
+      setPartInstalledOdometer(referenceOdometer.toFixed(1))
     }
   }, [selectedVehicle, partInstalledOdometer])
 
@@ -340,6 +355,7 @@ export function Vehicles() {
       setPhotoUrl('')
       setCurrentOdometer('')
       setFuelType('FLEX')
+      setShowCreateVehicleOptionalFields(false)
       setIsCreateModalOpen(false)
       setSelectedVehicleId(created.id)
       queryClient.invalidateQueries({ queryKey: ['vehicles'] })
@@ -403,6 +419,7 @@ export function Vehicles() {
       setPartLifetimeKm('')
       setPartNextReplacementOdometer('')
       setPartNotes('')
+      setShowCreatePartOptionalFields(false)
       setIsCreatePartModalOpen(false)
 
       queryClient.invalidateQueries({ queryKey: ['bankAccounts'] })
@@ -490,6 +507,59 @@ export function Vehicles() {
     }
   }
 
+  async function handleUpdateAutoOdometerSettings() {
+    if (!selectedVehicleId) {
+      return
+    }
+
+    const normalizedDailyKm = averageDailyKmInput.replace(',', '.').trim()
+
+    if (autoOdometerEnabledInput) {
+      if (!normalizedDailyKm) {
+        toast.error('Informe quantos km você roda por dia.')
+        return
+      }
+
+      const dailyKm = Number(normalizedDailyKm)
+
+      if (!Number.isFinite(dailyKm) || dailyKm <= 0) {
+        toast.error('Informe um valor diário de km válido.')
+        return
+      }
+
+      try {
+        await updateVehicle({
+          vehicleId: selectedVehicleId,
+          autoOdometerEnabled: true,
+          averageDailyKm: dailyKm,
+        })
+
+        queryClient.invalidateQueries({ queryKey: ['vehicles'] })
+        queryClient.invalidateQueries({ queryKey: ['vehicles', selectedVehicleId] })
+        setInlineFeedback('Automação do odômetro ativada e sincronizada.')
+        toast.success('Automação do odômetro atualizada!')
+      } catch {
+        toast.error('Não foi possível atualizar a automação do odômetro.')
+      }
+
+      return
+    }
+
+    try {
+      await updateVehicle({
+        vehicleId: selectedVehicleId,
+        autoOdometerEnabled: false,
+      })
+
+      queryClient.invalidateQueries({ queryKey: ['vehicles'] })
+      queryClient.invalidateQueries({ queryKey: ['vehicles', selectedVehicleId] })
+      setInlineFeedback('Automação do odômetro desativada.')
+      toast.success('Automação do odômetro desativada!')
+    } catch {
+      toast.error('Não foi possível atualizar a automação do odômetro.')
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="w-full h-full p-4 lg:px-8 lg:pt-6 lg:pb-8 overflow-y-auto">
@@ -517,50 +587,63 @@ export function Vehicles() {
           }}
         >
           <Input name="name" placeholder="Nome" value={name} onChange={(e) => setName(e.target.value)} />
-          <Input name="model" placeholder="Modelo (opcional)" value={model} onChange={(e) => setModel(e.target.value)} />
-          <Input name="plate" placeholder="Placa (opcional)" value={plate} onChange={(e) => setPlate(e.target.value.toUpperCase())} />
-          <Input
-            type="number"
-            step="0.1"
-            name="currentOdometer"
-            placeholder="Odômetro atual (opcional)"
-            value={currentOdometer}
-            onChange={(e) => setCurrentOdometer(e.target.value)}
-          />
 
-          <div className="space-y-2">
-            <label className="text-xs text-gray-600 block">Foto do veículo</label>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(event) => {
-                const file = event.target.files?.[0]
+          <button
+            type="button"
+            className="text-xs text-teal-700 hover:text-teal-800 underline"
+            onClick={() => setShowCreateVehicleOptionalFields((state) => !state)}
+          >
+            {showCreateVehicleOptionalFields ? 'Ocultar campos opcionais' : 'Mostrar campos opcionais'}
+          </button>
 
-                if (!file) {
-                  return
-                }
+          {showCreateVehicleOptionalFields && (
+            <div className="space-y-3 rounded-xl border border-gray-200 p-3 bg-gray-50">
+              <Input name="model" placeholder="Modelo (opcional)" value={model} onChange={(e) => setModel(e.target.value)} />
+              <Input name="plate" placeholder="Placa (opcional)" value={plate} onChange={(e) => setPlate(e.target.value.toUpperCase())} />
+              <Input
+                type="number"
+                step="0.1"
+                name="currentOdometer"
+                placeholder="Odômetro atual (opcional)"
+                value={currentOdometer}
+                onChange={(e) => setCurrentOdometer(e.target.value)}
+              />
 
-                const reader = new FileReader()
-                reader.onload = () => {
-                  if (typeof reader.result === 'string') {
-                    setPhotoUrl(reader.result)
-                  }
-                }
-                reader.readAsDataURL(file)
-              }}
-              className="block w-full text-sm text-gray-600 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border file:border-gray-200 file:bg-gray-50 file:text-gray-700"
-            />
-            {photoUrl && (
-              <img src={photoUrl} alt="Pré-visualização" className="w-full h-32 object-cover rounded-xl border border-gray-200" />
-            )}
-          </div>
+              <div className="space-y-2">
+                <label className="text-xs text-gray-600 block">Foto do veículo</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
 
-          <Select
-            placeholder="Combustível"
-            value={fuelType}
-            onChange={setFuelType}
-            options={fuelTypeOptions}
-          />
+                    if (!file) {
+                      return
+                    }
+
+                    const reader = new FileReader()
+                    reader.onload = () => {
+                      if (typeof reader.result === 'string') {
+                        setPhotoUrl(reader.result)
+                      }
+                    }
+                    reader.readAsDataURL(file)
+                  }}
+                  className="block w-full text-sm text-gray-600 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border file:border-gray-200 file:bg-white file:text-gray-700"
+                />
+                {photoUrl && (
+                  <img src={photoUrl} alt="Pré-visualização" className="w-full h-32 object-cover rounded-xl border border-gray-200" />
+                )}
+              </div>
+
+              <Select
+                placeholder="Combustível"
+                value={fuelType}
+                onChange={setFuelType}
+                options={fuelTypeOptions}
+              />
+            </div>
+          )}
 
           <Button type="submit" className="w-full" isLoading={isCreatingVehicle}>Cadastrar veículo</Button>
         </form>
@@ -595,25 +678,38 @@ export function Vehicles() {
             }))}
           />
 
-          <Select
-            placeholder="Categoria de despesa"
-            value={partCategoryId}
-            onChange={setPartCategoryId}
-            options={expenseCategories.map((category) => ({
-              value: category.id,
-              label: category.name,
-            }))}
-          />
-
           <Input name="partName" placeholder="Nome da peça" value={partName} onChange={(e) => setPartName(e.target.value)} />
-          <Input name="partBrand" placeholder="Marca (opcional)" value={partBrand} onChange={(e) => setPartBrand(e.target.value)} />
-          <Input type="number" step="0.01" name="partQuantity" placeholder="Quantidade" value={partQuantity} onChange={(e) => setPartQuantity(e.target.value)} />
           <Input type="number" step="0.01" name="partTotalCost" placeholder="Custo total" value={partTotalCost} onChange={(e) => setPartTotalCost(e.target.value)} />
           <Input type="date" name="partInstalledAt" value={partInstalledAt} onChange={(e) => setPartInstalledAt(e.target.value)} />
-          <Input type="number" step="0.1" name="partInstalledOdometer" placeholder="Km da instalação (opcional)" value={partInstalledOdometer} onChange={(e) => setPartInstalledOdometer(e.target.value)} />
-          <Input type="number" step="1" name="partLifetimeKm" placeholder="Vida útil esperada em km (opcional)" value={partLifetimeKm} onChange={(e) => setPartLifetimeKm(e.target.value)} />
-          <Input type="number" step="1" name="partNextReplacementOdometer" placeholder="Próxima troca em km (opcional)" value={partNextReplacementOdometer} onChange={(e) => setPartNextReplacementOdometer(e.target.value)} />
-          <Input name="partNotes" placeholder="Observações (opcional)" value={partNotes} onChange={(e) => setPartNotes(e.target.value)} />
+
+          <button
+            type="button"
+            className="text-xs text-teal-700 hover:text-teal-800 underline"
+            onClick={() => setShowCreatePartOptionalFields((state) => !state)}
+          >
+            {showCreatePartOptionalFields ? 'Ocultar detalhes opcionais' : 'Mostrar detalhes opcionais'}
+          </button>
+
+          {showCreatePartOptionalFields && (
+            <div className="space-y-3 rounded-xl border border-gray-200 p-3 bg-gray-50">
+              <Select
+                placeholder="Categoria de despesa"
+                value={partCategoryId}
+                onChange={setPartCategoryId}
+                options={expenseCategories.map((category) => ({
+                  value: category.id,
+                  label: category.name,
+                }))}
+              />
+
+              <Input name="partBrand" placeholder="Marca (opcional)" value={partBrand} onChange={(e) => setPartBrand(e.target.value)} />
+              <Input type="number" step="0.01" name="partQuantity" placeholder="Quantidade" value={partQuantity} onChange={(e) => setPartQuantity(e.target.value)} />
+              <Input type="number" step="0.1" name="partInstalledOdometer" placeholder="Km da instalação (opcional)" value={partInstalledOdometer} onChange={(e) => setPartInstalledOdometer(e.target.value)} />
+              <Input type="number" step="1" name="partLifetimeKm" placeholder="Vida útil esperada em km (opcional)" value={partLifetimeKm} onChange={(e) => setPartLifetimeKm(e.target.value)} />
+              <Input type="number" step="1" name="partNextReplacementOdometer" placeholder="Próxima troca em km (opcional)" value={partNextReplacementOdometer} onChange={(e) => setPartNextReplacementOdometer(e.target.value)} />
+              <Input name="partNotes" placeholder="Observações (opcional)" value={partNotes} onChange={(e) => setPartNotes(e.target.value)} />
+            </div>
+          )}
 
           <Button type="submit" className="w-full" isLoading={isCreatingPart}>Salvar peça</Button>
         </form>
@@ -799,30 +895,81 @@ export function Vehicles() {
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-gray-200 bg-white p-3">
-                    <div className="flex flex-col sm:flex-row sm:items-end gap-3">
-                      <div className="flex-1">
-                        <label className="text-xs text-gray-600 block mb-1">Odômetro atual consolidado</label>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          name="currentOdometerInput"
-                          placeholder="Ex.: 52340.5"
-                          value={currentOdometerInput}
-                          onChange={(e) => setCurrentOdometerInput(e.target.value)}
-                        />
-                        <span className="text-[11px] text-gray-500 block mt-1">
-                          Esse valor é usado como referência rápida em manutenção e abastecimento.
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
+                      <strong className="text-sm text-gray-800 block">Calibração manual</strong>
+
+                      <label className="text-xs text-gray-600 block">Odômetro atual consolidado</label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        name="currentOdometerInput"
+                        placeholder="Ex.: 52340.5"
+                        value={currentOdometerInput}
+                        onChange={(e) => setCurrentOdometerInput(e.target.value)}
+                      />
+
+                      {selectedVehicle.effectiveCurrentOdometer !== null && selectedVehicle.effectiveCurrentOdometer !== undefined && (
+                        <span className="text-xs text-teal-700 block">
+                          Estimativa atual: {selectedVehicle.effectiveCurrentOdometer.toFixed(1)} km
                         </span>
-                      </div>
+                      )}
+
+                      <p className="text-[11px] text-gray-500">
+                        Ajuste quando quiser para manter a precisão da referência.
+                      </p>
 
                       <Button
                         type="button"
-                        className="h-9 px-3 rounded-xl w-full sm:w-auto"
+                        className="h-8 px-3 rounded-lg w-full sm:w-auto text-sm"
                         isLoading={isUpdatingVehicle}
                         onClick={handleUpdateCurrentOdometer}
                       >
                         Salvar odômetro
+                      </Button>
+                    </div>
+
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <input
+                          id="auto-odometer"
+                          type="checkbox"
+                          checked={autoOdometerEnabledInput}
+                          onChange={(event) => setAutoOdometerEnabledInput(event.target.checked)}
+                          className="w-4 h-4 rounded border-gray-300"
+                        />
+                        <label htmlFor="auto-odometer" className="text-sm text-gray-700 font-medium">
+                          Modo automático
+                        </label>
+                      </div>
+
+                      <label className="text-xs text-gray-600 block">Média de km por dia</label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        name="averageDailyKmInput"
+                        placeholder="Ex.: 38.5"
+                        value={averageDailyKmInput}
+                        onChange={(e) => setAverageDailyKmInput(e.target.value)}
+                      />
+
+                      <p className="text-[11px] text-gray-500">
+                        O sistema estima automaticamente com base na última calibração.
+                      </p>
+
+                      {selectedVehicle.odometerBaseDate && (
+                        <span className="text-[11px] text-gray-500 block">
+                          Base: {formatDate(selectedVehicle.odometerBaseDate)}
+                        </span>
+                      )}
+
+                      <Button
+                        type="button"
+                        className="h-8 px-3 rounded-lg w-full sm:w-auto text-sm"
+                        isLoading={isUpdatingVehicle}
+                        onClick={handleUpdateAutoOdometerSettings}
+                      >
+                        Salvar automação
                       </Button>
                     </div>
                   </div>
