@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { FilterIcon } from '../../../../components/icons/FilterIcon'
 import { TransactionsIcon } from '../../../../components/icons/TransactionsIcon'
 import { Swiper, SwiperSlide } from 'swiper/react'
@@ -22,6 +22,8 @@ import { useBankAccounts } from '../../../../../app/hooks/useBankAccounts.ts'
 import { resolveBankBrand } from '../../../../../app/utils/resolveBankBrand.ts'
 
 export function Transactions() {
+  const [showAttentionDetails, setShowAttentionDetails] = useState(false)
+
   const {
     openCategoriesModal,
     openNewTransactionModal,
@@ -63,6 +65,38 @@ export function Transactions() {
     () => new Map(accounts.map((account) => [account.id, account])),
     [accounts],
   )
+
+  const dueSummary = isLoadingDueAlerts
+    ? 'Carregando vencimentos...'
+    : alertDueRemindersCount > 0
+      ? `${alertDueRemindersCount} vencimento(s) em alerta`
+      : 'Nenhum vencimento em alerta'
+
+  const budgetSummary = isLoadingCategoryBudgets
+    ? 'Carregando orçamentos...'
+    : alertBudgetsCount > 0
+      ? `${alertBudgetsCount} categoria(s) em alerta`
+      : 'Nenhum alerta de orçamento'
+
+  const priorityActionLabel = alertDueRemindersCount > 0
+    ? 'Resolver vencimentos'
+    : alertBudgetsCount > 0
+      ? 'Ajustar orçamento'
+      : 'Ver detalhes'
+
+  function handlePriorityAttentionAction() {
+    if (alertDueRemindersCount > 0) {
+      setShowAttentionDetails(true)
+      return
+    }
+
+    if (alertBudgetsCount > 0) {
+      handleOpenBudgetsModal()
+      return
+    }
+
+    setShowAttentionDetails((state) => !state)
+  }
 
   if (isInitialLoading) {
     return (
@@ -129,136 +163,128 @@ export function Transactions() {
         <div className="flex items-center justify-between">
           <div>
             <strong className="text-sm tracking-[-0.5px] text-gray-800 block">
-              Vencimentos
+              Atenções do mês
             </strong>
-            <span className={cn(
-              'text-xs text-gray-600',
-              alertDueRemindersCount > 0 && 'text-red-800 font-medium'
-            )}>
-              {alertDueRemindersCount > 0
-                ? `${alertDueRemindersCount} vencimento(s) em alerta`
-                : 'Nenhum vencimento em alerta'}
-            </span>
-          </div>
-        </div>
-
-        <div className="space-y-2 max-h-24 overflow-y-auto">
-          {isLoadingDueAlerts && (
-            <div className="h-12 flex items-center justify-center">
-              <Spinner className="w-5 h-5" />
-            </div>
-          )}
-
-          {!isLoadingDueAlerts && dueAlerts.length === 0 && (
-            <div className="h-12 rounded-lg bg-gray-50 flex items-center justify-center text-xs text-gray-600">
-              Configure vencimento em transações recorrentes/parceladas para receber alertas.
-            </div>
-          )}
-
-          {!isLoadingDueAlerts && dueAlerts
-            .slice(0, 3)
-            .map((alert) => (
-              <div key={alert.id} className="flex items-center justify-between text-xs">
-                <span className="text-gray-700 truncate pr-2">
-                  {alert.name} · dia {alert.dueDay}
-                </span>
-                <span className={cn(
-                  'font-medium',
-                  alert.status === 'OVERDUE' && 'text-red-800',
-                  alert.status === 'DUE_TODAY' && 'text-yellow-700',
-                  alert.status === 'UPCOMING' && 'text-yellow-700',
-                  alert.status === 'FUTURE' && 'text-green-800'
-                )}>
-                  {formatStatusLabel(alert.status, { daysUntilDue: alert.daysUntilDue })}
-                </span>
-              </div>
-            ))}
-        </div>
-      </section>
-
-      <section className="mt-4 p-3 rounded-2xl bg-white space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <strong className="text-sm tracking-[-0.5px] text-gray-800 block">
-              Orçamento mensal
-            </strong>
-            <span className={cn(
-              'text-xs text-gray-600',
-              alertBudgetsCount > 0 && 'text-red-800 font-medium'
-            )}>
-              {alertBudgetsCount > 0
-                ? `${alertBudgetsCount} categoria(s) em alerta`
-                : 'Nenhum alerta de orçamento'}
+            <span className="text-xs text-gray-600 block mt-0.5">
+              {dueSummary} • {budgetSummary}
             </span>
           </div>
 
           <button
             className="text-sm text-teal-900 font-medium"
-            onClick={handleOpenBudgetsModal}
+            onClick={handlePriorityAttentionAction}
           >
-            Definir limites
+            {priorityActionLabel}
           </button>
         </div>
 
-        <div className="space-y-2 max-h-28 overflow-y-auto">
-          {isLoadingCategoryBudgets && (
-            <div className="h-12 flex items-center justify-center">
-              <Spinner className="w-5 h-5" />
+        <div
+          className={`overflow-hidden transition-all duration-200 ${
+            showAttentionDetails ? 'max-h-[520px] opacity-100' : 'max-h-0 opacity-0'
+          }`}
+        >
+          <div className="space-y-3 pt-1">
+            <div className="rounded-xl border border-gray-200 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <strong className="text-xs tracking-[-0.3px] text-gray-800">Vencimentos</strong>
+              </div>
+
+              <div className="space-y-2 max-h-24 overflow-y-auto">
+                {isLoadingDueAlerts && (
+                  <div className="h-12 flex items-center justify-center">
+                    <Spinner className="w-5 h-5" />
+                  </div>
+                )}
+
+                {!isLoadingDueAlerts && dueAlerts.length === 0 && (
+                  <div className="h-12 rounded-lg bg-gray-50 flex items-center justify-center text-xs text-gray-600">
+                    Configure vencimento em transações recorrentes/parceladas.
+                  </div>
+                )}
+
+                {!isLoadingDueAlerts && dueAlerts.slice(0, 3).map((alert) => (
+                  <div key={alert.id} className="flex items-center justify-between text-xs">
+                    <span className="text-gray-700 truncate pr-2">
+                      {alert.name} · dia {alert.dueDay}
+                    </span>
+                    <span className={cn(
+                      'font-medium',
+                      alert.status === 'OVERDUE' && 'text-red-800',
+                      alert.status === 'DUE_TODAY' && 'text-yellow-700',
+                      alert.status === 'UPCOMING' && 'text-yellow-700',
+                      alert.status === 'FUTURE' && 'text-green-800'
+                    )}>
+                      {formatStatusLabel(alert.status, { daysUntilDue: alert.daysUntilDue })}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
-          )}
 
-          {!isLoadingCategoryBudgets && categoryBudgets.filter((budget) => budget.limit !== null).length === 0 && (
-            <div className="rounded-lg bg-gray-50 p-3 space-y-2">
-              <p className="text-xs text-gray-600">
-                Você ainda não definiu limites para este mês.
-              </p>
-
-              <div className="flex items-center gap-2">
+            <div className="rounded-xl border border-gray-200 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <strong className="text-xs tracking-[-0.3px] text-gray-800">Orçamento mensal</strong>
                 <button
-                  className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors"
-                  onClick={openCategoriesModal}
-                >
-                  Criar primeira categoria
-                </button>
-
-                <button
-                  className="text-xs px-2.5 py-1.5 rounded-lg bg-teal-900 text-white hover:bg-teal-800 transition-colors"
+                  className="text-xs text-teal-900 font-medium"
                   onClick={handleOpenBudgetsModal}
                 >
-                  Definir orçamento
+                  Ajustar orçamento
                 </button>
               </div>
-            </div>
-          )}
 
-          {!isLoadingCategoryBudgets && categoryBudgets
-            .filter((budget) => budget.limit !== null)
-            .map((budget) => (
-              <div key={budget.categoryId} className="space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-gray-700 truncate pr-2">{budget.categoryName}</span>
-                  <span className={cn(
-                    'font-medium',
-                    budget.status === 'OVER' && 'text-red-800',
-                    budget.status === 'WARNING' && 'text-yellow-700',
-                    budget.status === 'SAFE' && 'text-green-800'
-                  )}>
-                    {Math.min(999, Math.round(budget.percentageUsed ?? 0))}%
-                  </span>
-                </div>
-                <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
-                  <div
-                    className={cn(
-                      'h-full rounded-full',
-                      budget.status === 'OVER' && 'bg-red-800',
-                      budget.status === 'WARNING' && 'bg-yellow-700',
-                      budget.status === 'SAFE' && 'bg-green-800'
-                    )}
-                    style={{ width: `${Math.min(100, budget.percentageUsed ?? 0)}%` }}
-                  />
-                </div>
+              <div className="space-y-2 max-h-28 overflow-y-auto">
+                {isLoadingCategoryBudgets && (
+                  <div className="h-12 flex items-center justify-center">
+                    <Spinner className="w-5 h-5" />
+                  </div>
+                )}
+
+                {!isLoadingCategoryBudgets && categoryBudgets.filter((budget) => budget.limit !== null).length === 0 && (
+                  <div className="rounded-lg bg-gray-50 p-3 space-y-2">
+                    <p className="text-xs text-gray-600">
+                      Você ainda não definiu limites para este mês.
+                    </p>
+
+                    <button
+                      className="text-xs px-2.5 py-1.5 rounded-lg bg-teal-900 text-white hover:bg-teal-800 transition-colors"
+                      onClick={handleOpenBudgetsModal}
+                    >
+                      Ajustar orçamento
+                    </button>
+                  </div>
+                )}
+
+                {!isLoadingCategoryBudgets && categoryBudgets
+                  .filter((budget) => budget.limit !== null)
+                  .map((budget) => (
+                    <div key={budget.categoryId} className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-gray-700 truncate pr-2">{budget.categoryName}</span>
+                        <span className={cn(
+                          'font-medium',
+                          budget.status === 'OVER' && 'text-red-800',
+                          budget.status === 'WARNING' && 'text-yellow-700',
+                          budget.status === 'SAFE' && 'text-green-800'
+                        )}>
+                          {Math.min(999, Math.round(budget.percentageUsed ?? 0))}%
+                        </span>
+                      </div>
+                      <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                        <div
+                          className={cn(
+                            'h-full rounded-full',
+                            budget.status === 'OVER' && 'bg-red-800',
+                            budget.status === 'WARNING' && 'bg-yellow-700',
+                            budget.status === 'SAFE' && 'bg-green-800'
+                          )}
+                          style={{ width: `${Math.min(100, budget.percentageUsed ?? 0)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
               </div>
-            ))}
+            </div>
+          </div>
         </div>
       </section>
 
@@ -272,23 +298,22 @@ export function Transactions() {
         {!hasTransactions && !isLoading && (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <img src={emptyStateImage} alt="Empty state" />
-            <p className="text-gray-700 mt-1">Não encontramos nenhuma transação!</p>
+            <p className="text-gray-700 mt-1">Nenhuma transação ainda.</p>
+            <p className="text-sm text-gray-600 mt-1">Comece com uma despesa rápida.</p>
 
-            <div className="mt-4 flex items-center gap-2">
-              <button
-                className="text-sm px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors"
-                onClick={openCategoriesModal}
-              >
-                Criar primeira categoria
-              </button>
+            <button
+              className="mt-4 text-sm px-3 py-2 rounded-lg bg-teal-900 text-white hover:bg-teal-800 transition-colors"
+              onClick={() => openNewTransactionModal('EXPENSE')}
+            >
+              Lançar primeira transação
+            </button>
 
-              <button
-                className="text-sm px-3 py-2 rounded-lg bg-teal-900 text-white hover:bg-teal-800 transition-colors"
-                onClick={() => openNewTransactionModal('EXPENSE')}
-              >
-                Lançar compra
-              </button>
-            </div>
+            <button
+              className="mt-2 text-xs text-gray-600 hover:text-gray-800 underline underline-offset-2"
+              onClick={openCategoriesModal}
+            >
+              Criar categoria primeiro
+            </button>
           </div>
         )}
 

@@ -1,4 +1,6 @@
+import { useMemo, useState } from 'react'
 import { Controller } from 'react-hook-form'
+import { useWatch } from 'react-hook-form'
 import { Button } from '../../../../components/Button'
 import { Input } from '../../../../components/Input'
 import { Modal } from '../../../../components/Modal'
@@ -11,6 +13,8 @@ import { usePayCreditCardStatementModalController } from './usePayCreditCardStat
 import { LINKED_BANK_ACCOUNT_OPTION, PAY_STATEMENT_MONTH_OPTIONS } from './constants'
 
 export function PayCreditCardStatementModal() {
+  const [showDetails, setShowDetails] = useState(false)
+
   const {
     isOpen,
     onClose,
@@ -26,6 +30,18 @@ export function PayCreditCardStatementModal() {
     handleCancelPurchase,
     isCancelingPurchase,
   } = usePayCreditCardStatementModalController()
+
+  const selectedBankAccountId = useWatch({ control, name: 'bankAccountId' })
+  const paymentAmount = useWatch({ control, name: 'amount' })
+  const selectedAccount = accounts.find((account) => account.id === selectedBankAccountId)
+
+  const pendingAfterPayment = useMemo(() => {
+    if (!statement || !paymentAmount) {
+      return null
+    }
+
+    return Math.max(0, statement.pending - paymentAmount)
+  }, [paymentAmount, statement])
 
   return (
     <Modal title="Pagar Fatura" open={isOpen} onClose={onClose}>
@@ -74,27 +90,6 @@ export function PayCreditCardStatementModal() {
             />
           </div>
 
-          <Controller
-            control={control}
-            name="bankAccountId"
-            defaultValue=""
-            render={({ field: { onChange, value } }) => (
-              <Select
-                placeholder="Conta para pagar"
-                onChange={onChange}
-                value={value}
-                error={errors.bankAccountId?.message}
-                options={[
-                  { value: LINKED_BANK_ACCOUNT_OPTION, label: 'Conta vinculada ao cartão' },
-                  ...accounts.map((account) => ({
-                    value: account.id,
-                    label: account.name,
-                  })),
-                ]}
-              />
-            )}
-          />
-
           <Input
             type="number"
             min={0.01}
@@ -103,6 +98,59 @@ export function PayCreditCardStatementModal() {
             error={errors.amount?.message}
             {...register('amount')}
           />
+
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 min-h-[86px]">
+            <span className="text-xs text-gray-700 font-medium block mb-1">Impacto do pagamento</span>
+            <div className="space-y-1 text-xs text-gray-600">
+              <p>
+                {statement
+                  ? `Fatura pendente após pagamento: ${pendingAfterPayment !== null ? formatCurrency(pendingAfterPayment) : '-'}`
+                  : 'Selecione cartão/mês/ano para calcular o impacto da fatura.'}
+              </p>
+              <p>
+                {selectedAccount
+                  ? `${selectedAccount.name}: ${formatCurrency(selectedAccount.currentBalance)} → ${formatCurrency(selectedAccount.currentBalance - (paymentAmount ?? 0))}`
+                  : 'Selecione a conta de pagamento para ver o saldo final.'}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="text-xs text-teal-700 hover:text-teal-800 underline text-left"
+            onClick={() => setShowDetails((state) => !state)}
+          >
+            {showDetails ? 'Ocultar detalhes' : 'Mostrar detalhes'}
+          </button>
+
+          <div
+            className={`overflow-hidden transition-all duration-200 ${
+              showDetails ? 'max-h-24 opacity-100' : 'max-h-0 opacity-0'
+            }`}
+          >
+            <div className="pt-1">
+              <Controller
+                control={control}
+                name="bankAccountId"
+                defaultValue=""
+                render={({ field: { onChange, value } }) => (
+                  <Select
+                    placeholder="Conta para pagar"
+                    onChange={onChange}
+                    value={value}
+                    error={errors.bankAccountId?.message}
+                    options={[
+                      { value: LINKED_BANK_ACCOUNT_OPTION, label: 'Conta vinculada ao cartão' },
+                      ...accounts.map((account) => ({
+                        value: account.id,
+                        label: account.name,
+                      })),
+                    ]}
+                  />
+                )}
+              />
+            </div>
+          </div>
 
           <div className="rounded-xl bg-gray-50 p-3 min-h-[86px]">
             {isLoadingStatement && (
@@ -163,7 +211,12 @@ export function PayCreditCardStatementModal() {
             )}
           </div>
 
-          <Button type="submit" isLoading={isLoading}>Pagar fatura</Button>
+          <div className="pt-2 border-t border-gray-100 flex gap-2">
+            <Button type="button" variant="ghost" className="flex-1" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" isLoading={isLoading} className="flex-1">Pagar fatura</Button>
+          </div>
         </div>
       </form>
     </Modal>

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Controller } from 'react-hook-form'
 import { formatCurrency } from '../../../../../app/utils/formatCurrency'
 import { Button } from '../../../../components/Button'
@@ -25,6 +26,8 @@ export function BudgetsModal({
   year,
   budgets,
 }: BudgetsModalProps) {
+  const [showDetails, setShowDetails] = useState(false)
+
   const {
     mode,
     control,
@@ -47,6 +50,12 @@ export function BudgetsModal({
   } = useBudgetsModalController({ month, year, budgets })
 
   const budgetsWithLimit = budgets.filter((budget) => budget.categoryBudgetId !== null)
+
+  useEffect(() => {
+    if (mode !== 'form') {
+      setShowDetails(false)
+    }
+  }, [mode])
 
   if (isDeleteModalOpen && budgetBeingDeleted) {
     return (
@@ -206,47 +215,62 @@ export function BudgetsModal({
               </div>
             </div>
 
-            <Controller
-              control={control}
-              name="carryOverEnabled"
-              render={({ field: { value, onChange } }) => (
-                <label className="rounded-lg border border-gray-300 px-3 py-2 flex items-center justify-between gap-3 cursor-pointer">
-                  <div>
-                    <strong className="text-sm text-gray-800 block">Carry-over</strong>
-                    <span className="text-xs text-gray-600">
-                      Levar saldo não utilizado para o próximo mês
-                    </span>
-                  </div>
-
-                  <input
-                    type="checkbox"
-                    className="w-4 h-4 accent-teal-900"
-                    checked={Boolean(value)}
-                    onChange={(event) => onChange(event.target.checked)}
-                  />
-                </label>
-              )}
-            />
-
-            <Button
-              className="w-full"
-              type="submit"
-              isLoading={isLoading}
-              disabled={!isEditMode && budgetableCategories.length === 0}
+            <button
+              type="button"
+              className="text-xs text-teal-700 hover:text-teal-800 underline text-left"
+              onClick={() => setShowDetails((state) => !state)}
             >
-              {isEditMode ? 'Salvar limite' : 'Criar limite'}
-            </Button>
+              {showDetails ? 'Ocultar detalhes' : 'Mostrar detalhes'}
+            </button>
 
-            {isEditMode && (
+            <div
+              className={`overflow-hidden transition-all duration-200 ${
+                showDetails ? 'max-h-28 opacity-100' : 'max-h-0 opacity-0'
+              }`}
+            >
+              <div className="pt-1">
+                <Controller
+                  control={control}
+                  name="carryOverEnabled"
+                  render={({ field: { value, onChange } }) => (
+                    <label className="rounded-lg border border-gray-300 px-3 py-2 flex items-center justify-between gap-3 cursor-pointer">
+                      <div>
+                        <strong className="text-sm text-gray-800 block">Levar saldo para o próximo mês</strong>
+                        <span className="text-xs text-gray-600">
+                          Soma o restante positivo ao limite do mês seguinte
+                        </span>
+                      </div>
+
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 accent-teal-900"
+                        checked={Boolean(value)}
+                        onChange={(event) => onChange(event.target.checked)}
+                      />
+                    </label>
+                  )}
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-gray-100 flex gap-2">
               <Button
-                className="w-full"
+                className="flex-1"
                 type="button"
                 variant="ghost"
-                onClick={handleCancelEdit}
+                onClick={isEditMode ? handleCancelEdit : handleCloseForm}
               >
-                Cancelar edição
+                Cancelar
               </Button>
-            )}
+              <Button
+                className="flex-1"
+                type="submit"
+                isLoading={isLoading}
+                disabled={!isEditMode && budgetableCategories.length === 0}
+              >
+                {isEditMode ? 'Salvar limite' : 'Criar limite'}
+              </Button>
+            </div>
           </form>
         )}
       </div>

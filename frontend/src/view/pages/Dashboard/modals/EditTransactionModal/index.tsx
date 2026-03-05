@@ -51,6 +51,7 @@ export function EditTransactionModal({
   const [futureValue, setFutureValue] = useState('')
   const [futureFromDate, setFutureFromDate] = useState('')
   const [adjustmentScope, setAdjustmentScope] = useState<RecurrenceAdjustmentScope>('THIS_AND_NEXT')
+  const [showSeriesAdjustment, setShowSeriesAdjustment] = useState(false)
 
   const isExpense = transaction?.type === 'EXPENSE'
   const canAdjustFutureValues = !!transaction?.recurrenceGroupId
@@ -190,60 +191,74 @@ export function EditTransactionModal({
 
         {canAdjustFutureValues && (
           <div className="rounded-2xl border border-gray-200 p-4 lg:p-5 space-y-4">
-            <div>
+            <button
+              type="button"
+              className="w-full text-left"
+              onClick={() => setShowSeriesAdjustment((state) => !state)}
+            >
               <strong className="text-sm tracking-[-0.5px] text-gray-800 block">
-                Reajustar valores futuros
+                Reajustar série de lançamentos
               </strong>
               <span className="text-xs text-gray-600">
-                Atualize esta transação e/ou as próximas da mesma série.
+                {showSeriesAdjustment
+                  ? 'Ocultar opções da série'
+                  : 'Mostrar opções para atualizar esta e próximas transações'}
               </span>
-            </div>
+            </button>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <Input
-                name="futureValue"
-                type="number"
-                min={0.01}
-                step="0.01"
-                placeholder="Novo valor"
-                value={futureValue}
-                onChange={(event) => setFutureValue(event.target.value)}
-              />
-
-              <Select
-                placeholder="Escopo da alteração"
-                value={adjustmentScope}
-                onChange={(value) => setAdjustmentScope(value as RecurrenceAdjustmentScope)}
-                options={[
-                  { value: 'THIS', label: 'Só esta' },
-                  { value: 'THIS_AND_NEXT', label: 'Esta e próximas' },
-                  { value: 'ALL', label: 'Todas da série' },
-                ]}
-              />
-
-              {adjustmentScope === 'THIS_AND_NEXT' && (
-                <div className="lg:col-span-2">
+            <div
+              className={`overflow-hidden transition-all duration-200 ${
+                showSeriesAdjustment ? 'max-h-[520px] opacity-100' : 'max-h-0 opacity-0'
+              }`}
+            >
+              <div className="pt-2 space-y-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <Input
-                    name="futureFromDate"
-                    type="date"
-                    placeholder="Aplicar a partir de"
-                    value={futureFromDate}
-                    onChange={(event) => setFutureFromDate(event.target.value)}
+                    name="futureValue"
+                    type="number"
+                    min={0.01}
+                    step="0.01"
+                    placeholder="Novo valor"
+                    value={futureValue}
+                    onChange={(event) => setFutureValue(event.target.value)}
                   />
-                </div>
-              )}
-            </div>
 
-            <div className="flex justify-end">
-              <Button
-                type="button"
-                onClick={handleAdjustFutureValues}
-                isLoading={isAdjustingFutureValues}
-                variant="ghost"
-                className="w-full lg:w-auto"
-              >
-                Aplicar reajuste
-              </Button>
+                  <Select
+                    placeholder="Escopo da alteração"
+                    value={adjustmentScope}
+                    onChange={(value) => setAdjustmentScope(value as RecurrenceAdjustmentScope)}
+                    options={[
+                      { value: 'THIS', label: 'Só esta' },
+                      { value: 'THIS_AND_NEXT', label: 'Esta e próximas' },
+                      { value: 'ALL', label: 'Todas da série' },
+                    ]}
+                  />
+
+                  {adjustmentScope === 'THIS_AND_NEXT' && (
+                    <div className="lg:col-span-2">
+                      <Input
+                        name="futureFromDate"
+                        type="date"
+                        placeholder="Aplicar a partir de"
+                        value={futureFromDate}
+                        onChange={(event) => setFutureFromDate(event.target.value)}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    onClick={handleAdjustFutureValues}
+                    isLoading={isAdjustingFutureValues}
+                    variant="ghost"
+                    className="w-full lg:w-auto"
+                  >
+                    Atualizar próximos lançamentos
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         )}

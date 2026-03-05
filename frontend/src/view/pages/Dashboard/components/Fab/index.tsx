@@ -38,6 +38,9 @@ export function Fab() {
       onSelect: openNewTransferModal,
       renderIcon: () => <BankAccountIcon />,
     },
+  ]
+
+  const extraActions: FabAction[] = [
     {
       label: 'Categorias',
       onSelect: openCategoriesModal,
@@ -71,6 +74,18 @@ export function Fab() {
 
         <DropdownMenu.Content className="data-[side=bottom]:animate-slide-down-and-fade">
           {actions.map((action) => (
+            <DropdownMenu.Item key={action.label} className="gap-2" onSelect={action.onSelect}>
+              {action.renderIcon()}
+              {action.label}
+            </DropdownMenu.Item>
+          ))}
+
+          <div className="my-1 h-px bg-gray-200" />
+          <span className="px-4 py-1 block text-[11px] uppercase tracking-[0.08em] text-gray-500">
+            Mais ações
+          </span>
+
+          {extraActions.map((action) => (
             <DropdownMenu.Item key={action.label} className="gap-2" onSelect={action.onSelect}>
               {action.renderIcon()}
               {action.label}

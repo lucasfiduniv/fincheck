@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Controller } from 'react-hook-form'
 import { Button } from '../../../../components/Button'
 import { ConfirmDeleteModal } from '../../../../components/ConfirmDeleteModal'
@@ -10,6 +11,8 @@ import { useCategoriesModalController } from './useCategoriesModalController'
 import { cn } from '../../../../../app/utils/cn'
 
 export function CategoriesModal() {
+  const [showManualIconSelection, setShowManualIconSelection] = useState(false)
+
   const {
     isCategoriesModalOpen,
     closeCategoriesModal,
@@ -141,7 +144,10 @@ export function CategoriesModal() {
               <button
                 type="button"
                 className="text-sm text-gray-700"
-                onClick={handleCloseForm}
+                onClick={() => {
+                  setShowManualIconSelection(false)
+                  handleCloseForm()
+                }}
               >
                 Voltar
               </button>
@@ -154,23 +160,39 @@ export function CategoriesModal() {
               {...register('name')}
             />
 
-            <Controller
-              control={control}
-              name="icon"
-              render={({ field: { value, onChange } }) => (
-                <Select
-                  placeholder="Ícone"
-                  onChange={onChange}
-                  value={value}
-                  error={errors.icon?.message}
-                  options={iconOptions}
+            <button
+              type="button"
+              className="text-xs text-teal-700 hover:text-teal-800 underline text-left"
+              onClick={() => setShowManualIconSelection((state) => !state)}
+            >
+              {showManualIconSelection ? 'Ocultar seleção manual de ícone' : 'Escolher ícone manualmente (opcional)'}
+            </button>
+
+            <div
+              className={`overflow-hidden transition-all duration-200 ${
+                showManualIconSelection ? 'max-h-24 opacity-100' : 'max-h-0 opacity-0'
+              }`}
+            >
+              <div className="pt-1">
+                <Controller
+                  control={control}
+                  name="icon"
+                  render={({ field: { value, onChange } }) => (
+                    <Select
+                      placeholder="Ícone"
+                      onChange={onChange}
+                      value={value}
+                      error={errors.icon?.message}
+                      options={iconOptions}
+                    />
+                  )}
                 />
-              )}
-            />
+              </div>
+            </div>
 
             <div className="h-12 px-3 rounded-lg bg-gray-50 flex items-center gap-2 text-sm text-gray-700">
               <CategoryIcon type={activeType} category={selectedIcon} />
-              Pré-visualização do ícone
+              Ícone sugerido automaticamente
             </div>
 
             <Button className="w-full" type="submit" isLoading={isLoading}>

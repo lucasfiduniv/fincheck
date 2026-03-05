@@ -12,6 +12,7 @@ import { toast } from 'react-hot-toast'
 import { currencyStringToNumber } from '../../../../../app/utils/currencyStringToNumber'
 import { toUTCDateISOString } from '../../../../../app/utils/toUTCDateISOString'
 import { useVehicles } from '../../../../../app/hooks/useVehicles'
+import { showActionToast } from '../../../../components/ActionToast'
 
 function normalizeCategoryName(value?: string) {
   return (value ?? '')
@@ -178,6 +179,7 @@ export function useNewTransactionModalController() {
   const {
     isNewTransactionModalOpen,
     closeNewTransactionModal,
+    openNewTransactionModal,
     newTransactionType,
     transactionPresetBankAccountId,
     openCategoriesModal,
@@ -212,6 +214,7 @@ export function useNewTransactionModalController() {
   } = useMutation(transactionsService.create)
 
   const repeatType = watch('repeatType')
+  const selectedCategoryId = watch('categoryId')
 
   useEffect(() => {
     if (!isNewTransactionModalOpen) {
@@ -258,11 +261,20 @@ export function useNewTransactionModalController() {
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
       queryClient.invalidateQueries({ queryKey: ['bankAccounts'] })
 
-      toast.success(
-        newTransactionType === 'EXPENSE'
-          ? 'Despesa cadastrada com sucesso!'
-          : 'Receita cadastrada com sucesso!'
-      )
+      const isExpense = newTransactionType === 'EXPENSE'
+
+      toast.success(isExpense ? 'Despesa criada.' : 'Valor recebido.')
+      showActionToast({
+        message: isExpense
+          ? 'Registrar outra despesa?'
+          : 'Receber outro valor?'
+        ,
+        actionLabel: isExpense
+          ? 'Registrar agora'
+          : 'Receber agora',
+        onAction: () => openNewTransactionModal(newTransactionType!, data.bankAccountId),
+      })
+
       closeNewTransactionModal()
       reset({
         value: '',
@@ -291,7 +303,6 @@ export function useNewTransactionModalController() {
     [categories],
   )
 
-  const selectedCategoryId = watch('categoryId')
   const selectedCategory = categories.find((category) => category.id === selectedCategoryId)
   const showFuelFields =
     newTransactionType === 'EXPENSE' &&
@@ -316,6 +327,8 @@ export function useNewTransactionModalController() {
     accounts,
     vehicles,
     categories,
+    selectedCategoryId,
+    setValue,
     isLoading
   }
 }
