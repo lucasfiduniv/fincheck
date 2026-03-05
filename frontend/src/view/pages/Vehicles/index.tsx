@@ -552,6 +552,51 @@ export function Vehicles() {
     selectedVehicle,
   ])
 
+  function resetCreatePartForm() {
+    setPartName('')
+    setPartBankAccountId(accounts[0]?.id ?? '')
+    setPartCategoryId(expenseCategories[0]?.id ?? '')
+    setPartBrand('')
+    setPartQuantity('1')
+    setPartTotalCost('0')
+    setPartInstalledAt(new Date().toISOString().slice(0, 10))
+    setPartInstalledOdometer('')
+    setPartLifetimeKm('')
+    setPartNextReplacementOdometer('')
+    setPartNotes('')
+    setShowCreatePartOptionalFields(false)
+  }
+
+  function resetQuickFuelForm() {
+    const referenceOdometer = selectedVehicle?.effectiveCurrentOdometer ?? selectedVehicle?.currentOdometer
+
+    setQuickFuelBankAccountId(accounts[0]?.id ?? '')
+    setQuickFuelCategoryId(fuelExpenseCategory?.id ?? '')
+    setQuickFuelLiters('')
+    setQuickFuelPricePerLiter('')
+    setQuickFuelOdometer(
+      referenceOdometer !== null && referenceOdometer !== undefined
+        ? referenceOdometer.toFixed(1)
+        : '',
+    )
+    setQuickFuelDate(new Date().toISOString().slice(0, 10))
+  }
+
+  function resetQuickMaintenanceForm() {
+    const referenceOdometer = selectedVehicle?.effectiveCurrentOdometer ?? selectedVehicle?.currentOdometer
+
+    setQuickMaintenanceBankAccountId(accounts[0]?.id ?? '')
+    setQuickMaintenanceCategoryId(expenseCategories[0]?.id ?? '')
+    setQuickMaintenanceTitle('')
+    setQuickMaintenanceAmount('')
+    setQuickMaintenanceOdometer(
+      referenceOdometer !== null && referenceOdometer !== undefined
+        ? referenceOdometer.toFixed(1)
+        : '',
+    )
+    setQuickMaintenanceDate(new Date().toISOString().slice(0, 10))
+  }
+
   async function handleCreateVehicle() {
     if (!name.trim()) {
       toast.error('Informe o nome do veículo.')
@@ -632,17 +677,7 @@ export function Vehicles() {
         notes: partNotes || undefined,
       })
 
-      setPartName('')
-      setPartCategoryId(expenseCategories[0]?.id ?? '')
-      setPartBrand('')
-      setPartQuantity('1')
-      setPartTotalCost('0')
-      setPartInstalledAt(new Date().toISOString().slice(0, 10))
-      setPartInstalledOdometer('')
-      setPartLifetimeKm('')
-      setPartNextReplacementOdometer('')
-      setPartNotes('')
-      setShowCreatePartOptionalFields(false)
+      resetCreatePartForm()
       setIsCreatePartModalOpen(false)
 
       queryClient.invalidateQueries({ queryKey: ['bankAccounts'] })
@@ -847,8 +882,7 @@ export function Vehicles() {
       })
 
       setIsQuickFuelModalOpen(false)
-      setQuickFuelLiters('')
-      setQuickFuelPricePerLiter('')
+      resetQuickFuelForm()
       queryClient.invalidateQueries({ queryKey: ['vehicles'] })
       queryClient.invalidateQueries({ queryKey: ['vehicles', selectedVehicleId] })
       setInlineFeedback({ status: 'synced', message: 'Abastecimento rápido sincronizado.' })
@@ -887,8 +921,7 @@ export function Vehicles() {
       })
 
       setIsQuickMaintenanceModalOpen(false)
-      setQuickMaintenanceTitle('')
-      setQuickMaintenanceAmount('')
+      resetQuickMaintenanceForm()
       queryClient.invalidateQueries({ queryKey: ['vehicles'] })
       queryClient.invalidateQueries({ queryKey: ['vehicles', selectedVehicleId] })
       setInlineFeedback({ status: 'synced', message: 'Manutenção rápida sincronizada.' })
@@ -1231,9 +1264,25 @@ export function Vehicles() {
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      {vehicle.photoUrl && (
-                        <img src={vehicle.photoUrl} alt={vehicle.name} className="w-9 h-9 rounded-lg object-cover border border-gray-200" />
-                      )}
+                      <div className="relative w-9 h-9 shrink-0">
+                        {vehicle.photoUrl ? (
+                          <img src={vehicle.photoUrl} alt={vehicle.name} className="w-9 h-9 rounded-lg object-cover border border-gray-200" />
+                        ) : (
+                          <div className="w-9 h-9 rounded-lg border border-gray-200 bg-gray-100 flex items-center justify-center text-xs">🚗</div>
+                        )}
+
+                        <span
+                          title={`Saúde: ${getHealthBadgeLabel(vehicle.healthBadge)}`}
+                          className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${
+                            vehicle.healthBadge === 'URGENT'
+                              ? 'bg-rose-500'
+                              : vehicle.healthBadge === 'ATTENTION'
+                                ? 'bg-amber-500'
+                                : 'bg-emerald-500'
+                          }`}
+                        />
+                      </div>
+
                       <strong className="text-gray-800 block truncate">{vehicle.name}</strong>
                     </div>
 
@@ -1312,19 +1361,60 @@ export function Vehicles() {
 
           {selectedVehicle && (
             <>
+              <div className="sticky top-2 z-20 bg-white/95 backdrop-blur border border-gray-200 rounded-xl p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <strong className="text-sm text-gray-900 block truncate">{selectedVehicle.name}</strong>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${getHealthBadgeClassName(selectedVehicle.healthBadge)}`}>
+                        {getHealthBadgeLabel(selectedVehicle.healthBadge)}
+                      </span>
+                      <span className="text-xs text-gray-700">
+                        {selectedVehicle.effectiveCurrentOdometer !== null && selectedVehicle.effectiveCurrentOdometer !== undefined
+                          ? `${selectedVehicle.effectiveCurrentOdometer.toFixed(1)} km`
+                          : 'Sem referência'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsQuickFuelModalOpen(true)
+                        trackVehicleEvent('quick_fuel_started')
+                      }}
+                      className="h-9 px-3 rounded-lg border border-gray-300 text-xs text-gray-700 hover:bg-gray-50"
+                    >
+                      ⛽ Abastecer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsQuickMaintenanceModalOpen(true)
+                        trackVehicleEvent('quick_maintenance_started')
+                      }}
+                      className="h-9 px-3 rounded-lg border border-gray-300 text-xs text-gray-700 hover:bg-gray-50"
+                    >
+                      🛠 Manutenção
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
                 <button
                   type="button"
                   className="lg:hidden w-full flex items-center justify-between text-left"
-                  onClick={() => setMobileOpenSection((state) => (state === 'OVERVIEW' ? 'TIMELINE' : 'OVERVIEW'))}
+                  onClick={() => setMobileOpenSection((state) => (state === 'SUMMARY' ? 'ODOMETER' : 'SUMMARY'))}
                 >
-                  <strong className="text-gray-900">Resumo do veículo</strong>
+                  <strong className="text-gray-900">Resumo</strong>
                   <span className="text-xs text-gray-500">
-                    {mobileOpenSection === 'OVERVIEW' ? 'Ocultar' : 'Mostrar'}
+                    {mobileOpenSection === 'SUMMARY' ? 'Ocultar' : 'Mostrar'}
                   </span>
                 </button>
 
-                <div className={`${mobileOpenSection === 'OVERVIEW' ? 'block' : 'hidden'} lg:block space-y-4`}>
+                <div className={`${mobileOpenSection === 'SUMMARY' ? 'block' : 'hidden'} lg:block space-y-4`}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
                       <button
@@ -1362,40 +1452,6 @@ export function Vehicles() {
                     className="hidden"
                     onChange={handleSelectVehiclePhoto}
                   />
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs text-gray-500">Ações rápidas:</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsQuickFuelModalOpen(true)
-                        trackVehicleEvent('quick_fuel_started')
-                      }}
-                      className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
-                    >
-                      Abastecer
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsQuickMaintenanceModalOpen(true)
-                        trackVehicleEvent('quick_maintenance_started')
-                      }}
-                      className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
-                    >
-                      Manutenção
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsCreatePartModalOpen(true)
-                        trackVehicleEvent('quick_part_started')
-                      }}
-                      className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
-                    >
-                      Peça
-                    </button>
-                  </div>
 
                   {inlineFeedback && (
                     <div className={`rounded-xl px-3 py-2 text-xs border ${
@@ -1456,6 +1512,20 @@ export function Vehicles() {
                     )}
                   </div>
 
+                </div>
+
+                <button
+                  type="button"
+                  className="lg:hidden w-full flex items-center justify-between text-left"
+                  onClick={() => setMobileOpenSection((state) => (state === 'ODOMETER' ? 'METRICS' : 'ODOMETER'))}
+                >
+                  <strong className="text-gray-900">Odômetro</strong>
+                  <span className="text-xs text-gray-500">
+                    {mobileOpenSection === 'ODOMETER' ? 'Ocultar' : 'Mostrar'}
+                  </span>
+                </button>
+
+                <div className={`${mobileOpenSection === 'ODOMETER' ? 'block' : 'hidden'} lg:block space-y-4`}>
                   <div className="rounded-xl border border-teal-200 bg-teal-50 p-4">
                     <span className="text-xs text-teal-700 block">Odômetro consolidado</span>
                     <strong className="text-3xl text-teal-900 tracking-[-1px] block mt-1">
@@ -1519,7 +1589,7 @@ export function Vehicles() {
                       <div className="flex flex-wrap gap-2">
                         <Button
                           type="button"
-                          className="h-8 px-3 rounded-lg w-full sm:w-auto text-sm"
+                          className="h-9 px-3 rounded-lg w-full sm:w-auto text-sm"
                           isLoading={isUpdatingVehicle}
                           onClick={handleUpdateCurrentOdometer}
                         >
@@ -1528,7 +1598,7 @@ export function Vehicles() {
 
                         <Button
                           type="button"
-                          className="h-8 px-3 rounded-lg w-full sm:w-auto text-sm"
+                          className="h-9 px-3 rounded-lg w-full sm:w-auto text-sm"
                           isLoading={isRecalibratingNow}
                           onClick={handleRecalibrateNow}
                         >
@@ -1587,7 +1657,7 @@ export function Vehicles() {
 
                       <Button
                         type="button"
-                        className="h-8 px-3 rounded-lg w-full sm:w-auto text-sm"
+                        className="h-9 px-3 rounded-lg w-full sm:w-auto text-sm"
                         isLoading={isUpdatingVehicle}
                         onClick={handleUpdateAutoOdometerSettings}
                       >
@@ -1595,7 +1665,20 @@ export function Vehicles() {
                       </Button>
                     </div>
                   </div>
+                </div>
 
+                <button
+                  type="button"
+                  className="lg:hidden w-full flex items-center justify-between text-left"
+                  onClick={() => setMobileOpenSection((state) => (state === 'METRICS' ? 'TIMELINE' : 'METRICS'))}
+                >
+                  <strong className="text-gray-900">Métricas</strong>
+                  <span className="text-xs text-gray-500">
+                    {mobileOpenSection === 'METRICS' ? 'Ocultar' : 'Mostrar'}
+                  </span>
+                </button>
+
+                <div className={`${mobileOpenSection === 'METRICS' ? 'block' : 'hidden'} lg:block space-y-2`}>
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                     {isLoadingVehicle ? (
                       Array.from({ length: 5 }).map((_, index) => (
@@ -1606,33 +1689,33 @@ export function Vehicles() {
                       ))
                     ) : (
                       <>
-                        <div className="rounded-xl bg-gray-50 p-3">
-                          <span className="text-xs text-gray-600 block">Consumo médio</span>
-                          <strong className="text-gray-900">
+                        <div className="rounded-xl bg-gray-50 p-3" title="Média de quilômetros por litro dos abastecimentos registrados.">
+                          <span className="text-[11px] text-gray-500 block">Consumo médio</span>
+                          <strong className="text-gray-900 text-lg leading-none mt-1 block">
                             {selectedVehicle.fuelStats?.averageConsumptionKmPerLiter
                               ? `${selectedVehicle.fuelStats.averageConsumptionKmPerLiter.toFixed(2)} km/L`
                               : '-'}
                           </strong>
                         </div>
-                        <div className="rounded-xl bg-gray-50 p-3">
-                          <span className="text-xs text-gray-600 block">Custo por km</span>
-                          <strong className="text-gray-900">
+                        <div className="rounded-xl bg-gray-50 p-3" title="Valor médio gasto por quilômetro rodado.">
+                          <span className="text-[11px] text-gray-500 block">Custo por km</span>
+                          <strong className="text-rose-700 text-lg leading-none mt-1 block font-semibold">
                             {selectedVehicle.fuelStats?.costPerKm ? formatCurrency(selectedVehicle.fuelStats.costPerKm) : '-'}
                           </strong>
                         </div>
-                        <div className="rounded-xl bg-gray-50 p-3">
-                          <span className="text-xs text-gray-600 block">Custo / 1.000 km</span>
-                          <strong className="text-gray-900">
+                        <div className="rounded-xl bg-gray-50 p-3" title="Projeção de gasto para cada 1.000 km.">
+                          <span className="text-[11px] text-gray-500 block">Custo / 1.000 km</span>
+                          <strong className="text-rose-700 text-lg leading-none mt-1 block font-semibold">
                             {selectedVehicle.fuelStats?.costPer1000Km ? formatCurrency(selectedVehicle.fuelStats.costPer1000Km) : '-'}
                           </strong>
                         </div>
-                        <div className="rounded-xl bg-gray-50 p-3">
-                          <span className="text-xs text-gray-600 block">Gasto no mês</span>
-                          <strong className="text-gray-900">{formatCurrency(selectedVehicleMonthlySpent)}</strong>
+                        <div className="rounded-xl bg-gray-50 p-3" title="Somatório de combustível e manutenção no mês atual.">
+                          <span className="text-[11px] text-gray-500 block">Gasto no mês</span>
+                          <strong className="text-rose-700 text-lg leading-none mt-1 block font-semibold">{formatCurrency(selectedVehicleMonthlySpent)}</strong>
                         </div>
                         <div className="rounded-xl bg-gray-50 p-3">
-                          <span className="text-xs text-gray-600 block">Peças cadastradas</span>
-                          <strong className="text-gray-900">{selectedVehicle.parts.length}</strong>
+                          <span className="text-[11px] text-gray-500 block">Peças cadastradas</span>
+                          <strong className="text-gray-900 text-lg leading-none mt-1 block">{selectedVehicle.parts.length}</strong>
                         </div>
                       </>
                     )}
@@ -1644,7 +1727,7 @@ export function Vehicles() {
                 <button
                   type="button"
                   className="lg:hidden w-full flex items-center justify-between text-left"
-                  onClick={() => setMobileOpenSection((state) => (state === 'TIMELINE' ? 'OVERVIEW' : 'TIMELINE'))}
+                  onClick={() => setMobileOpenSection((state) => (state === 'TIMELINE' ? 'SUMMARY' : 'TIMELINE'))}
                 >
                   <strong className="text-gray-900">Timeline unificada</strong>
                   <span className="text-xs text-gray-500">
@@ -1652,9 +1735,17 @@ export function Vehicles() {
                   </span>
                 </button>
 
-                <div className={`${mobileOpenSection === 'TIMELINE' ? 'block' : 'hidden'} lg:block space-y-3`}>
-                  <div className="flex items-center justify-end">
-                    <Button type="button" className="h-8 px-3 rounded-lg text-xs" onClick={() => setIsCreatePartModalOpen(true)}>
+                <div className={`${mobileOpenSection === 'TIMELINE' ? 'block' : 'hidden'} lg:block space-y-4`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsTimelineCompactMode((state) => !state)}
+                      className="h-9 px-3 rounded-lg border border-gray-300 text-xs text-gray-700 hover:bg-gray-50"
+                    >
+                      {isTimelineCompactMode ? 'Modo detalhado' : 'Modo compacto'}
+                    </button>
+
+                    <Button type="button" className="h-9 px-3 rounded-lg text-xs" onClick={() => setIsCreatePartModalOpen(true)}>
                       Cadastrar peça
                     </Button>
                   </div>
@@ -1699,7 +1790,7 @@ export function Vehicles() {
                           Cadastrar primeiro abastecimento
                         </Link>
 
-                        <Button type="button" className="h-8 px-3 rounded-lg text-xs" onClick={() => setIsCreatePartModalOpen(true)}>
+                        <Button type="button" className="h-9 px-3 rounded-lg text-xs" onClick={() => setIsCreatePartModalOpen(true)}>
                           Cadastrar peça
                         </Button>
 
@@ -1749,8 +1840,24 @@ export function Vehicles() {
                           ? item.detail
                           : `${item.detail.slice(0, 60).trimEnd()}...`
 
+                        const isCompactExpanded = !!expandedTimelineItems[item.id]
+                        const shouldShowDetails = !isTimelineCompactMode || isCompactExpanded
+
                         return (
-                          <div key={item.id} className="rounded-xl border border-gray-200 p-3 text-sm">
+                          <div
+                            key={item.id}
+                            className={`rounded-xl border border-gray-200 p-3 text-sm ${isTimelineCompactMode ? 'cursor-pointer hover:bg-gray-50' : ''}`}
+                            onClick={() => {
+                              if (!isTimelineCompactMode) {
+                                return
+                              }
+
+                              setExpandedTimelineItems((state) => ({
+                                ...state,
+                                [item.id]: !isCompactExpanded,
+                              }))
+                            }}
+                          >
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
@@ -1766,44 +1873,72 @@ export function Vehicles() {
                                   </span>
                                 </div>
 
-                                <p className="text-xs text-gray-600 mt-1 break-words">
-                                  {subtitleText}
-                                  {subtitleNeedsExpand && (
-                                    <button
-                                      type="button"
-                                      className="ml-1 text-teal-700 hover:text-teal-800"
-                                      onClick={() => setExpandedTimelineText((state) => ({
-                                        ...state,
-                                        [subtitleKey]: !subtitleExpanded,
-                                      }))}
-                                    >
-                                      {subtitleExpanded ? 'ver menos' : 'ver mais'}
-                                    </button>
-                                  )}
-                                </p>
+                                <div
+                                  className={`overflow-hidden transition-all duration-200 ${
+                                    shouldShowDetails ? 'max-h-52 opacity-100 mt-1' : 'max-h-0 opacity-0'
+                                  }`}
+                                >
+                                    <p className="text-xs text-gray-600 mt-1 break-words">
+                                      {subtitleText}
+                                      {subtitleNeedsExpand && (
+                                        <button
+                                          type="button"
+                                          className="ml-1 text-teal-700 hover:text-teal-800"
+                                          onClick={(event) => {
+                                            event.stopPropagation()
+                                            setExpandedTimelineText((state) => ({
+                                              ...state,
+                                              [subtitleKey]: !subtitleExpanded,
+                                            }))
+                                          }}
+                                        >
+                                          {subtitleExpanded ? 'ver menos' : 'ver mais'}
+                                        </button>
+                                      )}
+                                    </p>
 
-                                <p className="text-xs text-gray-500 mt-1 break-words">
-                                  {detailText}
-                                  {detailNeedsExpand && (
-                                    <button
-                                      type="button"
-                                      className="ml-1 text-teal-700 hover:text-teal-800"
-                                      onClick={() => setExpandedTimelineText((state) => ({
-                                        ...state,
-                                        [detailKey]: !detailExpanded,
-                                      }))}
-                                    >
-                                      {detailExpanded ? 'ver menos' : 'ver mais'}
-                                    </button>
-                                  )}
-                                </p>
+                                    <p className="text-xs text-gray-500 mt-1 break-words">
+                                      {detailText}
+                                      {detailNeedsExpand && (
+                                        <button
+                                          type="button"
+                                          className="ml-1 text-teal-700 hover:text-teal-800"
+                                          onClick={(event) => {
+                                            event.stopPropagation()
+                                            setExpandedTimelineText((state) => ({
+                                              ...state,
+                                              [detailKey]: !detailExpanded,
+                                            }))
+                                          }}
+                                        >
+                                          {detailExpanded ? 'ver menos' : 'ver mais'}
+                                        </button>
+                                      )}
+                                    </p>
+                                </div>
                               </div>
 
                               <div className="text-right shrink-0">
-                                <strong className="text-gray-900 block">{formatCurrency(item.amount)}</strong>
+                                <strong className="text-rose-700 font-semibold block">{formatCurrency(item.amount)}</strong>
                                 <span className="text-xs text-gray-500">{formatDate(item.date)}</span>
                               </div>
                             </div>
+
+                            {isTimelineCompactMode && (
+                              <button
+                                type="button"
+                                className="text-[11px] text-teal-700 hover:text-teal-800 mt-2"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  setExpandedTimelineItems((state) => ({
+                                    ...state,
+                                    [item.id]: !isCompactExpanded,
+                                  }))
+                                }}
+                              >
+                                {isCompactExpanded ? 'recolher' : 'ver detalhes'}
+                              </button>
+                            )}
                           </div>
                         )
                       })
