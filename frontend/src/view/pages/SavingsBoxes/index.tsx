@@ -48,7 +48,12 @@ export function SavingsBoxes() {
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false)
   const [isRecurrenceModalOpen, setIsRecurrenceModalOpen] = useState(false)
   const [isYieldModalOpen, setIsYieldModalOpen] = useState(false)
-  const [isShareModalOpen, setIsShareModalOpen] = useState(false)
+  const [isFriendsModalOpen, setIsFriendsModalOpen] = useState(false)
+  const [createStep, setCreateStep] = useState<1 | 2>(1)
+  const [isAdvancedConfigOpen, setIsAdvancedConfigOpen] = useState(false)
+  const [historyTypeFilter, setHistoryTypeFilter] = useState<'ALL' | 'DEPOSIT' | 'WITHDRAW' | 'YIELD'>('ALL')
+  const [showAllTransactions, setShowAllTransactions] = useState(false)
+  const [isPlanningExpanded, setIsPlanningExpanded] = useState(false)
 
   const [createName, setCreateName] = useState('')
   const [createDescription, setCreateDescription] = useState('')
@@ -131,6 +136,57 @@ export function SavingsBoxes() {
     queryFn: friendshipsService.getReceivedRequests,
   })
 
+  const filteredTransactions = useMemo(() => {
+    if (!details) {
+      return []
+    }
+
+    if (historyTypeFilter === 'ALL') {
+      return details.transactions
+    }
+
+    return details.transactions.filter((transaction) => transaction.type === historyTypeFilter)
+  }, [details, historyTypeFilter])
+
+  const visibleTransactions = showAllTransactions
+    ? filteredTransactions
+    : filteredTransactions.slice(0, 5)
+
+  const planningSummary = useMemo(() => {
+    if (!annualPlanning?.planning.length) {
+      return {
+        totalPlannedContribution: 0,
+        totalPlannedYield: 0,
+        totalProjectedEndOfYear: 0,
+      }
+    }
+
+    return annualPlanning.planning.reduce(
+      (accumulator, plan) => {
+        const planContribution = plan.months.reduce(
+          (total, month) => total + month.plannedContribution,
+          0,
+        )
+
+        const planYield = plan.months.reduce(
+          (total, month) => total + month.plannedYield,
+          0,
+        )
+
+        accumulator.totalPlannedContribution += planContribution
+        accumulator.totalPlannedYield += planYield
+        accumulator.totalProjectedEndOfYear += plan.projectedEndOfYearBalance
+
+        return accumulator
+      },
+      {
+        totalPlannedContribution: 0,
+        totalPlannedYield: 0,
+        totalProjectedEndOfYear: 0,
+      },
+    )
+  }, [annualPlanning])
+
   useEffect(() => {
     if (!details) {
       return
@@ -147,6 +203,10 @@ export function SavingsBoxes() {
     setYieldMode(details.yieldMode ?? '')
     setYieldRate(details.monthlyYieldRate ? String(details.monthlyYieldRate) : '')
   }, [details])
+
+  useEffect(() => {
+    setShowAllTransactions(false)
+  }, [selectedSavingsBoxId, historyTypeFilter])
 
   const { mutateAsync: createSavingsBox, isLoading: isCreating } = useMutation(
     savingsBoxesService.create,
@@ -236,7 +296,7 @@ export function SavingsBoxes() {
         name: createName,
         description: createDescription || undefined,
         initialBalance: currencyStringToNumber(createInitialBalance),
-        targetAmount: createTargetAmount ? Number(createTargetAmount) : undefined,
+        targetAmount: createTargetAmount ? currencyStringToNumber(createTargetAmount) : undefined,
         targetDate: toISODate(createTargetDate),
       })
 
@@ -246,12 +306,18 @@ export function SavingsBoxes() {
       setCreateInitialBalance('')
       setCreateTargetAmount('')
       setCreateTargetDate('')
+      setCreateStep(1)
       setIsCreateModalOpen(false)
       invalidateSavingsBoxesQueries()
-      toast.success('Caixinha criada com sucesso!')
+      toast.success('Caixinha salva.')
     } catch {
       toast.error('Não foi possível criar a caixinha.')
     }
+  }
+
+  function handleOpenEntryModal(type: 'DEPOSIT' | 'WITHDRAW') {
+    setEntryType(type)
+    setIsEntryModalOpen(true)
   }
 
   async function handleCreateEntry() {
@@ -259,7 +325,9 @@ export function SavingsBoxes() {
       return
     }
 
-    if (!entryAmount || Number(entryAmount) <= 0) {
+    const parsedAmount = currencyStringToNumber(entryAmount)
+
+    if (!entryAmount || parsedAmount <= 0) {
       toast.error('Informe um valor válido.')
       return
     }
@@ -268,7 +336,7 @@ export function SavingsBoxes() {
       await createEntry({
         type: entryType,
         savingsBoxId: selectedBox.id,
-        amount: Number(entryAmount),
+        amount: parsedAmount,
         description: entryDescription || undefined,
         date: new Date(`${entryDate}T00:00:00.000Z`).toISOString(),
       })
@@ -277,7 +345,7 @@ export function SavingsBoxes() {
       setEntryDescription('')
       setIsEntryModalOpen(false)
       invalidateSavingsBoxesQueries()
-      toast.success(entryType === 'DEPOSIT' ? 'Aporte realizado!' : 'Resgate realizado!')
+      toast.success(entryType === 'DEPOSIT' ? 'Aporte salvo.' : 'Resgate salvo.')
     } catch {
       toast.error('Não foi possível concluir a movimentação.')
     }
@@ -291,7 +359,7 @@ export function SavingsBoxes() {
     try {
       await setGoal({
         savingsBoxId: selectedBox.id,
-        targetAmount: goalAmount ? Number(goalAmount) : undefined,
+        targetAmount: goalAmount ? currencyStringToNumber(goalAmount) : undefined,
         targetDate: toISODate(goalDate),
         alertEnabled: goalAlertsEnabled,
       })
@@ -314,7 +382,7 @@ export function SavingsBoxes() {
         savingsBoxId: selectedBox.id,
         recurrenceEnabled,
         recurrenceDay: recurrenceDay ? Number(recurrenceDay) : undefined,
-        recurrenceAmount: recurrenceAmount ? Number(recurrenceAmount) : undefined,
+        recurrenceAmount: recurrenceAmount ? currencyStringToNumber(recurrenceAmount) : undefined,
       })
 
       setIsRecurrenceModalOpen(false)
@@ -333,7 +401,7 @@ export function SavingsBoxes() {
     try {
       await runRecurrenceNow(selectedBox.id)
       invalidateSavingsBoxesQueries()
-      toast.success('Execução de recorrência concluída!')
+      toast.success('Aplicação de recorrência concluída!')
     } catch {
       toast.error('Falha na execução da recorrência.')
     }
@@ -348,7 +416,7 @@ export function SavingsBoxes() {
       await setYield({
         savingsBoxId: selectedBox.id,
         yieldMode: yieldMode || undefined,
-        monthlyYieldRate: yieldRate ? Number(yieldRate) : undefined,
+        monthlyYieldRate: yieldRate ? currencyStringToNumber(yieldRate) : undefined,
       })
 
       setIsYieldModalOpen(false)
@@ -366,7 +434,7 @@ export function SavingsBoxes() {
         month: yieldRunMonth - 1,
       })
       invalidateSavingsBoxesQueries()
-      toast.success('Rendimento mensal aplicado!')
+      toast.success('Rendimento do mês aplicado!')
     } catch {
       toast.error('Falha ao aplicar rendimento mensal.')
     }
@@ -415,7 +483,7 @@ export function SavingsBoxes() {
       })
 
       setSelectedFriendUserId('')
-      setIsShareModalOpen(false)
+      setIsFriendsModalOpen(false)
       invalidateSavingsBoxesQueries()
       toast.success('Caixinha compartilhada com sucesso!')
     } catch {
@@ -428,59 +496,113 @@ export function SavingsBoxes() {
       <Modal
         title="Nova Caixinha"
         open={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        onClose={() => {
+          setCreateStep(1)
+          setIsCreateModalOpen(false)
+        }}
       >
         <form
           onSubmit={(event) => {
             event.preventDefault()
+            if (createStep === 1) {
+              setCreateStep(2)
+              return
+            }
+
             handleCreateSavingsBox()
           }}
         >
-          <div>
-            <span className="text-gray-600 tracking-[-0.5px] text-xs">Saldo inicial</span>
-            <div className="flex items-center gap-2">
-              <span className="text-gray-600 tracking-[-0.5px] text-lg">R$</span>
-              <InputCurrency
-                value={createInitialBalance}
-                onChange={(value) => setCreateInitialBalance(value ?? '')}
-                className="text-teal-900"
+          {createStep === 1 && (
+            <div className="space-y-4">
+              <Input
+                name="createName"
+                placeholder="Nome da caixinha"
+                value={createName}
+                onChange={(e) => setCreateName(e.target.value)}
               />
+
+              <div>
+                <span className="text-gray-600 tracking-[-0.5px] text-xs">Saldo inicial</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-600 tracking-[-0.5px] text-lg">R$</span>
+                  <InputCurrency
+                    value={createInitialBalance}
+                    onChange={(value) => setCreateInitialBalance(value ?? '')}
+                    className="text-teal-900"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-gray-100 flex gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="flex-1"
+                  onClick={() => {
+                    setCreateStep(1)
+                    setIsCreateModalOpen(false)
+                  }}
+                >
+                  Cancelar
+                </Button>
+
+                <Button type="submit" className="flex-1">
+                  Continuar
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="mt-10 flex flex-col gap-4">
-            <Input
-              name="createName"
-              placeholder="Nome da caixinha"
-              value={createName}
-              onChange={(e) => setCreateName(e.target.value)}
-            />
-            <Input
-              name="createDescription"
-              placeholder="Descrição (opcional)"
-              value={createDescription}
-              onChange={(e) => setCreateDescription(e.target.value)}
-            />
-            <Input
-              name="createTargetAmount"
-              type="number"
-              step="0.01"
-              placeholder="Meta (opcional)"
-              value={createTargetAmount}
-              onChange={(e) => setCreateTargetAmount(e.target.value)}
-            />
-            <Input
-              name="createTargetDate"
-              type="date"
-              placeholder="Data alvo (opcional)"
-              value={createTargetDate}
-              onChange={(e) => setCreateTargetDate(e.target.value)}
-            />
+          {createStep === 2 && (
+            <div className="space-y-4">
+              <div>
+                <span className="text-gray-600 tracking-[-0.5px] text-xs">Descrição (opcional)</span>
+                <Input
+                  name="createDescription"
+                  placeholder="Ex.: Viagem, reserva, reforma"
+                  value={createDescription}
+                  onChange={(e) => setCreateDescription(e.target.value)}
+                />
+              </div>
 
-            <Button type="submit" className="w-full mt-6" isLoading={isCreating}>
-              Criar
-            </Button>
-          </div>
+              <div>
+                <span className="text-gray-600 tracking-[-0.5px] text-xs">Meta (opcional)</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-600 tracking-[-0.5px] text-lg">R$</span>
+                  <InputCurrency
+                    value={createTargetAmount}
+                    onChange={(value) => setCreateTargetAmount(value ?? '')}
+                    className="text-teal-900"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <span className="text-gray-600 tracking-[-0.5px] text-xs">Data alvo (opcional)</span>
+                <Input
+                  name="createTargetDate"
+                  type="date"
+                  value={createTargetDate}
+                  onChange={(e) => setCreateTargetDate(e.target.value)}
+                />
+              </div>
+
+              <div className="pt-2 border-t border-gray-100 flex gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="flex-1"
+                  onClick={() => setCreateStep(1)}
+                >
+                  Voltar
+                </Button>
+
+                <Button type="submit" className="flex-1" isLoading={isCreating}>
+                  Salvar caixinha
+                </Button>
+              </div>
+            </div>
+          )}
         </form>
       </Modal>
 
@@ -496,24 +618,22 @@ export function SavingsBoxes() {
             handleCreateEntry()
           }}
         >
-          <Select
-            options={[
-              { value: 'DEPOSIT', label: 'Aportar' },
-              { value: 'WITHDRAW', label: 'Resgatar' },
-            ]}
-            value={entryType}
-            onChange={(value) => setEntryType(value as 'DEPOSIT' | 'WITHDRAW')}
-            placeholder="Tipo"
-          />
+          <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-700">
+            Tipo: {entryType === 'DEPOSIT' ? 'Aporte' : 'Resgate'}
+          </div>
 
-          <Input
-            name="entryAmount"
-            type="number"
-            step="0.01"
-            placeholder="Valor"
-            value={entryAmount}
-            onChange={(e) => setEntryAmount(e.target.value)}
-          />
+          <div>
+            <span className="text-gray-600 tracking-[-0.5px] text-xs">Valor</span>
+            <div className="flex items-center gap-2">
+              <span className="text-gray-600 tracking-[-0.5px] text-lg">R$</span>
+              <InputCurrency
+                value={entryAmount}
+                onChange={(value) => setEntryAmount(value ?? '')}
+                className="text-teal-900"
+              />
+            </div>
+          </div>
+
           <Input
             name="entryDate"
             type="date"
@@ -521,15 +641,19 @@ export function SavingsBoxes() {
             value={entryDate}
             onChange={(e) => setEntryDate(e.target.value)}
           />
-          <Input
-            name="entryDescription"
-            placeholder="Descrição (opcional)"
-            value={entryDescription}
-            onChange={(e) => setEntryDescription(e.target.value)}
-          />
+
+          <div>
+            <span className="text-gray-600 tracking-[-0.5px] text-xs">Descrição (opcional)</span>
+            <Input
+              name="entryDescription"
+              placeholder="Detalhe da movimentação"
+              value={entryDescription}
+              onChange={(e) => setEntryDescription(e.target.value)}
+            />
+          </div>
 
           <Button type="submit" className="w-full" isLoading={isCreatingEntry}>
-            Confirmar movimentação
+            {entryType === 'DEPOSIT' ? 'Salvar aporte' : 'Salvar resgate'}
           </Button>
         </form>
       </Modal>
@@ -546,14 +670,18 @@ export function SavingsBoxes() {
             handleSaveGoal()
           }}
         >
-          <Input
-            name="goalAmount"
-            type="number"
-            step="0.01"
-            placeholder="Valor da meta"
-            value={goalAmount}
-            onChange={(e) => setGoalAmount(e.target.value)}
-          />
+          <div>
+            <span className="text-gray-600 tracking-[-0.5px] text-xs">Valor da meta</span>
+            <div className="flex items-center gap-2">
+              <span className="text-gray-600 tracking-[-0.5px] text-lg">R$</span>
+              <InputCurrency
+                value={goalAmount}
+                onChange={(value) => setGoalAmount(value ?? '')}
+                className="text-teal-900"
+              />
+            </div>
+          </div>
+
           <Input
             name="goalDate"
             type="date"
@@ -609,14 +737,18 @@ export function SavingsBoxes() {
             value={recurrenceDay}
             onChange={(e) => setRecurrenceDay(e.target.value)}
           />
-          <Input
-            name="recurrenceAmount"
-            type="number"
-            step="0.01"
-            placeholder="Valor recorrente"
-            value={recurrenceAmount}
-            onChange={(e) => setRecurrenceAmount(e.target.value)}
-          />
+
+          <div>
+            <span className="text-gray-600 tracking-[-0.5px] text-xs">Valor recorrente</span>
+            <div className="flex items-center gap-2">
+              <span className="text-gray-600 tracking-[-0.5px] text-lg">R$</span>
+              <InputCurrency
+                value={recurrenceAmount}
+                onChange={(value) => setRecurrenceAmount(value ?? '')}
+                className="text-teal-900"
+              />
+            </div>
+          </div>
 
           <div className="flex gap-2">
             <Button type="submit" className="flex-1" isLoading={isSavingRecurrence}>
@@ -629,7 +761,7 @@ export function SavingsBoxes() {
               isLoading={isRunningRecurrence}
               onClick={handleRunRecurrenceNow}
             >
-              Executar agora
+              Aplicar agora
             </Button>
           </div>
         </form>
@@ -657,14 +789,21 @@ export function SavingsBoxes() {
             placeholder="Modo de rendimento"
           />
 
-          <Input
-            name="yieldRate"
-            type="number"
-            step="0.01"
-            placeholder="Rendimento mensal"
-            value={yieldRate}
-            onChange={(e) => setYieldRate(e.target.value)}
-          />
+          <div>
+            <span className="text-gray-600 tracking-[-0.5px] text-xs">
+              {yieldMode === 'PERCENT' ? 'Rendimento mensal (%)' : 'Rendimento mensal'}
+            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-gray-600 tracking-[-0.5px] text-lg">
+                {yieldMode === 'PERCENT' ? '%' : 'R$'}
+              </span>
+              <InputCurrency
+                value={yieldRate}
+                onChange={(value) => setYieldRate(value ?? '')}
+                className="text-teal-900"
+              />
+            </div>
+          </div>
 
           <div className="grid grid-cols-2 gap-2">
             <Input
@@ -703,31 +842,95 @@ export function SavingsBoxes() {
       </Modal>
 
       <Modal
-        title="Compartilhar Caixinha"
-        open={isShareModalOpen}
-        onClose={() => setIsShareModalOpen(false)}
+        title="Compartilhar e Amigos"
+        open={isFriendsModalOpen}
+        onClose={() => setIsFriendsModalOpen(false)}
       >
-        <form
-          className="space-y-4"
-          onSubmit={(event) => {
-            event.preventDefault()
-            handleShareWithFriend()
-          }}
-        >
-          <Select
-            placeholder="Escolha um amigo"
-            value={selectedFriendUserId}
-            onChange={setSelectedFriendUserId}
-            options={friends.map((friend) => ({
-              value: friend.userId,
-              label: `${friend.name} (${friend.email})`,
-            }))}
-          />
+        <div className="space-y-4">
+          <div>
+            <span className="text-gray-600 tracking-[-0.5px] text-xs">Convidar amigo por e-mail</span>
+            <div className="mt-1 flex flex-col sm:flex-row gap-2">
+              <Input
+                name="friendEmail"
+                type="email"
+                placeholder="E-mail do amigo"
+                value={friendEmail}
+                onChange={(e) => setFriendEmail(e.target.value)}
+              />
+              <Button
+                type="button"
+                className="h-[52px] px-4 rounded-lg w-full sm:w-auto"
+                isLoading={isSendingFriendRequest}
+                onClick={handleSendFriendRequest}
+              >
+                Enviar
+              </Button>
+            </div>
+          </div>
 
-          <Button type="submit" className="w-full" isLoading={isSharingWithFriend}>
-            Compartilhar
-          </Button>
-        </form>
+          {receivedRequests.length > 0 && (
+            <div className="space-y-2">
+              <span className="text-xs text-gray-600 uppercase tracking-[0.08em]">Pedidos recebidos</span>
+
+              {receivedRequests.map((request) => (
+                <div key={request.id} className="rounded-xl border border-gray-200 p-3 flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm text-gray-800 font-medium">{request.requester.name}</p>
+                    <p className="text-xs text-gray-500">{request.requester.email}</p>
+                  </div>
+                  <Button
+                    type="button"
+                    className="h-9 px-3 rounded-lg text-xs"
+                    isLoading={isAcceptingFriendRequest}
+                    onClick={() => handleAcceptRequest(request.id)}
+                  >
+                    Aceitar
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <span className="text-xs text-gray-600 uppercase tracking-[0.08em]">Meus amigos</span>
+
+            {friends.length === 0 && (
+              <p className="text-sm text-gray-500">Você ainda não tem amigos adicionados.</p>
+            )}
+
+            {friends.map((friend) => (
+              <div key={friend.friendshipId} className="rounded-xl bg-gray-50 border border-gray-200 p-3">
+                <p className="text-sm text-gray-800 font-medium">{friend.name}</p>
+                <p className="text-xs text-gray-500">{friend.email}</p>
+              </div>
+            ))}
+          </div>
+
+          {selectedBox?.isOwner && (
+            <form
+              className="pt-2 border-t border-gray-100 space-y-3"
+              onSubmit={(event) => {
+                event.preventDefault()
+                handleShareWithFriend()
+              }}
+            >
+              <span className="text-gray-600 tracking-[-0.5px] text-xs block">Compartilhar caixinha atual</span>
+              <Select
+                placeholder="Escolha um amigo"
+                value={selectedFriendUserId}
+                onChange={setSelectedFriendUserId}
+                options={friends.map((friend) => ({
+                  value: friend.userId,
+                  label: `${friend.name} (${friend.email})`,
+                }))}
+              />
+
+              <Button type="submit" className="w-full" isLoading={isSharingWithFriend}>
+                Compartilhar caixinha
+              </Button>
+            </form>
+          )}
+        </div>
       </Modal>
 
       <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
@@ -737,8 +940,13 @@ export function SavingsBoxes() {
         </div>
 
         <div className="w-full sm:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-          <Button type="button" className="h-10 px-4 rounded-xl w-full sm:w-auto" onClick={() => setIsCreateModalOpen(true)}>
-            Nova caixinha
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-10 px-4 rounded-xl w-full sm:w-auto"
+            onClick={() => setIsFriendsModalOpen(true)}
+          >
+            Compartilhar e amigos
           </Button>
           <Link
             to="/"
@@ -798,67 +1006,24 @@ export function SavingsBoxes() {
                 )
               })}
             </div>
-          </div>
 
-          <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
-            <strong className="text-gray-900 block">Amigos</strong>
-
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Input
-                name="friendEmail"
-                type="email"
-                placeholder="E-mail do amigo"
-                value={friendEmail}
-                onChange={(e) => setFriendEmail(e.target.value)}
-              />
-              <Button
-                type="button"
-                className="h-[52px] px-4 rounded-lg w-full sm:w-auto"
-                isLoading={isSendingFriendRequest}
-                onClick={handleSendFriendRequest}
-              >
-                Enviar
-              </Button>
-            </div>
-
-            {receivedRequests.length > 0 && (
-              <div className="space-y-2">
-                <span className="text-xs text-gray-600 uppercase tracking-[0.08em]">Pedidos recebidos</span>
-
-                {receivedRequests.map((request) => (
-                  <div key={request.id} className="rounded-xl border border-gray-200 p-3 flex items-center justify-between gap-2">
-                    <div>
-                      <p className="text-sm text-gray-800 font-medium">{request.requester.name}</p>
-                      <p className="text-xs text-gray-500">{request.requester.email}</p>
-                    </div>
-                    <Button
-                      type="button"
-                      className="h-9 px-3 rounded-lg text-xs"
-                      isLoading={isAcceptingFriendRequest}
-                      onClick={() => handleAcceptRequest(request.id)}
-                    >
-                      Aceitar
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <span className="text-xs text-gray-600 uppercase tracking-[0.08em]">Meus amigos</span>
-
-              {friends.length === 0 && (
-                <p className="text-sm text-gray-500">Você ainda não tem amigos adicionados.</p>
-              )}
-
-              {friends.map((friend) => (
-                <div key={friend.friendshipId} className="rounded-xl bg-gray-50 border border-gray-200 p-3">
-                  <p className="text-sm text-gray-800 font-medium">{friend.name}</p>
-                  <p className="text-xs text-gray-500">{friend.email}</p>
+            <button
+              type="button"
+              onClick={() => setIsCreateModalOpen(true)}
+              className="w-full mt-2 rounded-xl border border-gray-200 bg-white px-3 py-3 text-left hover:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <span className="w-7 h-7 rounded-lg border border-gray-300 text-gray-700 flex items-center justify-center text-base font-semibold">
+                  +
+                </span>
+                <div>
+                  <strong className="text-sm text-gray-800 block">Adicionar caixinha</strong>
+                  <span className="text-xs text-gray-500">Cadastro rápido</span>
                 </div>
-              ))}
-            </div>
+              </div>
+            </button>
           </div>
+
         </section>
 
         <section className="space-y-4">
@@ -901,26 +1066,45 @@ export function SavingsBoxes() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-4">
-                  <Button type="button" onClick={() => setIsEntryModalOpen(true)} className="h-10 rounded-xl px-3 text-sm w-full">
-                    Aportar/Resgatar
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4">
+                  <Button type="button" onClick={() => handleOpenEntryModal('DEPOSIT')} className="h-10 rounded-xl px-3 text-sm w-full">
+                    Aportar
+                  </Button>
+                  <Button type="button" variant="ghost" onClick={() => handleOpenEntryModal('WITHDRAW')} className="h-10 rounded-xl px-3 text-sm w-full">
+                    Resgatar
                   </Button>
                   <Button type="button" variant="ghost" onClick={() => setIsGoalModalOpen(true)} className="h-10 rounded-xl px-3 text-sm w-full" disabled={!selectedBox.isOwner}>
                     Meta
                   </Button>
-                  <Button type="button" variant="ghost" onClick={() => setIsRecurrenceModalOpen(true)} className="h-10 rounded-xl px-3 text-sm w-full" disabled={!selectedBox.isOwner}>
-                    Recorrência
-                  </Button>
-                  <Button type="button" variant="ghost" onClick={() => setIsYieldModalOpen(true)} className="h-10 rounded-xl px-3 text-sm w-full" disabled={!selectedBox.isOwner}>
-                    Rendimento
-                  </Button>
                 </div>
 
                 {selectedBox.isOwner && (
-                  <div className="pt-1">
-                    <Button type="button" variant="ghost" className="h-10 rounded-xl px-3 text-sm w-full sm:w-auto" onClick={() => setIsShareModalOpen(true)}>
-                      Compartilhar com amigo
-                    </Button>
+                  <div className="pt-3 border-t border-gray-200 space-y-2">
+                    <button
+                      type="button"
+                      className="text-sm text-teal-700 hover:text-teal-800 underline text-left"
+                      onClick={() => setIsAdvancedConfigOpen((state) => !state)}
+                    >
+                      {isAdvancedConfigOpen ? 'Ocultar configurações avançadas' : 'Mostrar configurações avançadas'}
+                    </button>
+
+                    <div
+                      className={`overflow-hidden transition-all duration-200 ${
+                        isAdvancedConfigOpen ? 'max-h-52 opacity-100' : 'max-h-0 opacity-0'
+                      }`}
+                    >
+                      <div className="pt-1 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <Button type="button" variant="ghost" onClick={() => setIsRecurrenceModalOpen(true)} className="h-10 rounded-xl px-3 text-sm w-full">
+                          Recorrência
+                        </Button>
+                        <Button type="button" variant="ghost" onClick={() => setIsYieldModalOpen(true)} className="h-10 rounded-xl px-3 text-sm w-full">
+                          Rendimento
+                        </Button>
+                        <Button type="button" variant="ghost" className="h-10 rounded-xl px-3 text-sm w-full" onClick={() => setIsFriendsModalOpen(true)}>
+                          Compartilhar e amigos
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -970,12 +1154,34 @@ export function SavingsBoxes() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <div>
                     <span className="text-sm text-gray-700 block mb-2">Movimentações</span>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {[
+                        { value: 'ALL', label: 'Todos' },
+                        { value: 'DEPOSIT', label: 'Aportes' },
+                        { value: 'WITHDRAW', label: 'Resgates' },
+                        { value: 'YIELD', label: 'Rendimentos' },
+                      ].map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setHistoryTypeFilter(option.value as 'ALL' | 'DEPOSIT' | 'WITHDRAW' | 'YIELD')}
+                          className={`px-2.5 py-1 rounded-lg text-xs border transition-colors ${
+                            historyTypeFilter === option.value
+                              ? 'border-teal-300 bg-teal-50 text-teal-900'
+                              : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+
                     <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
-                      {details?.transactions.length === 0 && (
+                      {filteredTransactions.length === 0 && (
                         <p className="text-xs text-gray-500">Sem movimentações recentes.</p>
                       )}
 
-                      {details?.transactions.map((transaction) => (
+                      {visibleTransactions.map((transaction) => (
                         <div key={transaction.id} className="rounded-xl border border-gray-200 p-3 text-sm">
                           <p className="font-medium text-gray-800">{transaction.type === 'DEPOSIT' ? 'Aporte' : transaction.type === 'WITHDRAW' ? 'Resgate' : transaction.type === 'YIELD' ? 'Rendimento' : 'Ajuste'}</p>
                           <p className="text-gray-700">{formatCurrency(transaction.amount)}</p>
@@ -983,6 +1189,16 @@ export function SavingsBoxes() {
                           {transaction.description && <p className="text-gray-600">{transaction.description}</p>}
                         </div>
                       ))}
+
+                      {filteredTransactions.length > 5 && (
+                        <button
+                          type="button"
+                          className="text-xs text-teal-700 hover:text-teal-800 underline"
+                          onClick={() => setShowAllTransactions((state) => !state)}
+                        >
+                          {showAllTransactions ? 'Ver menos' : 'Ver mais'}
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -1010,41 +1226,77 @@ export function SavingsBoxes() {
           <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <strong className="text-gray-900">Planejamento anual</strong>
-              <Input
-                name="planningYear"
-                type="number"
-                placeholder="Ano"
-                value={String(planningYear)}
-                onChange={(e) => setPlanningYear(Number(e.target.value) || new Date().getFullYear())}
-                className="w-full sm:max-w-[140px]"
-              />
+
+              <div className="flex gap-2">
+                <Input
+                  name="planningYear"
+                  type="number"
+                  placeholder="Ano"
+                  value={String(planningYear)}
+                  onChange={(e) => setPlanningYear(Number(e.target.value) || new Date().getFullYear())}
+                  className="w-full sm:max-w-[140px]"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-[52px] px-3 rounded-lg"
+                  onClick={() => setIsPlanningExpanded((state) => !state)}
+                >
+                  {isPlanningExpanded ? 'Ocultar' : 'Ver planejamento'}
+                </Button>
+              </div>
             </div>
 
-            {isLoadingPlanning && <p className="text-sm text-gray-600">Carregando planejamento...</p>}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="rounded-xl bg-gray-50 p-3">
+                <span className="text-xs text-gray-600 block">Aporte previsto no ano</span>
+                <strong className="text-sm text-gray-900">{formatCurrency(planningSummary.totalPlannedContribution)}</strong>
+              </div>
+              <div className="rounded-xl bg-gray-50 p-3">
+                <span className="text-xs text-gray-600 block">Rendimento previsto</span>
+                <strong className="text-sm text-gray-900">{formatCurrency(planningSummary.totalPlannedYield)}</strong>
+              </div>
+              <div className="rounded-xl bg-gray-50 p-3">
+                <span className="text-xs text-gray-600 block">Saldo fim de ano</span>
+                <strong className="text-sm text-gray-900">{formatCurrency(planningSummary.totalProjectedEndOfYear)}</strong>
+              </div>
+            </div>
 
-            {!isLoadingPlanning && annualPlanning?.planning.length === 0 && (
-              <p className="text-sm text-gray-600">Sem caixinhas para planejar neste ano.</p>
+            {!isPlanningExpanded && (
+              <p className="text-sm text-gray-600">
+                Abra o planejamento para ver a grade mensal completa.
+              </p>
             )}
 
-            {!isLoadingPlanning && annualPlanning?.planning.map((plan) => (
-              <div key={plan.savingsBoxId} className="rounded-xl border border-gray-200 p-3 space-y-2">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                  <strong className="text-gray-800">{plan.name}</strong>
-                  <span className="text-sm text-gray-600">Fim do ano: {formatCurrency(plan.projectedEndOfYearBalance)}</span>
-                </div>
+            {isPlanningExpanded && (
+              <>
+                {isLoadingPlanning && <p className="text-sm text-gray-600">Carregando planejamento...</p>}
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                  {plan.months.map((month) => (
-                    <div key={`${plan.savingsBoxId}-${month.month}`} className="rounded-lg bg-gray-50 p-2 text-xs">
-                      <p className="text-gray-600">Mês {month.month + 1}</p>
-                      <p className="text-gray-700">+{formatCurrency(month.plannedContribution)}</p>
-                      <p className="text-gray-700">R {formatCurrency(month.plannedYield)}</p>
-                      <p className="font-medium text-gray-800">{formatCurrency(month.projectedBalance)}</p>
+                {!isLoadingPlanning && annualPlanning?.planning.length === 0 && (
+                  <p className="text-sm text-gray-600">Sem caixinhas para planejar neste ano.</p>
+                )}
+
+                {!isLoadingPlanning && annualPlanning?.planning.map((plan) => (
+                  <div key={plan.savingsBoxId} className="rounded-xl border border-gray-200 p-3 space-y-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <strong className="text-gray-800">{plan.name}</strong>
+                      <span className="text-sm text-gray-600">Fim do ano: {formatCurrency(plan.projectedEndOfYearBalance)}</span>
                     </div>
-                  ))}
-                </div>
-              </div>
-            ))}
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      {plan.months.map((month) => (
+                        <div key={`${plan.savingsBoxId}-${month.month}`} className="rounded-lg bg-gray-50 p-2 text-xs">
+                          <p className="text-gray-600">Mês {month.month + 1}</p>
+                          <p className="text-gray-700">+{formatCurrency(month.plannedContribution)}</p>
+                          <p className="text-gray-700">R {formatCurrency(month.plannedYield)}</p>
+                          <p className="font-medium text-gray-800">{formatCurrency(month.projectedBalance)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         </section>
       </main>

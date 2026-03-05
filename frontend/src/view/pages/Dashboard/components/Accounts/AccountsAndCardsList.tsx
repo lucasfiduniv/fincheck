@@ -129,10 +129,12 @@ export function AccountsAndCardsList({
           </strong>
 
           <Link
-            to="/savings-boxes"
-            className="text-xs text-white/80 hover:text-white transition-colors"
+            to="/savings-boxes?create=1"
+            className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white transition-colors flex items-center justify-center"
+            aria-label="Adicionar caixinha"
+            title="Adicionar caixinha"
           >
-            Ver todas
+            <PlusIcon className="w-4 h-4" />
           </Link>
         </div>
 
