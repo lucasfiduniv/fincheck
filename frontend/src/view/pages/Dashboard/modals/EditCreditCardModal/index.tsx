@@ -1,5 +1,6 @@
 import { Controller } from 'react-hook-form'
 import { Button } from '../../../../components/Button'
+import { ColorsDropdownInput } from '../../../../components/ColorsDropdownInput'
 import { Input } from '../../../../components/Input'
 import { InputCurrency } from '../../../../components/InputCurrency'
 import { Modal } from '../../../../components/Modal'
@@ -63,7 +64,18 @@ export function EditCreditCardModal() {
             <Input type="number" min={1} max={31} placeholder="Vencimento" error={errors.dueDay?.message} {...register('dueDay')} />
           </div>
 
-          <Input type="color" placeholder="Cor" error={errors.color?.message} {...register('color')} />
+          <Controller
+            name="color"
+            control={control}
+            defaultValue=""
+            render={({ field: { onChange, value } }) => (
+              <ColorsDropdownInput
+                error={errors.color?.message}
+                onChange={onChange}
+                value={value}
+              />
+            )}
+          />
 
           <Controller
             control={control}
