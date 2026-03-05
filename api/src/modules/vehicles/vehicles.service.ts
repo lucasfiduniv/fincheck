@@ -10,7 +10,14 @@ import { VehiclePartsRepository } from 'src/shared/database/repositories/vehicle
 import { VehiclesRepository } from 'src/shared/database/repositories/vehicles.repository'
 import { CreateVehiclePartDto } from './dto/create-vehicle-part.dto'
 import { CreateVehicleDto } from './dto/create-vehicle.dto'
+import { CreateVehicleUsageEventDto } from './dto/create-vehicle-usage-event.dto'
 import { UpdateVehicleDto } from './dto/update-vehicle.dto'
+
+type OdometerEvent = {
+  date: Date
+  odometer: number
+  source: 'FUEL' | 'MAINTENANCE' | 'PART'
+}
 
 @Injectable()
 export class VehiclesService {
@@ -187,7 +194,43 @@ export class VehiclesService {
         }
       }
 
-      const effectiveCurrentOdometer = this.calculateEffectiveCurrentOdometer(vehicle)
+      const odometerEvents: OdometerEvent[] = [
+        ...allVehicleRecords.map((record) => ({
+          date: record.date,
+          odometer: record.odometer,
+          source: 'FUEL' as const,
+        })),
+        ...allMaintenances
+          .filter((item) => item.odometer !== null && item.odometer !== undefined)
+          .map((item) => ({
+            date: item.date,
+            odometer: item.odometer as number,
+            source: 'MAINTENANCE' as const,
+          })),
+      ]
+
+      const odometerLearning = this.calculateOdometerLearning(odometerEvents)
+      const effectiveCurrentOdometer = this.calculateEffectiveCurrentOdometer(
+        vehicle,
+        odometerLearning.learnedAverageDailyKm,
+      )
+      const odometerConfidence = this.calculateOdometerConfidence(vehicle.odometerBaseDate)
+
+      const latestRealOdometer = odometerEvents.length > 0
+        ? [...odometerEvents].sort((a, b) => b.date.getTime() - a.date.getTime())[0].odometer
+        : null
+
+      const divergencePercent = this.calculateDivergencePercent(
+        effectiveCurrentOdometer,
+        latestRealOdometer,
+      )
+
+      const recalibrationSuggested = divergencePercent !== null && divergencePercent >= 8
+      const healthBadge = this.calculateVehicleHealthBadge({
+        confidenceLevel: odometerConfidence.level,
+        recalibrationSuggested,
+        daysSinceCalibration: odometerConfidence.daysSinceCalibration,
+      })
 
       return {
         ...vehicle,
@@ -199,6 +242,7 @@ export class VehiclesService {
           averagePricePerLiter: Number(averagePricePerLiter.toFixed(2)),
           averageConsumptionKmPerLiter,
           costPerKm,
+          costPer1000Km: costPerKm !== null ? Number((costPerKm * 1000).toFixed(2)) : null,
           lastOdometer: allVehicleRecords.at(-1)?.odometer ?? null,
         },
         maintenanceStats: {
@@ -206,6 +250,12 @@ export class VehiclesService {
           totalCost: Number(totalMaintenanceCost.toFixed(2)),
           lastMaintenanceDate: allMaintenances.at(-1)?.date ?? null,
         },
+        odometerConfidence,
+        odometerLearning,
+        latestRealOdometer,
+        divergencePercent,
+        recalibrationSuggested,
+        healthBadge,
       }
     })
   }
@@ -362,9 +412,57 @@ export class VehiclesService {
       orderBy: { installedAt: 'desc' },
     })
 
+    const odometerEvents: OdometerEvent[] = [
+      ...mergedRecords.map((record) => ({
+        date: record.createdAt,
+        odometer: record.odometer,
+        source: 'FUEL' as const,
+      })),
+      ...maintenanceRecords
+        .filter((maintenance) => maintenance.odometer !== null && maintenance.odometer !== undefined)
+        .map((maintenance) => ({
+          date: maintenance.date,
+          odometer: maintenance.odometer as number,
+          source: 'MAINTENANCE' as const,
+        })),
+      ...parts
+        .filter((part) => part.installedOdometer !== null && part.installedOdometer !== undefined)
+        .map((part) => ({
+          date: part.installedAt,
+          odometer: part.installedOdometer as number,
+          source: 'PART' as const,
+        })),
+    ]
+
+    const odometerLearning = this.calculateOdometerLearning(odometerEvents)
+    const effectiveCurrentOdometer = this.calculateEffectiveCurrentOdometer(
+      vehicle,
+      odometerLearning.learnedAverageDailyKm,
+    )
+    const odometerConfidence = this.calculateOdometerConfidence(vehicle.odometerBaseDate)
+    const latestRealOdometer = odometerEvents.length > 0
+      ? [...odometerEvents].sort((a, b) => b.date.getTime() - a.date.getTime())[0].odometer
+      : null
+    const divergencePercent = this.calculateDivergencePercent(
+      effectiveCurrentOdometer,
+      latestRealOdometer,
+    )
+    const recalibrationSuggested = divergencePercent !== null && divergencePercent >= 8
+    const healthBadge = this.calculateVehicleHealthBadge({
+      confidenceLevel: odometerConfidence.level,
+      recalibrationSuggested,
+      daysSinceCalibration: odometerConfidence.daysSinceCalibration,
+    })
+
     return {
       ...vehicle,
-      effectiveCurrentOdometer: this.calculateEffectiveCurrentOdometer(vehicle),
+      effectiveCurrentOdometer,
+      odometerConfidence,
+      odometerLearning,
+      latestRealOdometer,
+      divergencePercent,
+      recalibrationSuggested,
+      healthBadge,
       fuelRecords: mergedRecords,
       maintenances: maintenanceRecords,
       parts,
@@ -386,6 +484,22 @@ export class VehiclesService {
 
     if (!vehicle) {
       throw new NotFoundException('Veículo não encontrado.')
+    }
+
+    const historicalOdometerEvents = await this.getVehicleOdometerEvents(userId, vehicleId)
+    const learning = this.calculateOdometerLearning(historicalOdometerEvents)
+    const effectiveBeforeUpdate = this.calculateEffectiveCurrentOdometer(
+      vehicle,
+      learning.learnedAverageDailyKm,
+    )
+
+    if (updateVehicleDto.currentOdometer !== undefined) {
+      this.assertOutlierIfNeeded({
+        previousOdometer: effectiveBeforeUpdate,
+        nextOdometer: updateVehicleDto.currentOdometer,
+        previousReferenceDate: vehicle.odometerBaseDate,
+        confirmOutlier: updateVehicleDto.confirmOutlier,
+      })
     }
 
     const nextData: Prisma.VehicleUncheckedUpdateInput = {
@@ -417,10 +531,44 @@ export class VehiclesService {
       }
     }
 
-    return this.vehiclesRepo.update({
+    if (
+      updateVehicleDto.autoOdometerEnabled === true
+      && updateVehicleDto.averageDailyKm === undefined
+      && learning.learnedAverageDailyKm !== null
+    ) {
+      nextData.averageDailyKm = learning.learnedAverageDailyKm
+    }
+
+    const updatedVehicle = await this.vehiclesRepo.update({
       where: { id: vehicleId },
       data: nextData,
     })
+
+    if (updateVehicleDto.currentOdometer !== undefined) {
+      await this.logAudit(userId, vehicleId, {
+        eventType: 'ODOMETER_UPDATED',
+        previousValue: vehicle.currentOdometer,
+        newValue: updateVehicleDto.currentOdometer,
+        metadata: {
+          effectiveBeforeUpdate,
+          confirmOutlier: !!updateVehicleDto.confirmOutlier,
+        },
+      })
+    }
+
+    if (updateVehicleDto.autoOdometerEnabled !== undefined) {
+      await this.logAudit(userId, vehicleId, {
+        eventType: 'AUTO_ODOMETER_TOGGLED',
+        previousValue: vehicle.autoOdometerEnabled,
+        newValue: updateVehicleDto.autoOdometerEnabled,
+        metadata: {
+          averageDailyKm: nextData.averageDailyKm ?? vehicle.averageDailyKm,
+          learnedAverageDailyKm: learning.learnedAverageDailyKm,
+        },
+      })
+    }
+
+    return updatedVehicle
   }
 
   async createPart(userId: string, vehicleId: string, createVehiclePartDto: CreateVehiclePartDto) {
@@ -474,6 +622,16 @@ export class VehiclesService {
 
     const installedAt = this.toUTCDate(createVehiclePartDto.installedAt)
     const description = `Peça ${createVehiclePartDto.name} - ${vehicle.name}`
+    const effectiveCurrentOdometer = this.calculateEffectiveCurrentOdometer(vehicle)
+
+    if (createVehiclePartDto.installedOdometer !== undefined && createVehiclePartDto.installedOdometer !== null) {
+      this.assertOutlierIfNeeded({
+        previousOdometer: effectiveCurrentOdometer,
+        nextOdometer: createVehiclePartDto.installedOdometer,
+        previousReferenceDate: vehicle.odometerBaseDate,
+        confirmOutlier: createVehiclePartDto.confirmOutlier,
+      })
+    }
 
     return this.prismaService.$transaction(async (prisma) => {
       const createdPart = await prisma.vehiclePart.create({
@@ -506,8 +664,6 @@ export class VehiclesService {
         },
       })
 
-      const effectiveCurrentOdometer = this.calculateEffectiveCurrentOdometer(vehicle)
-
       if (
         createVehiclePartDto.installedOdometer !== undefined
         && createVehiclePartDto.installedOdometer !== null
@@ -527,6 +683,28 @@ export class VehiclesService {
         })
       }
 
+      await this.logAudit(userId, vehicleId, {
+        eventType: 'PART_CREATED',
+        previousValue: null,
+        newValue: createVehiclePartDto.name,
+        metadata: {
+          totalCost: createVehiclePartDto.totalCost,
+          installedOdometer: createVehiclePartDto.installedOdometer,
+        },
+      })
+
+      if (createVehiclePartDto.totalCost >= 1000) {
+        await this.logAudit(userId, vehicleId, {
+          eventType: 'HIGH_COST_RECORDED',
+          previousValue: null,
+          newValue: createVehiclePartDto.totalCost,
+          metadata: {
+            source: 'PART',
+            name: createVehiclePartDto.name,
+          },
+        })
+      }
+
       return createdPart
     })
   }
@@ -538,14 +716,95 @@ export class VehiclesService {
     return new Date(Date.UTC(year, month - 1, day))
   }
 
+  async recalibrateNow(userId: string, vehicleId: string) {
+    const vehicle = await this.vehiclesRepo.findFirst({
+      where: { id: vehicleId, userId },
+      select: {
+        id: true,
+        currentOdometer: true,
+        autoOdometerEnabled: true,
+        averageDailyKm: true,
+        odometerBaseValue: true,
+        odometerBaseDate: true,
+      },
+    })
+
+    if (!vehicle) {
+      throw new NotFoundException('Veículo não encontrado.')
+    }
+
+    const events = await this.getVehicleOdometerEvents(userId, vehicleId)
+    const learning = this.calculateOdometerLearning(events)
+    const effectiveCurrentOdometer = this.calculateEffectiveCurrentOdometer(
+      vehicle,
+      learning.learnedAverageDailyKm,
+    )
+
+    if (effectiveCurrentOdometer === null || effectiveCurrentOdometer === undefined) {
+      throw new BadRequestException('Sem referência de odômetro para recalibrar.')
+    }
+
+    const updated = await this.vehiclesRepo.update({
+      where: { id: vehicleId },
+      data: {
+        currentOdometer: effectiveCurrentOdometer,
+        odometerBaseValue: effectiveCurrentOdometer,
+        odometerBaseDate: new Date(),
+        averageDailyKm: vehicle.averageDailyKm ?? learning.learnedAverageDailyKm ?? undefined,
+      },
+    })
+
+    await this.logAudit(userId, vehicleId, {
+      eventType: 'ODOMETER_RECALIBRATED_NOW',
+      previousValue: vehicle.currentOdometer,
+      newValue: effectiveCurrentOdometer,
+      metadata: {
+        learnedAverageDailyKm: learning.learnedAverageDailyKm,
+      },
+    })
+
+    return updated
+  }
+
+  async trackUsageEvent(userId: string, createVehicleUsageEventDto: CreateVehicleUsageEventDto) {
+    if (createVehicleUsageEventDto.vehicleId) {
+      await this.validateOwnership(userId, createVehicleUsageEventDto.vehicleId)
+    }
+
+    return this.prismaService.vehicleUsageEvent.create({
+      data: {
+        userId,
+        vehicleId: createVehicleUsageEventDto.vehicleId,
+        eventName: createVehicleUsageEventDto.eventName,
+        screen: createVehicleUsageEventDto.screen,
+        metadata: createVehicleUsageEventDto.metadata,
+      },
+    })
+  }
+
+  async findAuditLogs(userId: string, vehicleId: string, limit: number) {
+    await this.validateOwnership(userId, vehicleId)
+
+    return this.prismaService.vehicleAuditLog.findMany({
+      where: {
+        userId,
+        vehicleId,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(Math.max(limit || 20, 1), 100),
+    })
+  }
+
   private calculateEffectiveCurrentOdometer(vehicle: {
     currentOdometer?: number | null
     autoOdometerEnabled?: boolean
     averageDailyKm?: number | null
     odometerBaseValue?: number | null
     odometerBaseDate?: Date | null
-  }) {
-    if (!vehicle.autoOdometerEnabled || !vehicle.averageDailyKm || !vehicle.odometerBaseDate) {
+  }, fallbackAverageDailyKm?: number | null) {
+    const averageDailyKm = vehicle.averageDailyKm ?? fallbackAverageDailyKm ?? null
+
+    if (!vehicle.autoOdometerEnabled || !averageDailyKm || !vehicle.odometerBaseDate) {
       return vehicle.currentOdometer ?? null
     }
 
@@ -558,9 +817,216 @@ export class VehiclesService {
     const now = new Date()
     const elapsedMs = now.getTime() - vehicle.odometerBaseDate.getTime()
     const elapsedDays = Math.max(0, elapsedMs / (1000 * 60 * 60 * 24))
-    const projected = baseValue + (elapsedDays * vehicle.averageDailyKm)
+    const projected = baseValue + (elapsedDays * averageDailyKm)
 
     return Number(projected.toFixed(1))
+  }
+
+  private calculateOdometerLearning(events: OdometerEvent[]) {
+    const ordered = [...events].sort((a, b) => a.date.getTime() - b.date.getTime())
+    let totalPerDay = 0
+    let totalCount = 0
+    let weekdayPerDay = 0
+    let weekdayCount = 0
+    let weekendPerDay = 0
+    let weekendCount = 0
+    let outlierCount = 0
+
+    for (let index = 1; index < ordered.length; index += 1) {
+      const previous = ordered[index - 1]
+      const current = ordered[index]
+      const days = Math.max(1, Math.round((current.date.getTime() - previous.date.getTime()) / (1000 * 60 * 60 * 24)))
+      const delta = current.odometer - previous.odometer
+
+      if (delta <= 0) {
+        continue
+      }
+
+      const perDay = delta / days
+      const isOutlier = (days <= 1 && delta >= 800) || perDay >= 600
+
+      if (isOutlier) {
+        outlierCount += 1
+        continue
+      }
+
+      totalPerDay += perDay
+      totalCount += 1
+
+      const day = current.date.getUTCDay()
+      const isWeekend = day === 0 || day === 6
+
+      if (isWeekend) {
+        weekendPerDay += perDay
+        weekendCount += 1
+      } else {
+        weekdayPerDay += perDay
+        weekdayCount += 1
+      }
+    }
+
+    const learnedAverageDailyKm = totalCount > 0 ? Number((totalPerDay / totalCount).toFixed(1)) : null
+    const learnedWeekdayKm = weekdayCount > 0 ? Number((weekdayPerDay / weekdayCount).toFixed(1)) : null
+    const learnedWeekendKm = weekendCount > 0 ? Number((weekendPerDay / weekendCount).toFixed(1)) : null
+    const weeklyProjectionKm = Number((((learnedWeekdayKm ?? learnedAverageDailyKm ?? 0) * 5) + ((learnedWeekendKm ?? learnedAverageDailyKm ?? 0) * 2)).toFixed(1))
+
+    return {
+      learnedAverageDailyKm,
+      learnedWeekdayKm,
+      learnedWeekendKm,
+      weeklyProjectionKm,
+      outlierCount,
+    }
+  }
+
+  private calculateOdometerConfidence(odometerBaseDate?: Date | null) {
+    if (!odometerBaseDate) {
+      return {
+        level: 'LOW' as const,
+        score: 0.35,
+        daysSinceCalibration: null,
+      }
+    }
+
+    const elapsedDays = Math.max(0, Math.floor((Date.now() - odometerBaseDate.getTime()) / (1000 * 60 * 60 * 24)))
+
+    if (elapsedDays <= 7) {
+      return { level: 'HIGH' as const, score: 0.92, daysSinceCalibration: elapsedDays }
+    }
+
+    if (elapsedDays <= 21) {
+      return { level: 'MEDIUM' as const, score: 0.68, daysSinceCalibration: elapsedDays }
+    }
+
+    return { level: 'LOW' as const, score: 0.4, daysSinceCalibration: elapsedDays }
+  }
+
+  private calculateDivergencePercent(estimated: number | null, real: number | null) {
+    if (estimated === null || estimated === undefined || real === null || real === undefined || real <= 0) {
+      return null
+    }
+
+    return Number((Math.abs(estimated - real) / real * 100).toFixed(2))
+  }
+
+  private calculateVehicleHealthBadge(params: {
+    confidenceLevel: 'HIGH' | 'MEDIUM' | 'LOW'
+    recalibrationSuggested: boolean
+    daysSinceCalibration: number | null
+  }) {
+    if (params.recalibrationSuggested || params.confidenceLevel === 'LOW' || (params.daysSinceCalibration ?? 0) >= 30) {
+      return 'URGENT'
+    }
+
+    if (params.confidenceLevel === 'MEDIUM' || (params.daysSinceCalibration ?? 0) >= 14) {
+      return 'ATTENTION'
+    }
+
+    return 'OK'
+  }
+
+  private assertOutlierIfNeeded(params: {
+    previousOdometer: number | null
+    nextOdometer: number
+    previousReferenceDate?: Date | null
+    confirmOutlier?: boolean
+  }) {
+    if (params.confirmOutlier || params.previousOdometer === null || params.previousOdometer === undefined) {
+      return
+    }
+
+    const delta = params.nextOdometer - params.previousOdometer
+
+    if (delta <= 0) {
+      return
+    }
+
+    const elapsedDays = params.previousReferenceDate
+      ? Math.max(1, Math.round((Date.now() - params.previousReferenceDate.getTime()) / (1000 * 60 * 60 * 24)))
+      : 1
+
+    const perDay = delta / elapsedDays
+
+    if ((elapsedDays <= 1 && delta >= 800) || perDay >= 600) {
+      throw new BadRequestException('Detectamos um salto atípico de odômetro. Confirme o outlier para continuar.')
+    }
+  }
+
+  private async getVehicleOdometerEvents(userId: string, vehicleId: string): Promise<OdometerEvent[]> {
+    const fuelRecords = await this.fuelRecordsRepo.findMany({
+      where: { userId, vehicleId },
+      select: {
+        odometer: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    })
+
+    const maintenanceTransactions = await this.transactionsRepo.findMany({
+      where: {
+        userId,
+        maintenanceVehicleId: vehicleId,
+        maintenanceOdometer: { not: null },
+      },
+      select: {
+        maintenanceOdometer: true,
+        date: true,
+      },
+      orderBy: { date: 'asc' },
+    })
+
+    const maintenancePurchases = await this.creditCardPurchasesRepo.findMany({
+      where: {
+        userId,
+        maintenanceVehicleId: vehicleId,
+        maintenanceOdometer: { not: null },
+      },
+      select: {
+        maintenanceOdometer: true,
+        purchaseDate: true,
+      },
+      orderBy: { purchaseDate: 'asc' },
+    })
+
+    return [
+      ...fuelRecords.map((record) => ({
+        date: record.createdAt,
+        odometer: record.odometer,
+        source: 'FUEL' as const,
+      })),
+      ...maintenanceTransactions.map((transaction) => ({
+        date: transaction.date,
+        odometer: transaction.maintenanceOdometer as number,
+        source: 'MAINTENANCE' as const,
+      })),
+      ...maintenancePurchases.map((purchase) => ({
+        date: purchase.purchaseDate,
+        odometer: purchase.maintenanceOdometer as number,
+        source: 'MAINTENANCE' as const,
+      })),
+    ]
+  }
+
+  private async logAudit(
+    userId: string,
+    vehicleId: string,
+    params: {
+      eventType: string
+      previousValue: unknown
+      newValue: unknown
+      metadata?: Record<string, unknown>
+    },
+  ) {
+    return this.prismaService.vehicleAuditLog.create({
+      data: {
+        userId,
+        vehicleId,
+        eventType: params.eventType,
+        previousValue: params.previousValue === undefined ? null : String(params.previousValue),
+        newValue: params.newValue === undefined ? null : String(params.newValue),
+        metadata: params.metadata ? JSON.stringify(params.metadata) : null,
+      },
+    })
   }
 
   private async validateOwnership(userId: string, vehicleId: string) {

@@ -8,6 +8,7 @@ import { ValidateCategoryOwnershipService } from '../../categories/services/vali
 import { ValidateTransactionOwnershipService } from './validate-transaction-ownership.service'
 import { VehiclesRepository } from 'src/shared/database/repositories/vehicles.repository'
 import { FuelRecordsRepository } from 'src/shared/database/repositories/fuel-records.repository'
+import { PrismaService } from 'src/shared/database/prisma.service'
 import {
   RecurrenceAdjustmentScope,
 } from '../dto/adjust-recurrence-future-values.dto'
@@ -29,6 +30,7 @@ export class TransactionsService {
     private readonly validateTransactionOwnershipService: ValidateTransactionOwnershipService,
     private readonly vehiclesRepo: VehiclesRepository,
     private readonly fuelRecordsRepo: FuelRecordsRepository,
+    private readonly prismaService: PrismaService,
   ) {}
 
   async create(userId: string, createTransactionDto: CreateTransactionDto) {
@@ -201,6 +203,38 @@ export class TransactionsService {
           liters: fuelLiters,
           pricePerLiter: fuelPricePerLiter,
           totalCost: Number((fuelLiters * fuelPricePerLiter).toFixed(2)),
+        },
+      })
+
+      if (value >= 1000) {
+        await this.prismaService.vehicleAuditLog.create({
+          data: {
+            userId,
+            vehicleId: fuelVehicleId,
+            eventType: 'HIGH_COST_RECORDED',
+            previousValue: null,
+            newValue: String(value),
+            metadata: JSON.stringify({
+              source: 'FUEL',
+              transactionId: createdTransaction.id,
+            }),
+          },
+        })
+      }
+    }
+
+    if (hasMaintenanceMetadata && maintenanceVehicleId && value >= 1000) {
+      await this.prismaService.vehicleAuditLog.create({
+        data: {
+          userId,
+          vehicleId: maintenanceVehicleId,
+          eventType: 'HIGH_COST_RECORDED',
+          previousValue: null,
+          newValue: String(value),
+          metadata: JSON.stringify({
+            source: 'MAINTENANCE',
+            transactionId: createdTransactions[0].id,
+          }),
         },
       })
     }

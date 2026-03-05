@@ -27,6 +27,7 @@ export interface CreateVehiclePartParams {
   lifetimeKm?: number
   nextReplacementOdometer?: number
   notes?: string
+  confirmOutlier?: boolean
 }
 
 export interface UpdateVehicleParams {
@@ -40,7 +41,15 @@ export interface UpdateVehicleParams {
   averageDailyKm?: number
   odometerBaseValue?: number
   odometerBaseDate?: string
+  confirmOutlier?: boolean
   fuelType?: 'GASOLINE' | 'ETHANOL' | 'DIESEL' | 'FLEX' | 'ELECTRIC' | 'HYBRID'
+}
+
+export interface TrackVehicleUsageEventParams {
+  vehicleId?: string
+  eventName: string
+  screen?: string
+  metadata?: Record<string, unknown>
 }
 
 export const vehiclesService = {
@@ -70,6 +79,29 @@ export const vehiclesService = {
 
   async createPart({ vehicleId, ...params }: CreateVehiclePartParams) {
     const { data } = await httpClient.post(`/vehicles/${vehicleId}/parts`, params)
+
+    return data
+  },
+
+  async recalibrateNow(vehicleId: string) {
+    const { data } = await httpClient.patch(`/vehicles/${vehicleId}/recalibrate-now`)
+
+    return data
+  },
+
+  async trackUsageEvent(params: TrackVehicleUsageEventParams) {
+    const { data } = await httpClient.post('/vehicles/usage-events', {
+      ...params,
+      metadata: params.metadata ? JSON.stringify(params.metadata) : undefined,
+    })
+
+    return data
+  },
+
+  async getAuditLogs(vehicleId: string, limit = 20) {
+    const { data } = await httpClient.get(`/vehicles/${vehicleId}/audit`, {
+      params: { limit },
+    })
 
     return data
   },

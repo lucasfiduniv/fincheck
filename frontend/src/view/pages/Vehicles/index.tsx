@@ -8,6 +8,7 @@ import { Select } from '../../components/Select'
 import { Modal } from '../../components/Modal'
 import { Spinner } from '../../components/Spinner'
 import { vehiclesService } from '../../../app/services/vehiclesService'
+import { transactionsService } from '../../../app/services/transactionsService'
 import { formatCurrency } from '../../../app/utils/formatCurrency'
 import { toast } from 'react-hot-toast'
 import { useBankAccounts } from '../../../app/hooks/useBankAccounts'
@@ -22,6 +23,14 @@ const fuelTypeOptions = [
   { value: 'HYBRID', label: 'Híbrido' },
 ]
 
+const timelineFilterStoragePrefix = 'fincheck:vehicles:timeline-filter:'
+const compactModeStoragePrefix = 'fincheck:vehicles:compact-mode:'
+
+type InlineFeedbackState = {
+  status: 'saving' | 'synced' | 'error' | 'stale'
+  message: string
+}
+
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString('pt-BR')
 }
@@ -31,6 +40,30 @@ function isCurrentMonth(value: string) {
   const now = new Date()
 
   return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear()
+}
+
+function getHealthBadgeLabel(status?: 'OK' | 'ATTENTION' | 'URGENT') {
+  if (status === 'ATTENTION') {
+    return 'Atenção'
+  }
+
+  if (status === 'URGENT') {
+    return 'Urgente'
+  }
+
+  return 'OK'
+}
+
+function getHealthBadgeClassName(status?: 'OK' | 'ATTENTION' | 'URGENT') {
+  if (status === 'ATTENTION') {
+    return 'bg-amber-100 text-amber-800'
+  }
+
+  if (status === 'URGENT') {
+    return 'bg-rose-100 text-rose-800'
+  }
+
+  return 'bg-emerald-100 text-emerald-800'
 }
 
 function VehicleDetailsSkeleton() {
@@ -80,9 +113,12 @@ export function Vehicles() {
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [isCreatePartModalOpen, setIsCreatePartModalOpen] = useState(false)
+  const [isQuickFuelModalOpen, setIsQuickFuelModalOpen] = useState(false)
+  const [isQuickMaintenanceModalOpen, setIsQuickMaintenanceModalOpen] = useState(false)
   const [showCreateVehicleOptionalFields, setShowCreateVehicleOptionalFields] = useState(false)
   const [showCreatePartOptionalFields, setShowCreatePartOptionalFields] = useState(false)
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null)
+  const [isCompactMode, setIsCompactMode] = useState(false)
 
   const [name, setName] = useState('')
   const [model, setModel] = useState('')
@@ -105,10 +141,29 @@ export function Vehicles() {
   const [currentOdometerInput, setCurrentOdometerInput] = useState('')
   const [autoOdometerEnabledInput, setAutoOdometerEnabledInput] = useState(false)
   const [averageDailyKmInput, setAverageDailyKmInput] = useState('')
+  const [confirmOdometerOutlier, setConfirmOdometerOutlier] = useState(false)
 
-  const [inlineFeedback, setInlineFeedback] = useState<string | null>(null)
+  const [quickFuelBankAccountId, setQuickFuelBankAccountId] = useState('')
+  const [quickFuelCategoryId, setQuickFuelCategoryId] = useState('')
+  const [quickFuelLiters, setQuickFuelLiters] = useState('')
+  const [quickFuelPricePerLiter, setQuickFuelPricePerLiter] = useState('')
+  const [quickFuelOdometer, setQuickFuelOdometer] = useState('')
+  const [quickFuelDate, setQuickFuelDate] = useState(new Date().toISOString().slice(0, 10))
+
+  const [quickMaintenanceBankAccountId, setQuickMaintenanceBankAccountId] = useState('')
+  const [quickMaintenanceCategoryId, setQuickMaintenanceCategoryId] = useState('')
+  const [quickMaintenanceTitle, setQuickMaintenanceTitle] = useState('')
+  const [quickMaintenanceAmount, setQuickMaintenanceAmount] = useState('')
+  const [quickMaintenanceOdometer, setQuickMaintenanceOdometer] = useState('')
+  const [quickMaintenanceDate, setQuickMaintenanceDate] = useState(new Date().toISOString().slice(0, 10))
+
+  const [inlineFeedback, setInlineFeedback] = useState<InlineFeedbackState | null>(null)
   const [timelineFilter, setTimelineFilter] = useState<'ALL' | 'FUEL' | 'MAINTENANCE' | 'PART'>('ALL')
-  const [mobileOpenSection, setMobileOpenSection] = useState<'OVERVIEW' | 'TIMELINE'>('OVERVIEW')
+  const [timelineVisibleCount, setTimelineVisibleCount] = useState(20)
+  const [expandedTimelineText, setExpandedTimelineText] = useState<Record<string, boolean>>({})
+  const [isTimelineCompactMode, setIsTimelineCompactMode] = useState(false)
+  const [expandedTimelineItems, setExpandedTimelineItems] = useState<Record<string, boolean>>({})
+  const [mobileOpenSection, setMobileOpenSection] = useState<'SUMMARY' | 'ODOMETER' | 'METRICS' | 'TIMELINE'>('SUMMARY')
 
   const { data: vehicles = [], isLoading } = useQuery({
     queryKey: ['vehicles'],
@@ -126,7 +181,59 @@ export function Vehicles() {
 
   const { mutateAsync: createVehicle, isLoading: isCreatingVehicle } = useMutation(vehiclesService.create)
   const { mutateAsync: createPart, isLoading: isCreatingPart } = useMutation(vehiclesService.createPart)
-  const { mutateAsync: updateVehicle, isLoading: isUpdatingVehicle } = useMutation(vehiclesService.update)
+  const { mutateAsync: createTransaction, isLoading: isCreatingQuickAction } = useMutation(transactionsService.create)
+  const { mutateAsync: updateVehicle, isLoading: isUpdatingVehicle } = useMutation({
+    mutationFn: vehiclesService.update,
+    onMutate: async (variables) => {
+      if (!variables.vehicleId) {
+        return undefined
+      }
+
+      await queryClient.cancelQueries({ queryKey: ['vehicles', variables.vehicleId] })
+      const previousVehicle = queryClient.getQueryData(['vehicles', variables.vehicleId])
+
+      queryClient.setQueryData(['vehicles', variables.vehicleId], (oldData: any) => {
+        if (!oldData) {
+          return oldData
+        }
+
+        return {
+          ...oldData,
+          ...variables,
+          effectiveCurrentOdometer: variables.currentOdometer ?? oldData.effectiveCurrentOdometer,
+        }
+      })
+
+      queryClient.setQueryData(['vehicles'], (oldData: any) => {
+        if (!Array.isArray(oldData)) {
+          return oldData
+        }
+
+        return oldData.map((vehicle) => (
+          vehicle.id === variables.vehicleId
+            ? {
+              ...vehicle,
+              ...variables,
+              effectiveCurrentOdometer: variables.currentOdometer ?? vehicle.effectiveCurrentOdometer,
+            }
+            : vehicle
+        ))
+      })
+
+      return { previousVehicle }
+    },
+    onError: (_error, variables, context) => {
+      if (context?.previousVehicle && variables.vehicleId) {
+        queryClient.setQueryData(['vehicles', variables.vehicleId], context.previousVehicle)
+      }
+    },
+  })
+  const { mutateAsync: recalibrateNow, isLoading: isRecalibratingNow } = useMutation({
+    mutationFn: vehiclesService.recalibrateNow,
+  })
+  const { mutateAsync: trackUsageEvent } = useMutation({
+    mutationFn: vehiclesService.trackUsageEvent,
+  })
 
   const vehicleDetailsQueries = useQueries({
     queries: vehicles.map((vehicle) => ({
@@ -152,6 +259,11 @@ export function Vehicles() {
     () => categories.filter((category) => category.type === 'EXPENSE'),
     [categories],
   )
+
+  const fuelExpenseCategory = useMemo(() => {
+    const byName = expenseCategories.find((category) => /combust|abastec|gasolina|etanol|diesel/i.test(category.name))
+    return byName ?? expenseCategories[0]
+  }, [expenseCategories])
 
   const monthlySpentByVehicleId = useMemo(() => {
     const map = new Map<string, number>()
@@ -278,6 +390,16 @@ export function Vehicles() {
     return timelineItems.filter((item) => item.type === timelineFilter)
   }, [timelineItems, timelineFilter])
 
+  const visibleTimelineItems = useMemo(
+    () => filteredTimelineItems.slice(0, timelineVisibleCount),
+    [filteredTimelineItems, timelineVisibleCount],
+  )
+
+  const canLoadMoreTimelineItems = visibleTimelineItems.length < filteredTimelineItems.length
+
+  const selectedHealthBadge = selectedVehicle?.healthBadge ?? 'OK'
+  const selectedConfidenceLevel = selectedVehicle?.odometerConfidence?.level ?? 'LOW'
+
   useEffect(() => {
     if (!selectedVehicleId && vehicles.length > 0) {
       setSelectedVehicleId(vehicles[0].id)
@@ -285,16 +407,76 @@ export function Vehicles() {
   }, [selectedVehicleId, vehicles])
 
   useEffect(() => {
+    setExpandedTimelineText({})
+    setExpandedTimelineItems({})
+  }, [selectedVehicleId, timelineFilter])
+
+  useEffect(() => {
+    const userId = selectedVehicle?.userId ?? vehicles[0]?.userId
+
+    if (!userId) {
+      return
+    }
+
+    const savedFilter = localStorage.getItem(`${timelineFilterStoragePrefix}${userId}`)
+    const savedCompactMode = localStorage.getItem(`${compactModeStoragePrefix}${userId}`)
+
+    if (savedFilter === 'ALL' || savedFilter === 'FUEL' || savedFilter === 'MAINTENANCE' || savedFilter === 'PART') {
+      setTimelineFilter(savedFilter)
+    }
+
+    if (savedCompactMode === 'true' || savedCompactMode === 'false') {
+      setIsCompactMode(savedCompactMode === 'true')
+    }
+  }, [selectedVehicle?.userId, vehicles])
+
+  useEffect(() => {
+    const userId = selectedVehicle?.userId ?? vehicles[0]?.userId
+
+    if (!userId) {
+      return
+    }
+
+    localStorage.setItem(`${timelineFilterStoragePrefix}${userId}`, timelineFilter)
+  }, [timelineFilter, selectedVehicle?.userId, vehicles])
+
+  useEffect(() => {
+    const userId = selectedVehicle?.userId ?? vehicles[0]?.userId
+
+    if (!userId) {
+      return
+    }
+
+    localStorage.setItem(`${compactModeStoragePrefix}${userId}`, String(isCompactMode))
+  }, [isCompactMode, selectedVehicle?.userId, vehicles])
+
+  useEffect(() => {
     if (!partBankAccountId && accounts.length > 0) {
       setPartBankAccountId(accounts[0].id)
     }
-  }, [accounts, partBankAccountId])
+
+    if (!quickFuelBankAccountId && accounts.length > 0) {
+      setQuickFuelBankAccountId(accounts[0].id)
+    }
+
+    if (!quickMaintenanceBankAccountId && accounts.length > 0) {
+      setQuickMaintenanceBankAccountId(accounts[0].id)
+    }
+  }, [accounts, partBankAccountId, quickFuelBankAccountId, quickMaintenanceBankAccountId])
 
   useEffect(() => {
     if (!partCategoryId && expenseCategories.length > 0) {
       setPartCategoryId(expenseCategories[0].id)
     }
-  }, [expenseCategories, partCategoryId])
+
+    if (!quickMaintenanceCategoryId && expenseCategories.length > 0) {
+      setQuickMaintenanceCategoryId(expenseCategories[0].id)
+    }
+
+    if (!quickFuelCategoryId && fuelExpenseCategory) {
+      setQuickFuelCategoryId(fuelExpenseCategory.id)
+    }
+  }, [expenseCategories, partCategoryId, quickMaintenanceCategoryId, quickFuelCategoryId, fuelExpenseCategory])
 
   useEffect(() => {
     if (!selectedVehicle) {
@@ -319,10 +501,25 @@ export function Vehicles() {
     if (!partInstalledOdometer && referenceOdometer !== null && referenceOdometer !== undefined) {
       setPartInstalledOdometer(referenceOdometer.toFixed(1))
     }
+
+    setQuickFuelOdometer(
+      referenceOdometer !== null && referenceOdometer !== undefined
+        ? referenceOdometer.toFixed(1)
+        : '',
+    )
+
+    setQuickMaintenanceOdometer(
+      referenceOdometer !== null && referenceOdometer !== undefined
+        ? referenceOdometer.toFixed(1)
+        : '',
+    )
+
+    setConfirmOdometerOutlier(false)
+    setTimelineVisibleCount(20)
   }, [selectedVehicle, partInstalledOdometer])
 
   useEffect(() => {
-    if (!inlineFeedback) {
+    if (!inlineFeedback || inlineFeedback.status === 'saving' || inlineFeedback.status === 'stale') {
       return
     }
 
@@ -333,6 +530,28 @@ export function Vehicles() {
     return () => clearTimeout(timeout)
   }, [inlineFeedback])
 
+  useEffect(() => {
+    if (!selectedVehicle) {
+      return
+    }
+
+    const normalizedCurrent = currentOdometerInput.replace(',', '.').trim()
+    const normalizedAverage = averageDailyKmInput.replace(',', '.').trim()
+
+    const hasCurrentChanged = normalizedCurrent !== (selectedVehicle.currentOdometer?.toFixed(1) ?? '')
+    const hasAutoChanged = autoOdometerEnabledInput !== !!selectedVehicle.autoOdometerEnabled
+    const hasAverageChanged = normalizedAverage !== (selectedVehicle.averageDailyKm?.toFixed(1) ?? '')
+
+    if (hasCurrentChanged || hasAutoChanged || hasAverageChanged) {
+      setInlineFeedback({ status: 'stale', message: 'Alterações pendentes de sincronização.' })
+    }
+  }, [
+    currentOdometerInput,
+    averageDailyKmInput,
+    autoOdometerEnabledInput,
+    selectedVehicle,
+  ])
+
   async function handleCreateVehicle() {
     if (!name.trim()) {
       toast.error('Informe o nome do veículo.')
@@ -340,6 +559,7 @@ export function Vehicles() {
     }
 
     try {
+      setInlineFeedback({ status: 'saving', message: 'Salvando veículo...' })
       const created = await createVehicle({
         name,
         model: model || undefined,
@@ -359,8 +579,10 @@ export function Vehicles() {
       setIsCreateModalOpen(false)
       setSelectedVehicleId(created.id)
       queryClient.invalidateQueries({ queryKey: ['vehicles'] })
+      setInlineFeedback({ status: 'synced', message: 'Veículo sincronizado com sucesso.' })
       toast.success('Veículo cadastrado com sucesso!')
     } catch {
+      setInlineFeedback({ status: 'error', message: 'Erro ao salvar veículo. Tente novamente.' })
       toast.error('Não foi possível cadastrar o veículo.')
     }
   }
@@ -394,6 +616,7 @@ export function Vehicles() {
     }
 
     try {
+      setInlineFeedback({ status: 'saving', message: 'Salvando peça e sincronizando financeiro...' })
       await createPart({
         vehicleId: selectedVehicleId,
         bankAccountId: partBankAccountId,
@@ -427,9 +650,10 @@ export function Vehicles() {
       queryClient.invalidateQueries({ queryKey: ['vehicles', selectedVehicleId] })
       queryClient.invalidateQueries({ queryKey: ['vehicles'] })
 
-      setInlineFeedback('Peça salva e sincronizada no financeiro.')
+      setInlineFeedback({ status: 'synced', message: 'Peça salva e sincronizada no financeiro.' })
       toast.success('Peça cadastrada e vinculada ao financeiro!')
     } catch {
+      setInlineFeedback({ status: 'error', message: 'Erro ao salvar peça.' })
       toast.error('Não foi possível cadastrar a peça.')
     }
   }
@@ -449,6 +673,7 @@ export function Vehicles() {
 
     reader.onload = async () => {
       try {
+        setInlineFeedback({ status: 'saving', message: 'Enviando imagem...' })
         if (typeof reader.result !== 'string') {
           return
         }
@@ -460,9 +685,10 @@ export function Vehicles() {
 
         queryClient.invalidateQueries({ queryKey: ['vehicles'] })
         queryClient.invalidateQueries({ queryKey: ['vehicles', selectedVehicleId] })
-        setInlineFeedback('Dados do veículo sincronizados com sucesso.')
+        setInlineFeedback({ status: 'synced', message: 'Dados do veículo sincronizados com sucesso.' })
         toast.success('Foto do veículo atualizada!')
       } catch {
+        setInlineFeedback({ status: 'error', message: 'Erro ao atualizar foto do veículo.' })
         toast.error('Não foi possível atualizar a foto do veículo.')
       } finally {
         event.target.value = ''
@@ -492,17 +718,25 @@ export function Vehicles() {
     }
 
     try {
+      setInlineFeedback({ status: 'saving', message: 'Salvando odômetro...' })
       await updateVehicle({
         vehicleId: selectedVehicleId,
         currentOdometer: odometer,
+        confirmOutlier: confirmOdometerOutlier,
       })
 
       queryClient.invalidateQueries({ queryKey: ['vehicles'] })
       queryClient.invalidateQueries({ queryKey: ['vehicles', selectedVehicleId] })
       setPartInstalledOdometer(odometer.toFixed(1))
-      setInlineFeedback('Odômetro atualizado e pronto para usar em manutenção/abastecimento.')
+      setConfirmOdometerOutlier(false)
+      setInlineFeedback({ status: 'synced', message: 'Odômetro atualizado e sincronizado.' })
       toast.success('Odômetro atualizado com sucesso!')
-    } catch {
+    } catch (error: any) {
+      if (error?.response?.data?.message?.includes?.('salto atípico')) {
+        setInlineFeedback({ status: 'error', message: 'Outlier detectado. Marque a confirmação para salvar.' })
+      } else {
+        setInlineFeedback({ status: 'error', message: 'Erro ao atualizar odômetro.' })
+      }
       toast.error('Não foi possível atualizar o odômetro.')
     }
   }
@@ -528,6 +762,7 @@ export function Vehicles() {
       }
 
       try {
+        setInlineFeedback({ status: 'saving', message: 'Salvando automação...' })
         await updateVehicle({
           vehicleId: selectedVehicleId,
           autoOdometerEnabled: true,
@@ -536,9 +771,10 @@ export function Vehicles() {
 
         queryClient.invalidateQueries({ queryKey: ['vehicles'] })
         queryClient.invalidateQueries({ queryKey: ['vehicles', selectedVehicleId] })
-        setInlineFeedback('Automação do odômetro ativada e sincronizada.')
+        setInlineFeedback({ status: 'synced', message: 'Automação do odômetro ativada e sincronizada.' })
         toast.success('Automação do odômetro atualizada!')
       } catch {
+        setInlineFeedback({ status: 'error', message: 'Erro ao atualizar automação.' })
         toast.error('Não foi possível atualizar a automação do odômetro.')
       }
 
@@ -546,6 +782,7 @@ export function Vehicles() {
     }
 
     try {
+      setInlineFeedback({ status: 'saving', message: 'Desativando automação...' })
       await updateVehicle({
         vehicleId: selectedVehicleId,
         autoOdometerEnabled: false,
@@ -553,10 +790,124 @@ export function Vehicles() {
 
       queryClient.invalidateQueries({ queryKey: ['vehicles'] })
       queryClient.invalidateQueries({ queryKey: ['vehicles', selectedVehicleId] })
-      setInlineFeedback('Automação do odômetro desativada.')
+      setInlineFeedback({ status: 'synced', message: 'Automação do odômetro desativada.' })
       toast.success('Automação do odômetro desativada!')
     } catch {
+      setInlineFeedback({ status: 'error', message: 'Erro ao desativar automação.' })
       toast.error('Não foi possível atualizar a automação do odômetro.')
+    }
+  }
+
+  async function handleRecalibrateNow() {
+    if (!selectedVehicleId) {
+      return
+    }
+
+    try {
+      setInlineFeedback({ status: 'saving', message: 'Recalibrando odômetro agora...' })
+      await recalibrateNow(selectedVehicleId)
+      queryClient.invalidateQueries({ queryKey: ['vehicles'] })
+      queryClient.invalidateQueries({ queryKey: ['vehicles', selectedVehicleId] })
+      setInlineFeedback({ status: 'synced', message: 'Recalibração concluída e sincronizada.' })
+      toast.success('Odômetro recalibrado com 1 clique!')
+    } catch {
+      setInlineFeedback({ status: 'error', message: 'Erro ao recalibrar odômetro.' })
+      toast.error('Não foi possível recalibrar agora.')
+    }
+  }
+
+  async function handleQuickFuelAction() {
+    if (!selectedVehicleId || !quickFuelBankAccountId || !quickFuelCategoryId) {
+      toast.error('Preencha conta e categoria para abastecimento rápido.')
+      return
+    }
+
+    const liters = Number(quickFuelLiters.replace(',', '.'))
+    const pricePerLiter = Number(quickFuelPricePerLiter.replace(',', '.'))
+    const odometer = Number(quickFuelOdometer.replace(',', '.'))
+
+    if (!liters || !pricePerLiter || !odometer) {
+      toast.error('Preencha litros, preço/L e odômetro.')
+      return
+    }
+
+    try {
+      setInlineFeedback({ status: 'saving', message: 'Registrando abastecimento rápido...' })
+      await createTransaction({
+        bankAccountId: quickFuelBankAccountId,
+        categoryId: quickFuelCategoryId,
+        name: `Abastecimento rápido • ${selectedVehicle?.name ?? 'Veículo'}`,
+        value: Number((liters * pricePerLiter).toFixed(2)),
+        type: 'EXPENSE',
+        date: quickFuelDate,
+        fuelVehicleId: selectedVehicleId,
+        fuelOdometer: odometer,
+        fuelLiters: liters,
+        fuelPricePerLiter: pricePerLiter,
+      })
+
+      setIsQuickFuelModalOpen(false)
+      setQuickFuelLiters('')
+      setQuickFuelPricePerLiter('')
+      queryClient.invalidateQueries({ queryKey: ['vehicles'] })
+      queryClient.invalidateQueries({ queryKey: ['vehicles', selectedVehicleId] })
+      setInlineFeedback({ status: 'synced', message: 'Abastecimento rápido sincronizado.' })
+      toast.success('Abastecimento registrado!')
+    } catch {
+      setInlineFeedback({ status: 'error', message: 'Erro no abastecimento rápido.' })
+      toast.error('Não foi possível registrar abastecimento.')
+    }
+  }
+
+  async function handleQuickMaintenanceAction() {
+    if (!selectedVehicleId || !quickMaintenanceBankAccountId || !quickMaintenanceCategoryId) {
+      toast.error('Preencha conta e categoria para manutenção rápida.')
+      return
+    }
+
+    const amount = Number(quickMaintenanceAmount.replace(',', '.'))
+    const odometer = quickMaintenanceOdometer ? Number(quickMaintenanceOdometer.replace(',', '.')) : undefined
+
+    if (!quickMaintenanceTitle.trim() || !amount || amount <= 0) {
+      toast.error('Preencha título e valor da manutenção.')
+      return
+    }
+
+    try {
+      setInlineFeedback({ status: 'saving', message: 'Registrando manutenção rápida...' })
+      await createTransaction({
+        bankAccountId: quickMaintenanceBankAccountId,
+        categoryId: quickMaintenanceCategoryId,
+        name: quickMaintenanceTitle,
+        value: amount,
+        type: 'EXPENSE',
+        date: quickMaintenanceDate,
+        maintenanceVehicleId: selectedVehicleId,
+        maintenanceOdometer: odometer,
+      })
+
+      setIsQuickMaintenanceModalOpen(false)
+      setQuickMaintenanceTitle('')
+      setQuickMaintenanceAmount('')
+      queryClient.invalidateQueries({ queryKey: ['vehicles'] })
+      queryClient.invalidateQueries({ queryKey: ['vehicles', selectedVehicleId] })
+      setInlineFeedback({ status: 'synced', message: 'Manutenção rápida sincronizada.' })
+      toast.success('Manutenção registrada!')
+    } catch {
+      setInlineFeedback({ status: 'error', message: 'Erro na manutenção rápida.' })
+      toast.error('Não foi possível registrar manutenção.')
+    }
+  }
+
+  async function trackVehicleEvent(eventName: string, metadata?: Record<string, unknown>) {
+    try {
+      await trackUsageEvent({
+        vehicleId: selectedVehicleId ?? undefined,
+        eventName,
+        screen: 'vehicles',
+        metadata,
+      })
+    } catch {
     }
   }
 
@@ -577,7 +928,12 @@ export function Vehicles() {
       <Modal
         title="Novo Veículo"
         open={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        onClose={() => {
+          if (name || model || plate) {
+            trackVehicleEvent('create_vehicle_abandoned', { hasName: !!name, hasModel: !!model, hasPlate: !!plate })
+          }
+          setIsCreateModalOpen(false)
+        }}
       >
         <form
           className="space-y-4"
@@ -652,66 +1008,152 @@ export function Vehicles() {
       <Modal
         title="Nova peça / troca"
         open={isCreatePartModalOpen}
-        onClose={() => setIsCreatePartModalOpen(false)}
+        contentClassName="max-h-[90vh] overflow-hidden"
+        onClose={() => {
+          if (partName || partTotalCost) {
+            trackVehicleEvent('create_part_abandoned', { hasName: !!partName, hasCost: !!partTotalCost })
+          }
+          setIsCreatePartModalOpen(false)
+        }}
       >
         <form
-          className="space-y-3"
+          className="flex h-full max-h-[calc(90vh-180px)] flex-col"
           onSubmit={(event) => {
             event.preventDefault()
             handleCreatePart()
           }}
         >
-          {accounts.length === 0 && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-              Você precisa vincular uma conta antes de cadastrar a peça no financeiro.{' '}
-              <Link to="/" className="underline">Vincular conta</Link>
-            </div>
-          )}
+          <div className="space-y-3 overflow-y-auto pr-1">
+            {accounts.length === 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                Você precisa vincular uma conta antes de cadastrar a peça no financeiro.{' '}
+                <Link to="/" className="underline">Vincular conta</Link>
+              </div>
+            )}
 
+            <Select
+              placeholder="Conta para lançar o custo"
+              value={partBankAccountId}
+              onChange={setPartBankAccountId}
+              options={accounts.map((account) => ({
+                value: account.id,
+                label: account.name,
+              }))}
+            />
+
+            <Input name="partName" placeholder="Nome da peça" value={partName} onChange={(e) => setPartName(e.target.value)} />
+            <Input type="number" step="0.01" name="partTotalCost" placeholder="Custo total" value={partTotalCost} onChange={(e) => setPartTotalCost(e.target.value)} />
+            <Input type="date" name="partInstalledAt" value={partInstalledAt} onChange={(e) => setPartInstalledAt(e.target.value)} />
+
+            <button
+              type="button"
+              className="text-xs text-teal-700 hover:text-teal-800 underline"
+              onClick={() => setShowCreatePartOptionalFields((state) => !state)}
+            >
+              {showCreatePartOptionalFields ? 'Ocultar detalhes opcionais' : 'Mostrar detalhes opcionais'}
+            </button>
+
+            {showCreatePartOptionalFields && (
+              <div className="space-y-3 rounded-xl border border-gray-200 p-3 bg-gray-50">
+                <Select
+                  placeholder="Categoria de despesa"
+                  value={partCategoryId}
+                  onChange={setPartCategoryId}
+                  options={expenseCategories.map((category) => ({
+                    value: category.id,
+                    label: category.name,
+                  }))}
+                />
+
+                <Input name="partBrand" placeholder="Marca (opcional)" value={partBrand} onChange={(e) => setPartBrand(e.target.value)} />
+                <Input type="number" step="0.01" name="partQuantity" placeholder="Quantidade" value={partQuantity} onChange={(e) => setPartQuantity(e.target.value)} />
+                <Input type="number" step="0.1" name="partInstalledOdometer" placeholder="Km da instalação (opcional)" value={partInstalledOdometer} onChange={(e) => setPartInstalledOdometer(e.target.value)} />
+                <Input type="number" step="1" name="partLifetimeKm" placeholder="Vida útil esperada em km (opcional)" value={partLifetimeKm} onChange={(e) => setPartLifetimeKm(e.target.value)} />
+                <Input type="number" step="1" name="partNextReplacementOdometer" placeholder="Próxima troca em km (opcional)" value={partNextReplacementOdometer} onChange={(e) => setPartNextReplacementOdometer(e.target.value)} />
+                <Input name="partNotes" placeholder="Observações (opcional)" value={partNotes} onChange={(e) => setPartNotes(e.target.value)} />
+              </div>
+            )}
+          </div>
+
+          <div className="pt-3 mt-3 border-t border-gray-100">
+            <Button type="submit" className="w-full" isLoading={isCreatingPart}>Salvar peça</Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        title="Abastecimento rápido"
+        open={isQuickFuelModalOpen}
+        onClose={() => {
+          if (quickFuelLiters || quickFuelPricePerLiter) {
+            trackVehicleEvent('quick_fuel_abandoned', { liters: quickFuelLiters, price: quickFuelPricePerLiter })
+          }
+          setIsQuickFuelModalOpen(false)
+        }}
+      >
+        <form
+          className="space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault()
+            handleQuickFuelAction()
+          }}
+        >
           <Select
-            placeholder="Conta para lançar o custo"
-            value={partBankAccountId}
-            onChange={setPartBankAccountId}
-            options={accounts.map((account) => ({
-              value: account.id,
-              label: account.name,
-            }))}
+            placeholder="Conta"
+            value={quickFuelBankAccountId}
+            onChange={setQuickFuelBankAccountId}
+            options={accounts.map((account) => ({ value: account.id, label: account.name }))}
           />
+          <Select
+            placeholder="Categoria"
+            value={quickFuelCategoryId}
+            onChange={setQuickFuelCategoryId}
+            options={expenseCategories.map((category) => ({ value: category.id, label: category.name }))}
+          />
+          <Input type="number" step="0.01" name="quickFuelLiters" placeholder="Litros" value={quickFuelLiters} onChange={(e) => setQuickFuelLiters(e.target.value)} />
+          <Input type="number" step="0.01" name="quickFuelPricePerLiter" placeholder="Preço por litro" value={quickFuelPricePerLiter} onChange={(e) => setQuickFuelPricePerLiter(e.target.value)} />
+          <Input type="number" step="0.1" name="quickFuelOdometer" placeholder="Odômetro" value={quickFuelOdometer} onChange={(e) => setQuickFuelOdometer(e.target.value)} />
+          <Input type="date" name="quickFuelDate" value={quickFuelDate} onChange={(e) => setQuickFuelDate(e.target.value)} />
 
-          <Input name="partName" placeholder="Nome da peça" value={partName} onChange={(e) => setPartName(e.target.value)} />
-          <Input type="number" step="0.01" name="partTotalCost" placeholder="Custo total" value={partTotalCost} onChange={(e) => setPartTotalCost(e.target.value)} />
-          <Input type="date" name="partInstalledAt" value={partInstalledAt} onChange={(e) => setPartInstalledAt(e.target.value)} />
+          <Button type="submit" className="w-full" isLoading={isCreatingQuickAction}>Salvar abastecimento</Button>
+        </form>
+      </Modal>
 
-          <button
-            type="button"
-            className="text-xs text-teal-700 hover:text-teal-800 underline"
-            onClick={() => setShowCreatePartOptionalFields((state) => !state)}
-          >
-            {showCreatePartOptionalFields ? 'Ocultar detalhes opcionais' : 'Mostrar detalhes opcionais'}
-          </button>
+      <Modal
+        title="Manutenção rápida"
+        open={isQuickMaintenanceModalOpen}
+        onClose={() => {
+          if (quickMaintenanceTitle || quickMaintenanceAmount) {
+            trackVehicleEvent('quick_maintenance_abandoned', { title: quickMaintenanceTitle, amount: quickMaintenanceAmount })
+          }
+          setIsQuickMaintenanceModalOpen(false)
+        }}
+      >
+        <form
+          className="space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault()
+            handleQuickMaintenanceAction()
+          }}
+        >
+          <Select
+            placeholder="Conta"
+            value={quickMaintenanceBankAccountId}
+            onChange={setQuickMaintenanceBankAccountId}
+            options={accounts.map((account) => ({ value: account.id, label: account.name }))}
+          />
+          <Select
+            placeholder="Categoria"
+            value={quickMaintenanceCategoryId}
+            onChange={setQuickMaintenanceCategoryId}
+            options={expenseCategories.map((category) => ({ value: category.id, label: category.name }))}
+          />
+          <Input name="quickMaintenanceTitle" placeholder="Título da manutenção" value={quickMaintenanceTitle} onChange={(e) => setQuickMaintenanceTitle(e.target.value)} />
+          <Input type="number" step="0.01" name="quickMaintenanceAmount" placeholder="Valor" value={quickMaintenanceAmount} onChange={(e) => setQuickMaintenanceAmount(e.target.value)} />
+          <Input type="number" step="0.1" name="quickMaintenanceOdometer" placeholder="Odômetro (opcional)" value={quickMaintenanceOdometer} onChange={(e) => setQuickMaintenanceOdometer(e.target.value)} />
+          <Input type="date" name="quickMaintenanceDate" value={quickMaintenanceDate} onChange={(e) => setQuickMaintenanceDate(e.target.value)} />
 
-          {showCreatePartOptionalFields && (
-            <div className="space-y-3 rounded-xl border border-gray-200 p-3 bg-gray-50">
-              <Select
-                placeholder="Categoria de despesa"
-                value={partCategoryId}
-                onChange={setPartCategoryId}
-                options={expenseCategories.map((category) => ({
-                  value: category.id,
-                  label: category.name,
-                }))}
-              />
-
-              <Input name="partBrand" placeholder="Marca (opcional)" value={partBrand} onChange={(e) => setPartBrand(e.target.value)} />
-              <Input type="number" step="0.01" name="partQuantity" placeholder="Quantidade" value={partQuantity} onChange={(e) => setPartQuantity(e.target.value)} />
-              <Input type="number" step="0.1" name="partInstalledOdometer" placeholder="Km da instalação (opcional)" value={partInstalledOdometer} onChange={(e) => setPartInstalledOdometer(e.target.value)} />
-              <Input type="number" step="1" name="partLifetimeKm" placeholder="Vida útil esperada em km (opcional)" value={partLifetimeKm} onChange={(e) => setPartLifetimeKm(e.target.value)} />
-              <Input type="number" step="1" name="partNextReplacementOdometer" placeholder="Próxima troca em km (opcional)" value={partNextReplacementOdometer} onChange={(e) => setPartNextReplacementOdometer(e.target.value)} />
-              <Input name="partNotes" placeholder="Observações (opcional)" value={partNotes} onChange={(e) => setPartNotes(e.target.value)} />
-            </div>
-          )}
-
-          <Button type="submit" className="w-full" isLoading={isCreatingPart}>Salvar peça</Button>
+          <Button type="submit" className="w-full" isLoading={isCreatingQuickAction}>Salvar manutenção</Button>
         </form>
       </Modal>
 
@@ -719,12 +1161,20 @@ export function Vehicles() {
         <div>
           <Logo className="h-6 text-teal-900" />
           <p className="text-sm text-gray-600 mt-2">Controle seus custos de combustível, média e custo por km.</p>
+          {selectedVehicle && (
+            <span className={`inline-flex mt-2 text-[11px] px-2.5 py-1 rounded-full font-semibold ${
+              selectedHealthBadge === 'OK'
+                ? 'bg-emerald-100 text-emerald-800'
+                : selectedHealthBadge === 'ATTENTION'
+                  ? 'bg-amber-100 text-amber-800'
+                  : 'bg-rose-100 text-rose-800'
+            }`}>
+              Saúde: {selectedHealthBadge === 'OK' ? 'OK' : selectedHealthBadge === 'ATTENTION' ? 'Atenção' : 'Urgente'}
+            </span>
+          )}
         </div>
 
         <div className="w-full sm:w-auto flex flex-col sm:flex-row gap-2">
-          <Button type="button" className="h-10 px-4 rounded-xl w-full sm:w-auto" onClick={() => setIsCreateModalOpen(true)}>
-            Novo veículo
-          </Button>
           <Link
             to="/"
             className="text-sm px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors text-center"
@@ -752,7 +1202,20 @@ export function Vehicles() {
           </div>
 
           <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
-            <strong className="text-gray-900">Meus veículos</strong>
+            <div className="flex items-center justify-between gap-2">
+              <strong className="text-gray-900">Meus veículos</strong>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !isCompactMode
+                  setIsCompactMode(next)
+                  trackVehicleEvent('compact_mode_toggled', { enabled: next })
+                }}
+                className="text-[11px] px-2 py-1 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+              >
+                {isCompactMode ? 'Modo completo' : 'Modo compacto'}
+              </button>
+            </div>
 
             {vehicles.length === 0 && (
               <p className="text-sm text-gray-600">Nenhum veículo cadastrado ainda.</p>
@@ -783,7 +1246,7 @@ export function Vehicles() {
 
                   <span className="text-xs text-gray-600 block mt-1">{vehicle.model || 'Sem modelo'}</span>
 
-                  <div className="grid grid-cols-3 gap-2 mt-2">
+                  <div className={`grid ${isCompactMode ? 'grid-cols-2' : 'grid-cols-3'} gap-2 mt-2`}>
                     <div className="rounded-lg bg-white border border-gray-200 px-2 py-1">
                       <span className="text-[10px] text-gray-500 block">R$/km</span>
                       <strong className="text-[11px] text-gray-800">
@@ -800,16 +1263,37 @@ export function Vehicles() {
                       </strong>
                     </div>
 
-                    <div className="rounded-lg bg-white border border-gray-200 px-2 py-1">
-                      <span className="text-[10px] text-gray-500 block">Gasto mês</span>
-                      <strong className="text-[11px] text-gray-800">
-                        {formatCurrency(monthlySpentByVehicleId.get(vehicle.id) ?? 0)}
-                      </strong>
-                    </div>
+                    {!isCompactMode && (
+                      <div className="rounded-lg bg-white border border-gray-200 px-2 py-1">
+                        <span className="text-[10px] text-gray-500 block">Gasto mês</span>
+                        <strong className="text-[11px] text-gray-800">
+                          {formatCurrency(monthlySpentByVehicleId.get(vehicle.id) ?? 0)}
+                        </strong>
+                      </div>
+                    )}
                   </div>
                 </button>
               ))}
             </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setIsCreateModalOpen(true)
+                trackVehicleEvent('create_vehicle_started')
+              }}
+              className="w-full mt-2 rounded-xl border border-gray-200 bg-white px-3 py-3 text-left hover:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <span className="w-7 h-7 rounded-lg border border-gray-300 text-gray-700 flex items-center justify-center text-base font-semibold">
+                  +
+                </span>
+                <div>
+                  <strong className="text-sm text-gray-800 block">Adicionar veículo</strong>
+                  <span className="text-xs text-gray-500">Cadastro rápido</span>
+                </div>
+              </div>
+            </button>
           </div>
         </section>
 
@@ -843,9 +1327,22 @@ export function Vehicles() {
                 <div className={`${mobileOpenSection === 'OVERVIEW' ? 'block' : 'hidden'} lg:block space-y-4`}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
-                      {selectedVehicle.photoUrl && (
-                        <img src={selectedVehicle.photoUrl} alt={selectedVehicle.name} className="w-14 h-14 rounded-xl object-cover border border-gray-200" />
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => photoInputRef.current?.click()}
+                        className="group relative w-14 h-14 rounded-xl overflow-hidden border border-gray-200 bg-gray-100 shrink-0"
+                        title="Editar foto"
+                      >
+                        {selectedVehicle.photoUrl ? (
+                          <img src={selectedVehicle.photoUrl} alt={selectedVehicle.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="w-full h-full flex items-center justify-center text-lg">🚗</span>
+                        )}
+
+                        <span className="absolute inset-0 bg-black/45 text-white text-[10px] font-medium opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          Editar
+                        </span>
+                      </button>
 
                       <div>
                         <strong className="text-xl text-gray-900 block">{selectedVehicle.name}</strong>
@@ -855,43 +1352,134 @@ export function Vehicles() {
                       </div>
                     </div>
 
-                    <Button type="button" className="h-9 px-3 rounded-xl" onClick={() => setIsCreatePartModalOpen(true)}>
-                      Cadastrar peça
-                    </Button>
+                    <div className="w-full sm:w-auto" />
+                  </div>
+
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleSelectVehiclePhoto}
+                  />
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-gray-500">Ações rápidas:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsQuickFuelModalOpen(true)
+                        trackVehicleEvent('quick_fuel_started')
+                      }}
+                      className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                    >
+                      Abastecer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsQuickMaintenanceModalOpen(true)
+                        trackVehicleEvent('quick_maintenance_started')
+                      }}
+                      className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                    >
+                      Manutenção
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCreatePartModalOpen(true)
+                        trackVehicleEvent('quick_part_started')
+                      }}
+                      className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                    >
+                      Peça
+                    </button>
                   </div>
 
                   {inlineFeedback && (
-                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                      {inlineFeedback}
+                    <div className={`rounded-xl px-3 py-2 text-xs border ${
+                      inlineFeedback.status === 'saving'
+                        ? 'border-blue-200 bg-blue-50 text-blue-800'
+                        : inlineFeedback.status === 'synced'
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                          : inlineFeedback.status === 'stale'
+                            ? 'border-amber-200 bg-amber-50 text-amber-800'
+                            : 'border-rose-200 bg-rose-50 text-rose-800'
+                    }`}>
+                      {inlineFeedback.status === 'saving' && 'Salvando • '}
+                      {inlineFeedback.status === 'synced' && 'Sincronizado • '}
+                      {inlineFeedback.status === 'stale' && 'Desatualizado • '}
+                      {inlineFeedback.status === 'error' && 'Erro • '}
+                      {inlineFeedback.message}
                     </div>
                   )}
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="rounded-xl bg-gray-50 p-3">
-                      <span className="text-xs text-gray-600 block">Último abastecimento</span>
-                      <strong className="text-gray-900 block mt-1">
-                        {latestFuelRecord ? formatDate(latestFuelRecord.transaction.date) : 'Sem registro'}
-                      </strong>
-                      {latestFuelRecord && (
-                        <span className="text-xs text-gray-600 block mt-1">
-                          {latestFuelRecord.liters.toFixed(2)} L • {formatCurrency(latestFuelRecord.totalCost)}
-                        </span>
-                      )}
-                    </div>
+                    {isLoadingVehicle ? (
+                      Array.from({ length: 3 }).map((_, index) => (
+                        <div key={`overview-skeleton-${index}`} className="rounded-xl bg-gray-50 p-3 animate-pulse space-y-2">
+                          <div className="h-3 w-24 rounded bg-gray-200" />
+                          <div className="h-4 w-28 rounded bg-gray-200" />
+                          <div className="h-3 w-36 rounded bg-gray-200" />
+                        </div>
+                      ))
+                    ) : (
+                      <>
+                        <div className="rounded-xl bg-gray-50 p-3">
+                          <span className="text-xs text-gray-600 block">Último abastecimento</span>
+                          <strong className="text-gray-900 block mt-1">
+                            {latestFuelRecord ? formatDate(latestFuelRecord.transaction.date) : 'Sem registro'}
+                          </strong>
+                          {latestFuelRecord && (
+                            <span className="text-xs text-gray-600 block mt-1">
+                              {latestFuelRecord.liters.toFixed(2)} L • {formatCurrency(latestFuelRecord.totalCost)}
+                            </span>
+                          )}
+                        </div>
 
-                    <div className="rounded-xl bg-gray-50 p-3">
-                      <span className="text-xs text-gray-600 block">Última manutenção</span>
-                      <strong className="text-gray-900 block mt-1">
-                        {latestMaintenance ? formatDate(latestMaintenance.date) : 'Sem registro'}
-                      </strong>
-                      {latestMaintenance && (
-                        <span className="text-xs text-gray-600 block mt-1 truncate">{latestMaintenance.title}</span>
-                      )}
-                    </div>
+                        <div className="rounded-xl bg-gray-50 p-3">
+                          <span className="text-xs text-gray-600 block">Última manutenção</span>
+                          <strong className="text-gray-900 block mt-1">
+                            {latestMaintenance ? formatDate(latestMaintenance.date) : 'Sem registro'}
+                          </strong>
+                          {latestMaintenance && (
+                            <span className="text-xs text-gray-600 block mt-1 truncate">{latestMaintenance.title}</span>
+                          )}
+                        </div>
 
-                    <div className="rounded-xl bg-gray-50 p-3">
-                      <span className="text-xs text-gray-600 block">Status próxima troca</span>
-                      <strong className="text-gray-900 block mt-1">{nextReplacementStatus}</strong>
+                        <div className="rounded-xl bg-gray-50 p-3">
+                          <span className="text-xs text-gray-600 block">Status próxima troca</span>
+                          <strong className="text-gray-900 block mt-1">{nextReplacementStatus}</strong>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="rounded-xl border border-teal-200 bg-teal-50 p-4">
+                    <span className="text-xs text-teal-700 block">Odômetro consolidado</span>
+                    <strong className="text-3xl text-teal-900 tracking-[-1px] block mt-1">
+                      {selectedVehicle.effectiveCurrentOdometer !== null && selectedVehicle.effectiveCurrentOdometer !== undefined
+                        ? `${selectedVehicle.effectiveCurrentOdometer.toFixed(1)} km`
+                        : 'Sem referência'}
+                    </strong>
+                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                      <span className={`text-[11px] px-2 py-1 rounded-full ${
+                        selectedConfidenceLevel === 'HIGH'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : selectedConfidenceLevel === 'MEDIUM'
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-rose-100 text-rose-800'
+                      }`}>
+                        Nível de confiança: {selectedConfidenceLevel === 'HIGH' ? 'alto' : selectedConfidenceLevel === 'MEDIUM' ? 'médio' : 'baixo'}
+                      </span>
+
+                      {selectedVehicle.odometerConfidence?.daysSinceCalibration !== null
+                        && selectedVehicle.odometerConfidence?.daysSinceCalibration !== undefined && (
+                          <span className="text-[11px] text-teal-800">
+                            Última calibração há {selectedVehicle.odometerConfidence.daysSinceCalibration} dias
+                          </span>
+                      )}
                     </div>
                   </div>
 
@@ -915,18 +1503,38 @@ export function Vehicles() {
                         </span>
                       )}
 
+                      <label className="flex items-center gap-2 text-[11px] text-gray-600">
+                        <input
+                          type="checkbox"
+                          checked={confirmOdometerOutlier}
+                          onChange={(event) => setConfirmOdometerOutlier(event.target.checked)}
+                        />
+                        Confirmar se for outlier (salto atípico)
+                      </label>
+
                       <p className="text-[11px] text-gray-500">
                         Ajuste quando quiser para manter a precisão da referência.
                       </p>
 
-                      <Button
-                        type="button"
-                        className="h-8 px-3 rounded-lg w-full sm:w-auto text-sm"
-                        isLoading={isUpdatingVehicle}
-                        onClick={handleUpdateCurrentOdometer}
-                      >
-                        Salvar odômetro
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          className="h-8 px-3 rounded-lg w-full sm:w-auto text-sm"
+                          isLoading={isUpdatingVehicle}
+                          onClick={handleUpdateCurrentOdometer}
+                        >
+                          Salvar odômetro
+                        </Button>
+
+                        <Button
+                          type="button"
+                          className="h-8 px-3 rounded-lg w-full sm:w-auto text-sm"
+                          isLoading={isRecalibratingNow}
+                          onClick={handleRecalibrateNow}
+                        >
+                          Atualizar agora
+                        </Button>
+                      </div>
                     </div>
 
                     <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
@@ -957,6 +1565,20 @@ export function Vehicles() {
                         O sistema estima automaticamente com base na última calibração.
                       </p>
 
+                      <div className="rounded-lg border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 space-y-1">
+                        <span className="block">Aprendizado automático: {selectedVehicle.odometerLearning?.learnedAverageDailyKm?.toFixed(1) ?? '—'} km/dia</span>
+                        <span className="block">Dia útil: {selectedVehicle.odometerLearning?.learnedWeekdayKm?.toFixed(1) ?? '—'} km/dia</span>
+                        <span className="block">Fim de semana: {selectedVehicle.odometerLearning?.learnedWeekendKm?.toFixed(1) ?? '—'} km/dia</span>
+                        <span className="block">Projeção semanal: {selectedVehicle.odometerLearning?.weeklyProjectionKm?.toFixed(1) ?? '—'} km</span>
+                        <span className="block">Outliers detectados: {selectedVehicle.odometerLearning?.outlierCount ?? 0}</span>
+                      </div>
+
+                      {selectedVehicle.recalibrationSuggested && (
+                        <span className="text-[11px] text-amber-700 block">
+                          Sugestão: recalibrar agora (divergência {selectedVehicle.divergencePercent?.toFixed(1)}%).
+                        </span>
+                      )}
+
                       {selectedVehicle.odometerBaseDate && (
                         <span className="text-[11px] text-gray-500 block">
                           Base: {formatDate(selectedVehicle.odometerBaseDate)}
@@ -974,67 +1596,46 @@ export function Vehicles() {
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-3">
-                    <input
-                      ref={photoInputRef}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleSelectVehiclePhoto}
-                    />
-
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                      <div className="min-w-0">
-                        <strong className="text-sm text-gray-800 block">
-                          {selectedVehicle.photoUrl ? 'Foto do veículo' : 'Adicione a foto do veículo'}
-                        </strong>
-                        <span className="text-xs text-gray-600 block mt-1">
-                          {selectedVehicle.photoUrl
-                            ? 'Você pode trocar a imagem quando quiser.'
-                            : 'Selecione uma imagem para personalizar este veículo.'}
-                        </span>
-                      </div>
-
-                      <Button
-                        type="button"
-                        className="h-9 px-3 rounded-xl w-full sm:w-auto"
-                        isLoading={isUpdatingVehicle}
-                        onClick={() => photoInputRef.current?.click()}
-                      >
-                        {selectedVehicle.photoUrl ? 'Trocar imagem' : 'Selecionar imagem'}
-                      </Button>
-                    </div>
-
-                    {!selectedVehicle.photoUrl && (
-                      <div className="mt-3 h-24 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-xs text-gray-500">
-                        Nenhuma imagem cadastrada
-                      </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                    {isLoadingVehicle ? (
+                      Array.from({ length: 5 }).map((_, index) => (
+                        <div key={`metrics-skeleton-${index}`} className="rounded-xl bg-gray-50 p-3 animate-pulse space-y-2">
+                          <div className="h-3 w-16 rounded bg-gray-200" />
+                          <div className="h-4 w-20 rounded bg-gray-200" />
+                        </div>
+                      ))
+                    ) : (
+                      <>
+                        <div className="rounded-xl bg-gray-50 p-3">
+                          <span className="text-xs text-gray-600 block">Consumo médio</span>
+                          <strong className="text-gray-900">
+                            {selectedVehicle.fuelStats?.averageConsumptionKmPerLiter
+                              ? `${selectedVehicle.fuelStats.averageConsumptionKmPerLiter.toFixed(2)} km/L`
+                              : '-'}
+                          </strong>
+                        </div>
+                        <div className="rounded-xl bg-gray-50 p-3">
+                          <span className="text-xs text-gray-600 block">Custo por km</span>
+                          <strong className="text-gray-900">
+                            {selectedVehicle.fuelStats?.costPerKm ? formatCurrency(selectedVehicle.fuelStats.costPerKm) : '-'}
+                          </strong>
+                        </div>
+                        <div className="rounded-xl bg-gray-50 p-3">
+                          <span className="text-xs text-gray-600 block">Custo / 1.000 km</span>
+                          <strong className="text-gray-900">
+                            {selectedVehicle.fuelStats?.costPer1000Km ? formatCurrency(selectedVehicle.fuelStats.costPer1000Km) : '-'}
+                          </strong>
+                        </div>
+                        <div className="rounded-xl bg-gray-50 p-3">
+                          <span className="text-xs text-gray-600 block">Gasto no mês</span>
+                          <strong className="text-gray-900">{formatCurrency(selectedVehicleMonthlySpent)}</strong>
+                        </div>
+                        <div className="rounded-xl bg-gray-50 p-3">
+                          <span className="text-xs text-gray-600 block">Peças cadastradas</span>
+                          <strong className="text-gray-900">{selectedVehicle.parts.length}</strong>
+                        </div>
+                      </>
                     )}
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div className="rounded-xl bg-gray-50 p-3">
-                      <span className="text-xs text-gray-600 block">Consumo médio</span>
-                      <strong className="text-gray-900">
-                        {selectedVehicle.fuelStats?.averageConsumptionKmPerLiter
-                          ? `${selectedVehicle.fuelStats.averageConsumptionKmPerLiter.toFixed(2)} km/L`
-                          : '-'}
-                      </strong>
-                    </div>
-                    <div className="rounded-xl bg-gray-50 p-3">
-                      <span className="text-xs text-gray-600 block">Custo por km</span>
-                      <strong className="text-gray-900">
-                        {selectedVehicle.fuelStats?.costPerKm ? formatCurrency(selectedVehicle.fuelStats.costPerKm) : '-'}
-                      </strong>
-                    </div>
-                    <div className="rounded-xl bg-gray-50 p-3">
-                      <span className="text-xs text-gray-600 block">Gasto no mês</span>
-                      <strong className="text-gray-900">{formatCurrency(selectedVehicleMonthlySpent)}</strong>
-                    </div>
-                    <div className="rounded-xl bg-gray-50 p-3">
-                      <span className="text-xs text-gray-600 block">Peças cadastradas</span>
-                      <strong className="text-gray-900">{selectedVehicle.parts.length}</strong>
-                    </div>
                   </div>
                 </div>
               </div>
@@ -1052,6 +1653,12 @@ export function Vehicles() {
                 </button>
 
                 <div className={`${mobileOpenSection === 'TIMELINE' ? 'block' : 'hidden'} lg:block space-y-3`}>
+                  <div className="flex items-center justify-end">
+                    <Button type="button" className="h-8 px-3 rounded-lg text-xs" onClick={() => setIsCreatePartModalOpen(true)}>
+                      Cadastrar peça
+                    </Button>
+                  </div>
+
                   <div className="flex flex-wrap items-center gap-2">
                     {[
                       { value: 'ALL' as const, label: 'Tudo' },
@@ -1062,7 +1669,11 @@ export function Vehicles() {
                       <button
                         key={filter.value}
                         type="button"
-                        onClick={() => setTimelineFilter(filter.value)}
+                        onClick={() => {
+                          setTimelineFilter(filter.value)
+                          setTimelineVisibleCount(20)
+                          trackVehicleEvent('timeline_filter_changed', { filter: filter.value })
+                        }}
                         className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
                           timelineFilter === filter.value
                             ? 'bg-teal-900 text-white border-teal-900'
@@ -1076,7 +1687,7 @@ export function Vehicles() {
                     {isLoadingVehicle && <span className="h-3 w-20 rounded bg-gray-200 animate-pulse" />}
                   </div>
 
-                  {filteredTimelineItems.length === 0 && (
+                  {!isLoadingVehicle && filteredTimelineItems.length === 0 && (
                     <div className="rounded-xl border border-dashed border-gray-200 p-4 text-sm text-gray-600 space-y-3">
                       <p>Ainda não há itens para este filtro.</p>
 
@@ -1104,34 +1715,111 @@ export function Vehicles() {
                     </div>
                   )}
 
-                  <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-                    {filteredTimelineItems.map((item) => (
-                      <div key={item.id} className="rounded-xl border border-gray-200 p-3 text-sm">
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <strong className="text-gray-800">{item.title}</strong>
-                              <span className={`text-[10px] px-2 py-0.5 rounded-full ${
-                                item.type === 'FUEL'
-                                  ? 'bg-amber-100 text-amber-800'
-                                  : item.type === 'MAINTENANCE'
-                                    ? 'bg-blue-100 text-blue-800'
-                                    : 'bg-purple-100 text-purple-800'
-                              }`}>
-                                {item.type === 'FUEL' ? 'Abastecimento' : item.type === 'MAINTENANCE' ? 'Manutenção' : 'Peça'}
-                              </span>
-                            </div>
-                            <p className="text-xs text-gray-600 mt-1">{item.subtitle}</p>
-                            <p className="text-xs text-gray-500 mt-1">{item.detail}</p>
-                          </div>
+                  <div
+                    className="space-y-2 max-h-[420px] overflow-y-auto pr-1"
+                    onScroll={(event) => {
+                      const target = event.currentTarget
+                      const isNearBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 40
 
-                          <div className="text-right">
-                            <strong className="text-gray-900 block">{formatCurrency(item.amount)}</strong>
-                            <span className="text-xs text-gray-500">{formatDate(item.date)}</span>
-                          </div>
+                      if (isNearBottom && canLoadMoreTimelineItems) {
+                        setTimelineVisibleCount((current) => current + 20)
+                      }
+                    }}
+                  >
+                    {isLoadingVehicle ? (
+                      Array.from({ length: 4 }).map((_, index) => (
+                        <div key={`timeline-skeleton-${index}`} className="rounded-xl border border-gray-200 p-3 animate-pulse space-y-2">
+                          <div className="h-4 w-2/3 rounded bg-gray-200" />
+                          <div className="h-3 w-1/2 rounded bg-gray-200" />
+                          <div className="h-3 w-1/3 rounded bg-gray-200" />
                         </div>
+                      ))
+                    ) : (
+                      visibleTimelineItems.map((item) => {
+                        const subtitleKey = `${item.id}-subtitle`
+                        const detailKey = `${item.id}-detail`
+                        const subtitleExpanded = !!expandedTimelineText[subtitleKey]
+                        const detailExpanded = !!expandedTimelineText[detailKey]
+                        const subtitleNeedsExpand = item.subtitle.length > 70
+                        const detailNeedsExpand = item.detail.length > 60
+                        const subtitleText = subtitleExpanded || !subtitleNeedsExpand
+                          ? item.subtitle
+                          : `${item.subtitle.slice(0, 70).trimEnd()}...`
+                        const detailText = detailExpanded || !detailNeedsExpand
+                          ? item.detail
+                          : `${item.detail.slice(0, 60).trimEnd()}...`
+
+                        return (
+                          <div key={item.id} className="rounded-xl border border-gray-200 p-3 text-sm">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <strong className="text-gray-800">{item.title}</strong>
+                                  <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                                    item.type === 'FUEL'
+                                      ? 'bg-amber-100 text-amber-800'
+                                      : item.type === 'MAINTENANCE'
+                                        ? 'bg-blue-100 text-blue-800'
+                                        : 'bg-purple-100 text-purple-800'
+                                  }`}>
+                                    {item.type === 'FUEL' ? 'Abastecimento' : item.type === 'MAINTENANCE' ? 'Manutenção' : 'Peça'}
+                                  </span>
+                                </div>
+
+                                <p className="text-xs text-gray-600 mt-1 break-words">
+                                  {subtitleText}
+                                  {subtitleNeedsExpand && (
+                                    <button
+                                      type="button"
+                                      className="ml-1 text-teal-700 hover:text-teal-800"
+                                      onClick={() => setExpandedTimelineText((state) => ({
+                                        ...state,
+                                        [subtitleKey]: !subtitleExpanded,
+                                      }))}
+                                    >
+                                      {subtitleExpanded ? 'ver menos' : 'ver mais'}
+                                    </button>
+                                  )}
+                                </p>
+
+                                <p className="text-xs text-gray-500 mt-1 break-words">
+                                  {detailText}
+                                  {detailNeedsExpand && (
+                                    <button
+                                      type="button"
+                                      className="ml-1 text-teal-700 hover:text-teal-800"
+                                      onClick={() => setExpandedTimelineText((state) => ({
+                                        ...state,
+                                        [detailKey]: !detailExpanded,
+                                      }))}
+                                    >
+                                      {detailExpanded ? 'ver menos' : 'ver mais'}
+                                    </button>
+                                  )}
+                                </p>
+                              </div>
+
+                              <div className="text-right shrink-0">
+                                <strong className="text-gray-900 block">{formatCurrency(item.amount)}</strong>
+                                <span className="text-xs text-gray-500">{formatDate(item.date)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })
+                    )}
+
+                    {canLoadMoreTimelineItems && (
+                      <div className="pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setTimelineVisibleCount((current) => current + 20)}
+                          className="w-full text-xs px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                        >
+                          Carregar mais eventos
+                        </button>
                       </div>
-                    ))}
+                    )}
                   </div>
                 </div>
               </div>

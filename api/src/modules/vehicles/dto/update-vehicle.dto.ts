@@ -47,4 +47,8 @@ export class UpdateVehicleDto {
   @IsOptional()
   @IsDateString()
     odometerBaseDate?: string
+
+  @IsOptional()
+  @IsBoolean()
+    confirmOutlier?: boolean
 }

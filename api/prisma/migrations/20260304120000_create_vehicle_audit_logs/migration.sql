@@ -1,0 +1,4 @@
+-- no-op migration
+-- This migration entry is kept only to preserve production migration history consistency.
+-- The actual creation of vehicle_audit_logs and vehicle_usage_events happens in:
+-- 20260304120000_add_vehicle_audit_and_usage_events

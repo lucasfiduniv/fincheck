@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsDateString,
   IsNotEmpty,
   IsNumber,
@@ -55,4 +56,8 @@ export class CreateVehiclePartDto {
   @IsOptional()
   @IsString()
     notes?: string
+
+  @IsOptional()
+  @IsBoolean()
+    confirmOutlier?: boolean
 }

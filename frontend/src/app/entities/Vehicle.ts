@@ -7,7 +7,22 @@ export interface VehicleFuelStats {
   averagePricePerLiter: number
   averageConsumptionKmPerLiter: number | null
   costPerKm: number | null
+  costPer1000Km?: number | null
   lastOdometer: number | null
+}
+
+export interface OdometerConfidence {
+  level: 'HIGH' | 'MEDIUM' | 'LOW'
+  score: number
+  daysSinceCalibration: number | null
+}
+
+export interface OdometerLearning {
+  learnedAverageDailyKm: number | null
+  learnedWeekdayKm: number | null
+  learnedWeekendKm: number | null
+  weeklyProjectionKm: number
+  outlierCount: number
 }
 
 export interface VehicleMaintenanceStats {
@@ -29,6 +44,12 @@ export interface Vehicle {
   averageDailyKm?: number | null
   odometerBaseValue?: number | null
   odometerBaseDate?: string | null
+  latestRealOdometer?: number | null
+  divergencePercent?: number | null
+  recalibrationSuggested?: boolean
+  healthBadge?: 'OK' | 'ATTENTION' | 'URGENT'
+  odometerConfidence?: OdometerConfidence
+  odometerLearning?: OdometerLearning
   fuelType: FuelType
   createdAt: string
   updatedAt: string

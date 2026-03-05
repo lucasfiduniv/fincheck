@@ -41,6 +41,8 @@ model User {
   vehicles Vehicle[]
   fuelRecords FuelRecord[]
   vehicleParts VehiclePart[]
+  vehicleAuditLogs VehicleAuditLog[]
+  vehicleUsageEvents VehicleUsageEvent[]
 
   @@map("users")
 }
@@ -460,9 +462,45 @@ model Vehicle {
   maintenanceTransactions Transaction[] @relation("VehicleMaintenanceTransactions")
   maintenancePurchases CreditCardPurchase[] @relation("VehicleMaintenancePurchases")
   parts VehiclePart[]
+  auditLogs VehicleAuditLog[]
+  usageEvents VehicleUsageEvent[]
 
   @@index([userId, createdAt])
   @@map("vehicles")
+}
+
+model VehicleAuditLog {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  vehicleId String @map("vehicle_id") @db.Uuid
+  eventType String @map("event_type")
+  previousValue String? @map("previous_value")
+  newValue String? @map("new_value")
+  metadata String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([userId, vehicleId, createdAt])
+  @@map("vehicle_audit_logs")
+}
+
+model VehicleUsageEvent {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  vehicleId String? @map("vehicle_id") @db.Uuid
+  eventName String @map("event_name")
+  screen String?
+  metadata String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicle Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([vehicleId, createdAt])
+  @@map("vehicle_usage_events")
 }
 
 model VehiclePart {
