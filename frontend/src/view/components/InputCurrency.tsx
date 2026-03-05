@@ -6,13 +6,16 @@ interface InputCurrencyProps {
   error?: string
   value?: string | number
   defaultValue?: string | number
+  placeholder?: string
   className?: string
   onChange(value?: string): void
 }
 
 export function InputCurrency({
-  error, value, onChange, className, defaultValue
+  error, value, onChange, className, defaultValue, placeholder = '0,00'
 }: InputCurrencyProps) {
+  const isEmpty = value === undefined || value === null || String(value).trim() === ''
+
   return (
     <div className={cn(
       error && 'relative top-4'
@@ -23,9 +26,11 @@ export function InputCurrency({
         decimalScale={2}
         value={value}
         defaultValue={defaultValue}
+        placeholder={placeholder}
         onValueChange={(value) => onChange(value)}
         className={cn(
-          'w-full text-gray-800 text-[32px] font-bold tracking-[-1px] outline-none',
+          'w-full text-[32px] font-bold tracking-[-1px] outline-none placeholder:text-gray-400',
+          isEmpty ? 'text-gray-500' : 'text-gray-800',
           error && 'text-red-900',
           className
         )}
