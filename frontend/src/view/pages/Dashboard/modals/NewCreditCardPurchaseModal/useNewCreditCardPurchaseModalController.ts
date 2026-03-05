@@ -86,7 +86,7 @@ export function useNewCreditCardPurchaseModalController() {
       purchaseDate: new Date(),
       installmentCount: 1,
       categoryId: 'NONE',
-      amount: '0',
+      amount: '',
       fuelVehicleId: '',
     },
   })

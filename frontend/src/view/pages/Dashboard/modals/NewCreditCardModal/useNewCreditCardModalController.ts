@@ -37,7 +37,7 @@ export function useNewCreditCardModalController() {
       color: '#115E59',
       closingDay: 10,
       dueDay: 17,
-      creditLimit: '0',
+      creditLimit: '',
     },
   })
 

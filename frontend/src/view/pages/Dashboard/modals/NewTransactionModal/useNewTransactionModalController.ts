@@ -194,7 +194,7 @@ export function useNewTransactionModalController() {
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      value: '0',
+      value: '',
       date: new Date(),
       repeatType: 'ONCE',
       dueDay: new Date().getDate(),
@@ -265,7 +265,7 @@ export function useNewTransactionModalController() {
       )
       closeNewTransactionModal()
       reset({
-        value: '0',
+        value: '',
         date: new Date(),
         repeatType: 'ONCE',
         bankAccountId: transactionPresetBankAccountId ?? '',

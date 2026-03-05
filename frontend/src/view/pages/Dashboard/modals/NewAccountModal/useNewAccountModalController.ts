@@ -31,7 +31,7 @@ export function useNewAccountModalController() {
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      initialBalance: '0'
+      initialBalance: ''
     }
   })
 

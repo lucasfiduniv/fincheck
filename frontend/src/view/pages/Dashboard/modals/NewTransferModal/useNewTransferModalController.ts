@@ -38,7 +38,7 @@ export function useNewTransferModalController() {
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      value: '0',
+      value: '',
       date: new Date(),
       description: 'Transferência entre contas',
     },
@@ -62,7 +62,7 @@ export function useNewTransferModalController() {
       toast.success('Transferência realizada com sucesso!')
       closeNewTransferModal()
       reset({
-        value: '0',
+        value: '',
         date: new Date(),
         description: 'Transferência entre contas',
         fromBankAccountId: '',

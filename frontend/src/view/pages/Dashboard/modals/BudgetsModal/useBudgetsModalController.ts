@@ -57,7 +57,7 @@ export function useBudgetsModalController({
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      limit: '0',
+      limit: '',
       categoryId: '',
       carryOverEnabled: false,
     },
@@ -118,7 +118,7 @@ export function useBudgetsModalController({
       setMode('list')
       reset({
         categoryId: '',
-        limit: '0',
+        limit: '',
         carryOverEnabled: false,
       })
     } catch {
@@ -131,7 +131,7 @@ export function useBudgetsModalController({
     setMode('form')
     reset({
       categoryId: '',
-      limit: '0',
+      limit: '',
       carryOverEnabled: false,
     })
   }
@@ -141,7 +141,7 @@ export function useBudgetsModalController({
     setMode('list')
     reset({
       categoryId: '',
-      limit: '0',
+      limit: '',
       carryOverEnabled: false,
     })
   }

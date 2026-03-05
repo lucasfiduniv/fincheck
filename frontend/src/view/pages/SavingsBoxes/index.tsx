@@ -52,7 +52,7 @@ export function SavingsBoxes() {
 
   const [createName, setCreateName] = useState('')
   const [createDescription, setCreateDescription] = useState('')
-  const [createInitialBalance, setCreateInitialBalance] = useState('0')
+  const [createInitialBalance, setCreateInitialBalance] = useState('')
   const [createTargetAmount, setCreateTargetAmount] = useState('')
   const [createTargetDate, setCreateTargetDate] = useState('')
 
@@ -243,7 +243,7 @@ export function SavingsBoxes() {
       setSelectedSavingsBoxId(created.id)
       setCreateName('')
       setCreateDescription('')
-      setCreateInitialBalance('0')
+      setCreateInitialBalance('')
       setCreateTargetAmount('')
       setCreateTargetDate('')
       setIsCreateModalOpen(false)
@@ -441,9 +441,8 @@ export function SavingsBoxes() {
             <div className="flex items-center gap-2">
               <span className="text-gray-600 tracking-[-0.5px] text-lg">R$</span>
               <InputCurrency
-                defaultValue="0"
                 value={createInitialBalance}
-                onChange={(value) => setCreateInitialBalance(value ?? '0')}
+                onChange={(value) => setCreateInitialBalance(value ?? '')}
                 className="text-teal-900"
               />
             </div>
