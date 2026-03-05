@@ -12,6 +12,16 @@ export class TransactionsRepository {
     return this.prismaService.transaction.findMany(findManyDto)
   }
 
+  groupByCategoryValueSum(where: Prisma.TransactionWhereInput) {
+    return this.prismaService.transaction.groupBy({
+      by: ['categoryId'],
+      where,
+      _sum: {
+        value: true,
+      },
+    })
+  }
+
   findFirst<T extends Prisma.TransactionFindFirstArgs>(
     findFirstDto: Prisma.SelectSubset<T, Prisma.TransactionFindFirstArgs>,
   ) {

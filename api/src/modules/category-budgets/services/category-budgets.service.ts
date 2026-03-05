@@ -54,6 +54,9 @@ export class CategoryBudgetsService {
     const previousMonthDate = new Date(Date.UTC(year, month - 1, 1))
     const previousMonth = previousMonthDate.getUTCMonth()
     const previousYear = previousMonthDate.getUTCFullYear()
+    const previousMonthStart = new Date(Date.UTC(previousYear, previousMonth, 1))
+    const currentMonthStart = new Date(Date.UTC(year, month, 1))
+    const nextMonthStart = new Date(Date.UTC(year, month + 1, 1))
 
     const [expenseCategories, budgets, previousBudgets] = await Promise.all([
       this.categoriesRepo.findMany({
@@ -85,61 +88,52 @@ export class CategoryBudgetsService {
       previousBudgets.map((budget) => [budget.categoryId, budget]),
     )
 
-    const transactions = await this.transactionsRepo.findMany({
-      where: {
+    if (expenseCategories.length === 0) {
+      return []
+    }
+
+    const categoryIds = expenseCategories.map((category) => category.id)
+
+    const [currentMonthGroupedSpent, previousMonthGroupedSpent] = await Promise.all([
+      this.transactionsRepo.groupByCategoryValueSum({
         userId,
         type: 'EXPENSE',
         status: 'POSTED',
-        categoryId: {
-          in: expenseCategories.map((category) => category.id),
-        },
+        categoryId: { in: categoryIds },
         date: {
-          gte: new Date(Date.UTC(previousYear, previousMonth)),
-          lt: new Date(Date.UTC(year, month + 1)),
+          gte: currentMonthStart,
+          lt: nextMonthStart,
         },
-      },
-      select: {
-        categoryId: true,
-        value: true,
-        date: true,
-      },
-    })
-
-    const spentByCategory = transactions
-      .filter((transaction) =>
-        transaction.date >= new Date(Date.UTC(year, month))
-        && transaction.date < new Date(Date.UTC(year, month + 1)),
-      )
-      .reduce(
-        (acc, transaction) => {
-          const key = transaction.categoryId
-
-          if (!key) return acc
-
-          acc[key] = (acc[key] ?? 0) + transaction.value
-
-          return acc
+      }),
+      this.transactionsRepo.groupByCategoryValueSum({
+        userId,
+        type: 'EXPENSE',
+        status: 'POSTED',
+        categoryId: { in: categoryIds },
+        date: {
+          gte: previousMonthStart,
+          lt: currentMonthStart,
         },
-        {} as Record<string, number>,
-      )
+      }),
+    ])
 
-    const previousSpentByCategory = transactions
-      .filter((transaction) =>
-        transaction.date >= new Date(Date.UTC(previousYear, previousMonth))
-        && transaction.date < new Date(Date.UTC(year, month)),
-      )
-      .reduce(
-      (acc, transaction) => {
-        const key = transaction.categoryId
-
-        if (!key) return acc
-
-        acc[key] = (acc[key] ?? 0) + transaction.value
-
+    const spentByCategory = currentMonthGroupedSpent.reduce((acc, grouped) => {
+      if (!grouped.categoryId) {
         return acc
-      },
-      {} as Record<string, number>,
-    )
+      }
+
+      acc[grouped.categoryId] = grouped._sum.value ?? 0
+      return acc
+    }, {} as Record<string, number>)
+
+    const previousSpentByCategory = previousMonthGroupedSpent.reduce((acc, grouped) => {
+      if (!grouped.categoryId) {
+        return acc
+      }
+
+      acc[grouped.categoryId] = grouped._sum.value ?? 0
+      return acc
+    }, {} as Record<string, number>)
 
     return expenseCategories.map((category) => {
       const budget = budgetByCategory.get(category.id)
