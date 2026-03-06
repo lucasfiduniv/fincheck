@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { ChangeEvent, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Logo } from '../../components/Logo'
 import { Input } from '../../components/Input'
 import { Button } from '../../components/Button'
+import { Select } from '../../components/Select'
 import { notificationsService } from '../../../app/services/notificationsService'
 import { toast } from 'react-hot-toast'
 import { NotificationPreferences } from '../../../app/entities/NotificationSettings'
@@ -11,7 +12,12 @@ import { SettingsSection } from './components/SettingsSection'
 import { SettingsToggleItem } from './components/SettingsToggleItem'
 import { NotificationHistoryPanel } from './components/NotificationHistoryPanel'
 import { SettingsHero } from './components/SettingsHero'
-import { SettingsMenu, SettingsMenuItem } from './components/SettingsMenu'
+import { useBankAccounts } from '../../../app/hooks/useBankAccounts'
+import {
+  ImportStatementResponse,
+  SupportedStatementBank,
+} from '../../../app/services/transactionsService/importStatement'
+import { transactionsService } from '../../../app/services/transactionsService'
 
 function toLocalDigits(value: string) {
   const digits = value.replace(/\D/g, '')
@@ -99,35 +105,19 @@ const preferenceOptions: Array<{
   },
 ]
 
-const settingsMenuItems: SettingsMenuItem[] = [
-  {
-    key: 'notifications',
-    label: 'Notificações',
-    description: 'WhatsApp, alertas e histórico de envio.',
-    available: true,
-  },
-  {
-    key: 'account',
-    label: 'Conta',
-    description: 'Dados pessoais e preferências da conta.',
-    available: false,
-  },
-  {
-    key: 'security',
-    label: 'Segurança',
-    description: 'Senha, sessão e proteção da conta.',
-    available: false,
-  },
-]
-
 export function Settings() {
   const queryClient = useQueryClient()
+  const { accounts } = useBankAccounts()
   const [phoneNumber, setPhoneNumber] = useState('')
   const [notificationsEnabled, setNotificationsEnabled] = useState(false)
   const [preferences, setPreferences] = useState<NotificationPreferences>(EMPTY_PREFERENCES)
-  const [activeMenuKey, setActiveMenuKey] = useState('notifications')
+  const [statementBank, setStatementBank] = useState<SupportedStatementBank>('NUBANK')
+  const [statementBankAccountId, setStatementBankAccountId] = useState('')
+  const [statementFileName, setStatementFileName] = useState('')
+  const [statementCsvContent, setStatementCsvContent] = useState('')
+  const [importResult, setImportResult] = useState<ImportStatementResponse | null>(null)
 
-  const { data, isLoading } = useQuery({
+  const { data } = useQuery({
     queryKey: ['notifications', 'settings'],
     queryFn: notificationsService.getSettings,
   })
@@ -147,12 +137,24 @@ export function Settings() {
     setPreferences(data.preferences)
   }, [data])
 
+  useEffect(() => {
+    if (!accounts.length || statementBankAccountId) {
+      return
+    }
+
+    setStatementBankAccountId(accounts[0].id)
+  }, [accounts, statementBankAccountId])
+
   const { mutateAsync: updateSettings, isLoading: isSaving } = useMutation(
     notificationsService.updateSettings,
   )
 
   const { mutateAsync: sendTest, isLoading: isSendingTest } = useMutation(
     notificationsService.sendTest,
+  )
+
+  const { mutateAsync: importStatement, isLoading: isImportingStatement } = useMutation(
+    transactionsService.importStatement,
   )
 
   const canSave = useMemo(() => {
@@ -170,6 +172,23 @@ export function Settings() {
   const enabledPreferencesCount = useMemo(() => (
     Object.values(preferences).filter(Boolean).length
   ), [preferences])
+
+  const localPhoneDigitsCount = toLocalDigits(phoneNumber).length
+  const phoneValidationError =
+    phoneNumber && localPhoneDigitsCount !== 10 && localPhoneDigitsCount !== 11
+      ? 'Use um número válido com DDD (10 ou 11 dígitos).'
+      : ''
+
+  const essentialPreferences = preferenceOptions.filter((preference) => (
+    preference.key === 'dueReminders'
+    || preference.key === 'creditCardDue'
+    || preference.key === 'budgetAlerts'
+  ))
+
+  const optionalPreferences = preferenceOptions.filter((preference) => (
+    preference.key === 'lowBalance'
+    || preference.key === 'weeklySummary'
+  ))
 
   async function handleSave() {
     try {
@@ -199,6 +218,62 @@ export function Settings() {
     }
   }
 
+  async function handleImportStatement() {
+    if (!statementBankAccountId || !statementCsvContent) {
+      return
+    }
+
+    try {
+      const response = await importStatement({
+        bank: statementBank,
+        bankAccountId: statementBankAccountId,
+        csvContent: statementCsvContent,
+      })
+
+      setImportResult(response)
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['transactions'] }),
+        queryClient.invalidateQueries({ queryKey: ['bankAccounts'] }),
+        queryClient.invalidateQueries({ queryKey: ['categoryBudgets'] }),
+        queryClient.invalidateQueries({ queryKey: ['transactionDueAlerts'] }),
+      ])
+
+      toast.success(`Extrato importado! ${response.importedCount} lançamento(s) criado(s).`)
+    } catch {
+      toast.error('Não foi possível importar o extrato. Confira o arquivo CSV/OFX e tente novamente.')
+    }
+  }
+
+  async function handleStatementFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+
+    if (!file) {
+      setStatementFileName('')
+      setStatementCsvContent('')
+      return
+    }
+
+    const lowerCaseName = file.name.toLowerCase()
+    const isCsvOrOfx = lowerCaseName.endsWith('.csv') || lowerCaseName.endsWith('.ofx')
+
+    if (!isCsvOrOfx) {
+      toast.error('Selecione um arquivo CSV ou OFX válido.')
+      event.target.value = ''
+      return
+    }
+
+    try {
+      const content = await file.text()
+
+      setStatementFileName(file.name)
+      setStatementCsvContent(content)
+      setImportResult(null)
+    } catch {
+      toast.error('Falha ao ler o arquivo. Tente novamente.')
+    }
+  }
+
   return (
     <div className="w-full h-full p-4 lg:px-8 lg:pt-6 lg:pb-8 overflow-y-auto">
       <header className="min-h-[48px] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -218,50 +293,53 @@ export function Settings() {
             enabledCount={enabledPreferencesCount}
             totalCount={preferenceOptions.length}
             notificationsEnabled={notificationsEnabled}
+            hasEvolutionConfigured={Boolean(data?.hasEvolutionConfigured)}
           />
 
-          <div className="grid grid-cols-1 xl:grid-cols-[260px_1fr] gap-4 items-start">
-            <SettingsMenu
-              items={settingsMenuItems}
-              activeKey={activeMenuKey}
-              onSelect={setActiveMenuKey}
-            />
+          <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_0.85fr] gap-4 items-start pb-24">
+            <div className="space-y-4">
+              <SettingsSection
+                title="1. Ativar notificações"
+                description="Defina seu WhatsApp e ative o envio automático de alertas."
+              >
+                <div className="space-y-3">
+                  <Input
+                    name="phoneNumber"
+                    placeholder="Telefone (WhatsApp)"
+                    value={formatPhoneMask(phoneNumber)}
+                    onChange={(event) => setPhoneNumber(toStoragePhone(event.target.value))}
+                  />
 
-            {activeMenuKey === 'notifications' && (
-              <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_0.85fr] gap-4 items-start">
-                <div className="space-y-4">
-                  <SettingsSection
-                    title="Canal de envio"
-                    description="Configure seu telefone e a ativação geral de notificações via WhatsApp."
-                  >
-                    <div className="space-y-3">
-                      <Input
-                        name="phoneNumber"
-                        placeholder="Telefone (WhatsApp)"
-                        value={formatPhoneMask(phoneNumber)}
-                        onChange={(event) => setPhoneNumber(toStoragePhone(event.target.value))}
-                      />
+                  <p className="text-xs text-gray-600">Use número com DDD.</p>
 
-                      <SettingsToggleItem
-                        title="Habilitar notificações"
-                        description="Ativa envio de alertas automáticos para seu WhatsApp."
-                        checked={notificationsEnabled}
-                        onChange={setNotificationsEnabled}
-                      />
-                    </div>
-                  </SettingsSection>
+                  {phoneValidationError && (
+                    <p className="text-xs text-red-800">{phoneValidationError}</p>
+                  )}
 
-                  <SettingsSection
-                    title="Preferências"
-                    description="Escolha exatamente quais alertas você quer receber."
-                  >
-                    <div className="space-y-2">
-                      {preferenceOptions.map((preference) => (
+                  <SettingsToggleItem
+                    title="Habilitar notificações"
+                    description="Ativa envio de alertas automáticos para seu WhatsApp."
+                    checked={notificationsEnabled}
+                    onChange={setNotificationsEnabled}
+                  />
+                </div>
+              </SettingsSection>
+
+              <SettingsSection
+                title="2. Quais alertas receber"
+                description="Ajuste os alertas essenciais e opcionais do seu dia a dia."
+              >
+                <div className="space-y-3">
+                  <div>
+                    <span className="text-xs text-gray-500 uppercase tracking-[0.08em]">Essenciais</span>
+                    <div className="mt-2 space-y-2">
+                      {essentialPreferences.map((preference) => (
                         <SettingsToggleItem
                           key={preference.key}
                           title={preference.title}
                           description={preference.description}
                           checked={preferences[preference.key]}
+                          disabled={!notificationsEnabled}
                           onChange={(checked) => {
                             setPreferences((prevState) => ({
                               ...prevState,
@@ -271,64 +349,123 @@ export function Settings() {
                         />
                       ))}
                     </div>
-                  </SettingsSection>
+                  </div>
 
-                  <SettingsSection title="Ações">
-                    <div className="flex flex-col lg:flex-row gap-3 lg:justify-end">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={handleSendTest}
-                        isLoading={isSendingTest}
-                        disabled={!phoneNumber || !data?.hasEvolutionConfigured}
-                        className="w-full lg:w-auto"
-                      >
-                        Enviar teste
-                      </Button>
-
-                      <Button
-                        type="button"
-                        onClick={handleSave}
-                        isLoading={isSaving}
-                        disabled={!canSave}
-                        className="w-full lg:w-auto"
-                      >
-                        Salvar configurações
-                      </Button>
+                  <div>
+                    <span className="text-xs text-gray-500 uppercase tracking-[0.08em]">Opcionais</span>
+                    <div className="mt-2 space-y-2">
+                      {optionalPreferences.map((preference) => (
+                        <SettingsToggleItem
+                          key={preference.key}
+                          title={preference.title}
+                          description={preference.description}
+                          checked={preferences[preference.key]}
+                          disabled={!notificationsEnabled}
+                          onChange={(checked) => {
+                            setPreferences((prevState) => ({
+                              ...prevState,
+                              [preference.key]: checked,
+                            }))
+                          }}
+                        />
+                      ))}
                     </div>
-                  </SettingsSection>
-                </div>
-
-                <div className="space-y-4 xl:sticky xl:top-0">
-                  {!data?.hasEvolutionConfigured && !isLoading && (
-                    <SettingsSection title="Status da integração">
-                      <div className="rounded-xl border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-900">
-                        O servidor ainda não está com Evolution API configurada. Você pode salvar o telefone,
-                        mas o envio de notificações ficará indisponível até ajustar as variáveis de ambiente.
-                      </div>
-                    </SettingsSection>
-                  )}
-
-                  <SettingsSection title="Histórico">
-                    <NotificationHistoryPanel
-                      history={history}
-                      isLoading={isLoadingHistory}
-                    />
-                  </SettingsSection>
-                </div>
-              </div>
-            )}
-
-            {activeMenuKey !== 'notifications' && (
-              <SettingsSection
-                title="Em breve"
-                description="Esta seção já está preparada no menu e será implementada nos próximos passos."
-              >
-                <div className="rounded-xl bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">
-                  Por enquanto, apenas as configurações de notificações estão disponíveis.
+                  </div>
                 </div>
               </SettingsSection>
-            )}
+
+              <SettingsSection
+                title="3. Importar extrato do banco"
+                description="Importe CSV ou OFX do Nubank e crie lançamentos automaticamente."
+              >
+                <div className="space-y-3">
+                  <Select
+                    placeholder="Banco"
+                    value={statementBank}
+                    onChange={(value) => setStatementBank(value as SupportedStatementBank)}
+                    options={[{ value: 'NUBANK', label: 'Nubank (CSV/OFX)' }]}
+                  />
+
+                  <Select
+                    placeholder="Conta de destino"
+                    value={statementBankAccountId}
+                    onChange={setStatementBankAccountId}
+                    options={accounts.map((account) => ({
+                      value: account.id,
+                      label: account.name,
+                    }))}
+                  />
+
+                  <label className="flex flex-col gap-2">
+                    <span className="text-sm text-gray-700">Arquivo (.csv ou .ofx)</span>
+                    <input
+                      type="file"
+                      accept=".csv,.ofx,text/csv,application/x-ofx"
+                      onChange={handleStatementFileChange}
+                      className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-gray-800 hover:file:bg-gray-200"
+                    />
+                  </label>
+
+                  {statementFileName && (
+                    <p className="text-xs text-gray-600">Arquivo selecionado: {statementFileName}</p>
+                  )}
+
+                  <Button
+                    type="button"
+                    onClick={handleImportStatement}
+                    isLoading={isImportingStatement}
+                    disabled={!statementBankAccountId || !statementCsvContent}
+                    className="w-full lg:w-auto"
+                  >
+                    Importar extrato
+                  </Button>
+
+                  {importResult && (
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                      <p>Total de linhas: <strong>{importResult.totalRows}</strong></p>
+                      <p>Linhas únicas: <strong>{importResult.uniqueRows}</strong></p>
+                      <p>Importadas: <strong>{importResult.importedCount}</strong></p>
+                      <p>Ignoradas (duplicadas): <strong>{importResult.skippedCount}</strong></p>
+                      <p>Falharam: <strong>{importResult.failedCount}</strong></p>
+                    </div>
+                  )}
+                </div>
+              </SettingsSection>
+
+              <div className="sticky bottom-0 z-20 bg-white/95 backdrop-blur border border-gray-200 rounded-2xl p-4">
+                <div className="flex flex-col lg:flex-row gap-3 lg:justify-end">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={handleSendTest}
+                    isLoading={isSendingTest}
+                    disabled={!phoneNumber || !!phoneValidationError || !data?.hasEvolutionConfigured}
+                    className="w-full lg:w-auto"
+                  >
+                    Enviar teste
+                  </Button>
+
+                  <Button
+                    type="button"
+                    onClick={handleSave}
+                    isLoading={isSaving}
+                    disabled={!canSave || !!phoneValidationError}
+                    className="w-full lg:w-auto"
+                  >
+                    Salvar configurações
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 xl:sticky xl:top-0">
+              <SettingsSection title="Histórico">
+                <NotificationHistoryPanel
+                  history={history}
+                  isLoading={isLoadingHistory}
+                />
+              </SettingsSection>
+            </div>
           </div>
         </div>
       </main>

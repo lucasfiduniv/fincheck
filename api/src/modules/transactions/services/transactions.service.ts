@@ -9,6 +9,7 @@ import { ValidateTransactionOwnershipService } from './validate-transaction-owne
 import { VehiclesRepository } from 'src/shared/database/repositories/vehicles.repository'
 import { FuelRecordsRepository } from 'src/shared/database/repositories/fuel-records.repository'
 import { PrismaService } from 'src/shared/database/prisma.service'
+import { CategoriesRepository } from 'src/shared/database/repositories/categories.repository'
 import {
   RecurrenceAdjustmentScope,
 } from '../dto/adjust-recurrence-future-values.dto'
@@ -18,6 +19,10 @@ import {
   TransactionType,
 } from '../entities/Transaction'
 import { randomUUID } from 'crypto'
+import {
+  ImportBankStatementDto,
+} from '../dto/import-bank-statement.dto'
+import { StatementImportService } from './statement-import/statement-import.service'
 
 @Injectable()
 export class TransactionsService {
@@ -31,6 +36,8 @@ export class TransactionsService {
     private readonly vehiclesRepo: VehiclesRepository,
     private readonly fuelRecordsRepo: FuelRecordsRepository,
     private readonly prismaService: PrismaService,
+    private readonly categoriesRepo: CategoriesRepository,
+    private readonly statementImportService: StatementImportService,
   ) {}
 
   async create(userId: string, createTransactionDto: CreateTransactionDto) {
@@ -294,6 +301,69 @@ export class TransactionsService {
     return {
       fromTransactionId: outgoingTransaction.id,
       toTransactionId: incomingTransaction.id,
+    }
+  }
+
+  async importBankStatement(userId: string, importDto: ImportBankStatementDto) {
+    await this.validateBankAccountOwnershipService.validate(userId, importDto.bankAccountId)
+
+    const parsedEntries = this.statementImportService.parse(
+      importDto.bank,
+      importDto.csvContent,
+    )
+    const uniqueEntries = StatementImportService.dedupeEntries(parsedEntries)
+
+    const fallbackCategories = await this.getOrCreateImportFallbackCategories(userId)
+
+    let importedCount = 0
+    let skippedCount = 0
+    let failedCount = 0
+
+    for (const entry of uniqueEntries) {
+      try {
+        const type = entry.value < 0 ? TransactionType.EXPENSE : TransactionType.INCOME
+        const value = Math.abs(entry.value)
+
+        const alreadyImported = await this.findPossibleDuplicateTransaction({
+          userId,
+          bankAccountId: importDto.bankAccountId,
+          date: entry.date,
+          value,
+          type,
+          name: this.buildImportedTransactionName(entry.description),
+        })
+
+        if (alreadyImported) {
+          skippedCount += 1
+          continue
+        }
+
+        await this.create(userId, {
+          bankAccountId: importDto.bankAccountId,
+          categoryId:
+            type === TransactionType.EXPENSE
+              ? fallbackCategories.expenseCategoryId
+              : fallbackCategories.incomeCategoryId,
+          name: this.buildImportedTransactionName(entry.description),
+          value,
+          type,
+          date: entry.date.toISOString(),
+          repeatType: TransactionCreationType.ONCE,
+        })
+
+        importedCount += 1
+      } catch {
+        failedCount += 1
+      }
+    }
+
+    return {
+      bank: importDto.bank,
+      totalRows: parsedEntries.length,
+      uniqueRows: uniqueEntries.length,
+      importedCount,
+      skippedCount,
+      failedCount,
     }
   }
 
@@ -629,5 +699,106 @@ export class TransactionsService {
     }
 
     return TransactionStatus.PLANNED
+  }
+
+  private async getOrCreateImportFallbackCategories(userId: string) {
+    const expenseCategory = await this.findOrCreateImportCategory(
+      userId,
+      'Importado do banco (despesas)',
+      TransactionType.EXPENSE,
+    )
+
+    const incomeCategory = await this.findOrCreateImportCategory(
+      userId,
+      'Importado do banco (receitas)',
+      TransactionType.INCOME,
+    )
+
+    return {
+      expenseCategoryId: expenseCategory.id,
+      incomeCategoryId: incomeCategory.id,
+    }
+  }
+
+  private async findOrCreateImportCategory(
+    userId: string,
+    name: string,
+    type: TransactionType,
+  ) {
+    const existingCategory = await this.categoriesRepo.findFirst({
+      where: {
+        userId,
+        name,
+        type,
+      },
+      select: {
+        id: true,
+      },
+    })
+
+    if (existingCategory) {
+      return existingCategory
+    }
+
+    return this.categoriesRepo.create({
+      data: {
+        userId,
+        name,
+        type,
+        icon: 'default',
+      },
+      select: {
+        id: true,
+      },
+    })
+  }
+
+  private async findPossibleDuplicateTransaction({
+    userId,
+    bankAccountId,
+    date,
+    value,
+    type,
+    name,
+  }: {
+    userId: string;
+    bankAccountId: string;
+    date: Date;
+    value: number;
+    type: TransactionType;
+    name: string;
+  }) {
+    const dayStart = new Date(Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate(),
+    ))
+
+    const dayEnd = new Date(Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate() + 1,
+    ))
+
+    return this.transactionsRepo.findFirst({
+      where: {
+        userId,
+        bankAccountId,
+        name,
+        value,
+        type,
+        date: {
+          gte: dayStart,
+          lt: dayEnd,
+        },
+      },
+      select: {
+        id: true,
+      },
+    })
+  }
+
+  private buildImportedTransactionName(description: string) {
+    return description.trim().slice(0, 120)
   }
 }

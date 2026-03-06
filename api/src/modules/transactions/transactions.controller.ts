@@ -23,6 +23,7 @@ import { OptionalParseEnumPipe } from 'src/shared/pipes/OptionalParseEnumPipe'
 import { UpdateTransactionStatusDto } from './dto/update-transaction-status.dto'
 import { AdjustRecurrenceFutureValuesDto } from './dto/adjust-recurrence-future-values.dto'
 import { CreateTransferDto } from './dto/create-transfer.dto'
+import { ImportBankStatementDto } from './dto/import-bank-statement.dto'
 
 @Controller('transactions')
 export class TransactionsController {
@@ -42,6 +43,14 @@ export class TransactionsController {
     @Body() createTransferDto: CreateTransferDto,
   ) {
     return this.transactionsService.createTransfer(userId, createTransferDto)
+  }
+
+  @Post('import-statement')
+  importStatement(
+    @ActiveUserId() userId: string,
+    @Body() importBankStatementDto: ImportBankStatementDto,
+  ) {
+    return this.transactionsService.importBankStatement(userId, importBankStatementDto)
   }
 
   @Get()
