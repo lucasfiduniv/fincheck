@@ -51,8 +51,11 @@ export function EditAccountModal() {
       <form onSubmit={handleSubmit}>
         <div>
           <span className="text-gray-600 tracking-[-0.5px] text-xs">
-            Saldo inicial
+            Saldo atual real
           </span>
+          <p className="text-[11px] text-gray-500 mt-1 mb-2">
+            Ao salvar, o sistema cria uma calibragem automática pela diferença.
+          </p>
           <div className="flex items-center gap-2">
             <span className="text-gray-600 tracking-[-0.5px] text-lg">R$</span>
 

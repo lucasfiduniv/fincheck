@@ -38,7 +38,7 @@ export function useEditAccountModalController() {
       color: accountBeingEdited?.color,
       name: accountBeingEdited?.name,
       type: accountBeingEdited?.type,
-      initialBalance: accountBeingEdited?.initialBalance
+      initialBalance: accountBeingEdited?.currentBalance
     }
   })
 

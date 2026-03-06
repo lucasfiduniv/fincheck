@@ -521,6 +521,9 @@ export class TransactionsService {
         bankAccountId: filters.bankAccountId,
         type: filters.type,
       },
+      orderBy: {
+        date: 'desc',
+      },
       include: {
         category: {
           select: {
