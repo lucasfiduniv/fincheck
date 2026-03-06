@@ -454,6 +454,7 @@ export class TransactionsService {
           transactionKind: resolvedKind,
           suggestedCategoryId: aiSuggestion?.categoryId,
           cardBillCategoryId,
+          description: normalizedName,
           categoriesById,
           fallbackCategories,
         })
@@ -941,6 +942,7 @@ export class TransactionsService {
     transactionKind,
     suggestedCategoryId,
     cardBillCategoryId,
+    description,
     categoriesById,
     fallbackCategories,
   }: {
@@ -948,6 +950,7 @@ export class TransactionsService {
     transactionKind: 'INCOME' | 'EXPENSE' | 'CARD_BILL_PAYMENT';
     suggestedCategoryId?: string;
     cardBillCategoryId?: string;
+    description: string;
     categoriesById: Map<string, { id: string; name: string; type: string }>;
     fallbackCategories: { expenseCategoryId: string; incomeCategoryId: string };
   }) {
@@ -963,9 +966,65 @@ export class TransactionsService {
       return cardBillCategoryId
     }
 
+    const categoryByDescription = this.findCategoryByDescription(
+      type,
+      description,
+      categoriesById,
+    )
+
+    if (categoryByDescription) {
+      return categoryByDescription
+    }
+
     return type === TransactionType.EXPENSE
       ? fallbackCategories.expenseCategoryId
       : fallbackCategories.incomeCategoryId
+  }
+
+  private findCategoryByDescription(
+    type: TransactionType.INCOME | TransactionType.EXPENSE,
+    description: string,
+    categoriesById: Map<string, { id: string; name: string; type: string }>,
+  ) {
+    const normalizedDescription = this.normalizeText(description)
+    const expandedDescription = this.expandMerchantAliases(normalizedDescription)
+
+    const compatibleCategories = Array.from(categoriesById.values())
+      .filter((category) => category.type === type)
+
+    let bestCategoryId: string | null = null
+    let bestScore = 0
+
+    for (const category of compatibleCategories) {
+      const normalizedCategoryName = this.normalizeText(category.name)
+
+      if (!normalizedCategoryName) {
+        continue
+      }
+
+      const categoryTokens = normalizedCategoryName
+        .split(' ')
+        .filter((token) => token.length >= 3)
+
+      let score = 0
+
+      if (expandedDescription.includes(normalizedCategoryName)) {
+        score += 10
+      }
+
+      categoryTokens.forEach((token) => {
+        if (expandedDescription.includes(token)) {
+          score += 3
+        }
+      })
+
+      if (score > bestScore) {
+        bestScore = score
+        bestCategoryId = category.id
+      }
+    }
+
+    return bestScore >= 6 ? bestCategoryId : null
   }
 
   private resolveImportedTransactionKind({
@@ -1045,6 +1104,26 @@ export class TransactionsService {
       .toLowerCase()
       .replace(/\s+/g, ' ')
       .trim()
+  }
+
+  private expandMerchantAliases(normalizedDescription: string) {
+    const aliases = [
+      { pattern: /shpp brasil/g, canonical: 'shopee' },
+      { pattern: /fisia comercio de produtos esportivos/g, canonical: 'nike' },
+      { pattern: /\bfisia\b/g, canonical: 'nike' },
+    ]
+
+    let expanded = normalizedDescription
+
+    aliases.forEach((alias) => {
+      if (alias.pattern.test(expanded)) {
+        expanded = `${expanded} ${alias.canonical}`
+      }
+
+      alias.pattern.lastIndex = 0
+    })
+
+    return expanded
   }
 
   private async createImportedTransferTransaction({

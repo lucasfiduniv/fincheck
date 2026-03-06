@@ -32,6 +32,12 @@ interface EnrichmentOutput {
 export class TransactionImportAiEnrichmentService {
   constructor(private readonly geminiClientService: GeminiClientService) {}
 
+  private readonly merchantAliases = [
+    { raw: 'shpp brasil', canonical: 'shopee' },
+    { raw: 'fisia comercio de produtos esportivos', canonical: 'nike' },
+    { raw: 'fisia', canonical: 'nike' },
+  ]
+
   async enrichEntries({
     entries,
     categories,
@@ -79,6 +85,9 @@ export class TransactionImportAiEnrichmentService {
       `- Conta de destino da importação: ${bankAccountName || 'não informada'}`,
       `- Outras contas do usuário: ${JSON.stringify(userBankAccounts ?? [])}`,
       '- Regras: INCOME/EXPENSE precisam de categoria compatível; TRANSFER não tem categoria; CARD_BILL_PAYMENT é despesa e deve priorizar categoria de fatura/cartão se existir.',
+      `- Aliases de lojistas comuns para considerar: ${JSON.stringify(this.merchantAliases)}.`,
+      '- Se encontrar alias de lojista, normalize descrição com o nome canônico (ex.: Shopee, Nike).',
+      '- Priorize vincular à categoria existente do usuário quando o nome da categoria combinar com o lojista ou contexto da compra.',
       'Retorne um JSON no formato {"suggestions":[{"index":number,"normalizedDescription":string,"transactionKind":"INCOME|EXPENSE|TRANSFER|CARD_BILL_PAYMENT","categoryId":string,"confidence":number}]}.',
       'Se não tiver confiança para categoria, omita categoryId.',
       'Categorias disponíveis:',
