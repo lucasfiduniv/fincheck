@@ -15,6 +15,9 @@ export interface ImportStatementResponse {
   importedCount: number
   skippedCount: number
   failedCount: number
+  aiEnhancedCount?: number
+  transferDetectedCount?: number
+  cardBillPaymentDetectedCount?: number
 }
 
 export async function importStatement(params: ImportStatementParams) {

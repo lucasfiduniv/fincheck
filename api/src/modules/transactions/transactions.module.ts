@@ -7,9 +7,10 @@ import { ValidateTransactionOwnershipService } from './services/validate-transac
 import { StatementImportService } from './services/statement-import/statement-import.service'
 import { NubankStatementParser } from './services/statement-import/parsers/nubank-statement.parser'
 import { NubankOfxStatementParser } from './services/statement-import/parsers/nubank-ofx-statement.parser'
+import { AiModule } from '../ai/ai.module'
 
 @Module({
-  imports: [BankAccountsModule, CategoriesModule],
+  imports: [BankAccountsModule, CategoriesModule, AiModule],
   controllers: [TransactionsController],
   providers: [
     TransactionsService,

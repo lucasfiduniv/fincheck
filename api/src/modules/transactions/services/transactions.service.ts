@@ -10,6 +10,8 @@ import { VehiclesRepository } from 'src/shared/database/repositories/vehicles.re
 import { FuelRecordsRepository } from 'src/shared/database/repositories/fuel-records.repository'
 import { PrismaService } from 'src/shared/database/prisma.service'
 import { CategoriesRepository } from 'src/shared/database/repositories/categories.repository'
+import { BankAccountsRepository } from 'src/shared/database/repositories/bank-accounts.repository'
+import { UsersRepository } from 'src/shared/database/repositories/users.repository'
 import {
   RecurrenceAdjustmentScope,
 } from '../dto/adjust-recurrence-future-values.dto'
@@ -23,6 +25,7 @@ import {
   ImportBankStatementDto,
 } from '../dto/import-bank-statement.dto'
 import { StatementImportService } from './statement-import/statement-import.service'
+import { TransactionImportAiEnrichmentService } from '../../ai/services/transaction-import-ai-enrichment.service'
 
 @Injectable()
 export class TransactionsService {
@@ -37,7 +40,10 @@ export class TransactionsService {
     private readonly fuelRecordsRepo: FuelRecordsRepository,
     private readonly prismaService: PrismaService,
     private readonly categoriesRepo: CategoriesRepository,
+    private readonly bankAccountsRepo: BankAccountsRepository,
+    private readonly usersRepo: UsersRepository,
     private readonly statementImportService: StatementImportService,
+    private readonly transactionImportAiEnrichmentService: TransactionImportAiEnrichmentService,
   ) {}
 
   async create(userId: string, createTransactionDto: CreateTransactionDto) {
@@ -307,6 +313,17 @@ export class TransactionsService {
   async importBankStatement(userId: string, importDto: ImportBankStatementDto) {
     await this.validateBankAccountOwnershipService.validate(userId, importDto.bankAccountId)
 
+    const [user, userBankAccounts] = await Promise.all([
+      this.usersRepo.findUnique({
+        where: { id: userId },
+        select: { name: true },
+      }),
+      this.bankAccountsRepo.findMany({
+        where: { userId },
+        select: { id: true, name: true },
+      }),
+    ])
+
     const parsedEntries = this.statementImportService.parse(
       importDto.bank,
       importDto.csvContent,
@@ -314,15 +331,132 @@ export class TransactionsService {
     const uniqueEntries = StatementImportService.dedupeEntries(parsedEntries)
 
     const fallbackCategories = await this.getOrCreateImportFallbackCategories(userId)
+    const availableCategories = await this.categoriesRepo.findMany({
+      where: {
+        userId,
+        type: {
+          in: [TransactionType.INCOME, TransactionType.EXPENSE],
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+      },
+    })
+
+    const categoriesById = new Map(
+      availableCategories.map((category) => [category.id, category]),
+    )
+    const bankAccountName = userBankAccounts.find((account) => account.id === importDto.bankAccountId)?.name
+
+    const aiCategories = availableCategories.reduce<Array<{
+      id: string;
+      name: string;
+      type: 'INCOME' | 'EXPENSE';
+    }>>((result, category) => {
+      if (category.type !== 'INCOME' && category.type !== 'EXPENSE') {
+        return result
+      }
+
+      result.push({
+        id: category.id,
+        name: category.name,
+        type: category.type,
+      })
+
+      return result
+    }, [])
+
+    const aiSuggestionsByIndex = await this.transactionImportAiEnrichmentService.enrichEntries({
+      entries: uniqueEntries.map((entry, index) => ({
+        index,
+        description: entry.description,
+        type:
+          entry.value < 0
+            ? TransactionType.EXPENSE
+            : TransactionType.INCOME,
+        amount: Math.abs(entry.value),
+      })),
+      categories: aiCategories,
+      userName: user?.name,
+      bankAccountName,
+      userBankAccounts,
+    })
+
+    const cardBillCategoryId = this.findCardBillCategoryId(availableCategories)
 
     let importedCount = 0
     let skippedCount = 0
     let failedCount = 0
+    let aiEnhancedCount = 0
+    let transferDetectedCount = 0
+    let cardBillPaymentDetectedCount = 0
 
-    for (const entry of uniqueEntries) {
+    for (const [entryIndex, entry] of uniqueEntries.entries()) {
       try {
-        const type = entry.value < 0 ? TransactionType.EXPENSE : TransactionType.INCOME
+        const baseType = entry.value < 0 ? TransactionType.EXPENSE : TransactionType.INCOME
         const value = Math.abs(entry.value)
+        const aiSuggestion = aiSuggestionsByIndex.get(entryIndex)
+        const normalizedName = this.buildImportedTransactionName(
+          aiSuggestion?.normalizedDescription
+          || this.transactionImportAiEnrichmentService.normalizeDescriptionFallback(entry.description),
+        )
+        const resolvedKind = this.resolveImportedTransactionKind({
+          description: entry.description,
+          userName: user?.name,
+          baseType,
+          suggestedKind: aiSuggestion?.transactionKind,
+        })
+
+        if (aiSuggestion?.normalizedDescription || aiSuggestion?.categoryId || aiSuggestion?.transactionKind) {
+          aiEnhancedCount += 1
+        }
+
+        if (resolvedKind === 'TRANSFER') {
+          const alreadyImportedTransfer = await this.findPossibleDuplicateTransaction({
+            userId,
+            bankAccountId: importDto.bankAccountId,
+            date: entry.date,
+            value: entry.value,
+            type: TransactionType.TRANSFER,
+            name: normalizedName,
+          })
+
+          if (alreadyImportedTransfer) {
+            skippedCount += 1
+            continue
+          }
+
+          await this.createImportedTransferTransaction({
+            userId,
+            bankAccountId: importDto.bankAccountId,
+            date: entry.date,
+            name: normalizedName,
+            signedValue: entry.value,
+          })
+
+          transferDetectedCount += 1
+          importedCount += 1
+          continue
+        }
+
+        if (resolvedKind === 'CARD_BILL_PAYMENT') {
+          cardBillPaymentDetectedCount += 1
+        }
+
+        const type = resolvedKind === 'INCOME'
+          ? TransactionType.INCOME
+          : TransactionType.EXPENSE
+
+        const resolvedCategoryId = this.resolveImportedCategoryId({
+          type,
+          transactionKind: resolvedKind,
+          suggestedCategoryId: aiSuggestion?.categoryId,
+          cardBillCategoryId,
+          categoriesById,
+          fallbackCategories,
+        })
 
         const alreadyImported = await this.findPossibleDuplicateTransaction({
           userId,
@@ -330,7 +464,7 @@ export class TransactionsService {
           date: entry.date,
           value,
           type,
-          name: this.buildImportedTransactionName(entry.description),
+          name: normalizedName,
         })
 
         if (alreadyImported) {
@@ -340,11 +474,8 @@ export class TransactionsService {
 
         await this.create(userId, {
           bankAccountId: importDto.bankAccountId,
-          categoryId:
-            type === TransactionType.EXPENSE
-              ? fallbackCategories.expenseCategoryId
-              : fallbackCategories.incomeCategoryId,
-          name: this.buildImportedTransactionName(entry.description),
+          categoryId: resolvedCategoryId,
+          name: normalizedName,
           value,
           type,
           date: entry.date.toISOString(),
@@ -364,6 +495,9 @@ export class TransactionsService {
       importedCount,
       skippedCount,
       failedCount,
+      aiEnhancedCount,
+      transferDetectedCount,
+      cardBillPaymentDetectedCount,
     }
   }
 
@@ -800,5 +934,163 @@ export class TransactionsService {
 
   private buildImportedTransactionName(description: string) {
     return description.trim().slice(0, 120)
+  }
+
+  private resolveImportedCategoryId({
+    type,
+    transactionKind,
+    suggestedCategoryId,
+    cardBillCategoryId,
+    categoriesById,
+    fallbackCategories,
+  }: {
+    type: TransactionType.INCOME | TransactionType.EXPENSE;
+    transactionKind: 'INCOME' | 'EXPENSE' | 'CARD_BILL_PAYMENT';
+    suggestedCategoryId?: string;
+    cardBillCategoryId?: string;
+    categoriesById: Map<string, { id: string; name: string; type: string }>;
+    fallbackCategories: { expenseCategoryId: string; incomeCategoryId: string };
+  }) {
+    if (suggestedCategoryId) {
+      const suggestedCategory = categoriesById.get(suggestedCategoryId)
+
+      if (suggestedCategory && suggestedCategory.type === type) {
+        return suggestedCategory.id
+      }
+    }
+
+    if (transactionKind === 'CARD_BILL_PAYMENT' && cardBillCategoryId) {
+      return cardBillCategoryId
+    }
+
+    return type === TransactionType.EXPENSE
+      ? fallbackCategories.expenseCategoryId
+      : fallbackCategories.incomeCategoryId
+  }
+
+  private resolveImportedTransactionKind({
+    description,
+    userName,
+    baseType,
+    suggestedKind,
+  }: {
+    description: string;
+    userName?: string;
+    baseType: TransactionType.INCOME | TransactionType.EXPENSE;
+    suggestedKind?: 'INCOME' | 'EXPENSE' | 'TRANSFER' | 'CARD_BILL_PAYMENT';
+  }) {
+    if (this.isCardBillPaymentDescription(description)) {
+      return 'CARD_BILL_PAYMENT' as const
+    }
+
+    if (this.isLikelyOwnTransfer(description, userName)) {
+      return 'TRANSFER' as const
+    }
+
+    if (
+      suggestedKind === 'TRANSFER'
+      || suggestedKind === 'CARD_BILL_PAYMENT'
+      || suggestedKind === 'INCOME'
+      || suggestedKind === 'EXPENSE'
+    ) {
+      return suggestedKind
+    }
+
+    return baseType === TransactionType.INCOME ? 'INCOME' : 'EXPENSE'
+  }
+
+  private isCardBillPaymentDescription(description: string) {
+    const normalized = this.normalizeText(description)
+
+    return normalized.includes('pagamento de fatura')
+      || normalized.includes('fatura do cartao')
+      || normalized.includes('pix para cartao de credito')
+      || normalized.includes('pagamento cartao de credito')
+  }
+
+  private isLikelyOwnTransfer(description: string, userName?: string) {
+    const normalizedDescription = this.normalizeText(description)
+
+    if (!normalizedDescription.includes('transferencia') || !normalizedDescription.includes('pix')) {
+      return false
+    }
+
+    if (!userName) {
+      return false
+    }
+
+    const normalizedUserName = this.normalizeText(userName)
+
+    if (!normalizedUserName) {
+      return false
+    }
+
+    if (normalizedDescription.includes(normalizedUserName)) {
+      return true
+    }
+
+    const userTokens = normalizedUserName
+      .split(' ')
+      .filter((token) => token.length >= 3)
+
+    const matchedTokens = userTokens.filter((token) => normalizedDescription.includes(token))
+
+    return matchedTokens.length >= 2
+  }
+
+  private normalizeText(value: string) {
+    return value
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+
+  private async createImportedTransferTransaction({
+    userId,
+    bankAccountId,
+    date,
+    name,
+    signedValue,
+  }: {
+    userId: string;
+    bankAccountId: string;
+    date: Date;
+    name: string;
+    signedValue: number;
+  }) {
+    return this.transactionsRepo.create({
+      data: {
+        userId,
+        bankAccountId,
+        categoryId: null,
+        name,
+        value: signedValue,
+        date,
+        type: TransactionType.TRANSFER,
+        status: TransactionStatus.POSTED,
+        entryType: 'SINGLE',
+      },
+    })
+  }
+
+  private findCardBillCategoryId(
+    categories: Array<{ id: string; name: string; type: string }>,
+  ) {
+    const normalizedCandidates = categories
+      .filter((category) => category.type === TransactionType.EXPENSE)
+      .map((category) => ({
+        id: category.id,
+        normalizedName: this.normalizeText(category.name),
+      }))
+
+    const directMatch = normalizedCandidates.find((candidate) => (
+      candidate.normalizedName.includes('fatura')
+      || candidate.normalizedName.includes('cartao')
+      || candidate.normalizedName.includes('credito')
+    ))
+
+    return directMatch?.id
   }
 }

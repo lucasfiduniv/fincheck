@@ -68,12 +68,15 @@ export function useTransactionsController() {
 
   function handleApplyFilters({
     bankAccountId,
+    month,
     year,
   }: {
     bankAccountId: string | undefined;
+    month: number;
     year: number;
   }) {
     handleChangeFilters('bankAccountId')(bankAccountId)
+    handleChangeFilters('month')(month)
     handleChangeFilters('year')(year)
     handleCloseFiltersModal()
   }

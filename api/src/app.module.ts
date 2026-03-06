@@ -13,6 +13,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { SavingsBoxesModule } from './modules/savings-boxes/savings-boxes.module'
 import { FriendshipsModule } from './modules/friendships/friendships.module'
 import { VehiclesModule } from './modules/vehicles/vehicles.module'
+import { AiModule } from './modules/ai/ai.module'
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { VehiclesModule } from './modules/vehicles/vehicles.module'
     SavingsBoxesModule,
     FriendshipsModule,
     VehiclesModule,
+    AiModule,
   ],
   controllers: [],
   providers: [
