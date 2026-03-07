@@ -7,8 +7,18 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: false,
+      retry: (failureCount, error: any) => {
+        const status = error?.response?.status
+
+        if (status >= 400 && status < 500) {
+          return false
+        }
+
+        return failureCount < 2
+      },
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 3000),
       refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
     }
   }
 })

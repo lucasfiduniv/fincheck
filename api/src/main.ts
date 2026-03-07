@@ -4,10 +4,14 @@ import { NestFactory } from '@nestjs/core'
 import { AppModule } from './app.module'
 import { ValidationPipe } from '@nestjs/common'
 import { NextFunction, Request, Response } from 'express'
+import { PrismaService } from './shared/database/prisma.service'
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule)
   const port = Number(process.env.PORT) || 3000
+  const prismaService = app.get(PrismaService)
+
+  await prismaService.enableShutdownHooks(app)
 
   app.use((request: Request, response: Response, next: NextFunction) => {
     response.header('Access-Control-Allow-Origin', '*')
