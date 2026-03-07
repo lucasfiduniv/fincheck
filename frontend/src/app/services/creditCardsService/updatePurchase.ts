@@ -3,6 +3,8 @@ import { httpClient } from '../httpClient'
 export interface UpdateCreditCardPurchaseParams {
   creditCardId: string
   purchaseId: string
+  type?: 'ONE_TIME' | 'INSTALLMENT'
+  installmentCount?: number
   description?: string
   amount?: number
   purchaseDate?: string

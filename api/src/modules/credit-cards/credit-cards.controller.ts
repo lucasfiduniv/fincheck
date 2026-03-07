@@ -20,6 +20,7 @@ import { CreateCreditCardPurchaseDto } from './dto/create-credit-card-purchase.d
 import { PayCreditCardStatementDto } from './dto/pay-credit-card-statement.dto'
 import { UpdateCreditCardPurchaseDto } from './dto/update-credit-card-purchase.dto'
 import { ImportCreditCardStatementDto } from './dto/import-credit-card-statement.dto'
+import { RecalibrateCreditCardStatementDto } from './dto/recalibrate-credit-card-statement.dto'
 
 @Controller('credit-cards')
 export class CreditCardsController {
@@ -133,6 +134,19 @@ export class CreditCardsController {
       userId,
       creditCardId,
       payCreditCardStatementDto,
+    )
+  }
+
+  @Post(':creditCardId/statements/recalibrate')
+  recalibrateStatementSchedule(
+    @ActiveUserId() userId: string,
+    @Param('creditCardId', ParseUUIDPipe) creditCardId: string,
+    @Body() recalibrateDto: RecalibrateCreditCardStatementDto,
+  ) {
+    return this.creditCardsService.recalibrateStatementSchedule(
+      userId,
+      creditCardId,
+      recalibrateDto,
     )
   }
 

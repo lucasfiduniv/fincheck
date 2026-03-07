@@ -23,4 +23,8 @@ export class CreditCardInstallmentsRepository {
   updateMany(updateManyDto: Prisma.CreditCardInstallmentUpdateManyArgs) {
     return this.prismaService.creditCardInstallment.updateMany(updateManyDto)
   }
+
+  deleteMany(deleteManyDto: Prisma.CreditCardInstallmentDeleteManyArgs) {
+    return this.prismaService.creditCardInstallment.deleteMany(deleteManyDto)
+  }
 }

@@ -1,15 +1,17 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
 import { Modal } from '../../../../components/Modal'
+import { ConfirmDeleteModal } from '../../../../components/ConfirmDeleteModal'
 import { Input } from '../../../../components/Input'
 import { InputCurrency } from '../../../../components/InputCurrency'
 import { DatePickerInput } from '../../../../components/DatePickerInput'
 import { Select } from '../../../../components/Select'
 import { Button } from '../../../../components/Button'
+import { TrashIcon } from '../../../../components/icons/TrashIcon'
 import { useCategories } from '../../../../../app/hooks/useCategories'
 import { useVehicles } from '../../../../../app/hooks/useVehicles'
 import { creditCardsService } from '../../../../../app/services/creditCardsService'
@@ -42,6 +44,8 @@ interface PurchaseBeingEdited {
   description: string
   purchaseDate: string
   purchaseAmount: number
+  installmentNumber: number
+  installmentCount: number
   categoryId?: string | null
   fuelVehicleId?: string | null
   fuelOdometer?: number | null
@@ -59,10 +63,17 @@ interface EditCreditCardPurchaseModalProps {
   purchase: PurchaseBeingEdited | null
 }
 
+type BillingMode = 'ONE_TIME' | 'INSTALLMENT' | 'RECURRING'
+
 const schema = z.object({
   description: z.string().nonempty('Informe a descrição'),
   amount: z.union([z.string().nonempty('Informe o valor'), z.number()]),
   purchaseDate: z.date(),
+  billingMode: z.enum(['ONE_TIME', 'INSTALLMENT', 'RECURRING']),
+  remainingInstallments: z
+    .union([z.coerce.number(), z.literal(''), z.undefined()])
+    .optional()
+    .transform((value) => value === '' || value === undefined ? undefined : value),
   categoryId: z.string(),
   fuelVehicleId: z.string().optional(),
   fuelOdometer: z
@@ -96,6 +107,7 @@ export function EditCreditCardPurchaseModal({
   const queryClient = useQueryClient()
   const { categories: allCategories } = useCategories()
   const { vehicles } = useVehicles()
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
 
   const {
     register,
@@ -111,6 +123,8 @@ export function EditCreditCardPurchaseModal({
       description: '',
       amount: '0',
       purchaseDate: new Date(),
+      billingMode: 'ONE_TIME',
+      remainingInstallments: undefined,
       categoryId: 'NONE',
       fuelVehicleId: '',
     },
@@ -121,10 +135,22 @@ export function EditCreditCardPurchaseModal({
       return
     }
 
+    const defaultRemainingInstallments = Math.max(
+      1,
+      purchase.installmentCount - purchase.installmentNumber + 1,
+    )
+    const defaultBillingMode: BillingMode = purchase.installmentCount >= 120
+      ? 'RECURRING'
+      : purchase.installmentCount > 1
+        ? 'INSTALLMENT'
+        : 'ONE_TIME'
+
     reset({
       description: purchase.description,
       amount: String(purchase.purchaseAmount),
       purchaseDate: new Date(purchase.purchaseDate),
+      billingMode: defaultBillingMode,
+      remainingInstallments: defaultRemainingInstallments,
       categoryId: purchase.categoryId ?? 'NONE',
       fuelVehicleId: purchase.fuelVehicleId ?? '',
       fuelOdometer: purchase.fuelOdometer ?? undefined,
@@ -138,6 +164,7 @@ export function EditCreditCardPurchaseModal({
   }, [open, purchase, reset])
 
   const selectedCategoryId = watch('categoryId')
+  const selectedBillingMode = watch('billingMode')
   const amount = watch('amount')
   const fuelLiters = watch('fuelLiters')
   const fuelPricePerLiter = watch('fuelPricePerLiter')
@@ -211,11 +238,54 @@ export function EditCreditCardPurchaseModal({
   ])
 
   const { mutateAsync, isLoading } = useMutation(creditCardsService.updatePurchase)
+  const { mutateAsync: cancelPurchase, isLoading: isDeleting } = useMutation(
+    creditCardsService.cancelPurchase,
+  )
+
+  async function handleDeletePurchase() {
+    if (!purchase) {
+      return
+    }
+
+    try {
+      await cancelPurchase({
+        creditCardId: purchase.creditCardId,
+        purchaseId: purchase.purchaseId,
+      })
+
+      queryClient.invalidateQueries({ queryKey: ['creditCards'] })
+      queryClient.invalidateQueries({ queryKey: ['creditCardStatement'] })
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['bankAccounts'] })
+
+      toast.success('Compra excluída com sucesso!')
+      setIsDeleteModalOpen(false)
+      onClose()
+    } catch {
+      toast.error('Não foi possível excluir a compra.')
+    }
+  }
 
   const handleSubmit = hookFormSubmit(async (data) => {
     if (!purchase) {
       return
     }
+
+    const currentInstallmentNumber = Math.max(1, purchase.installmentNumber)
+    const remainingInstallments = Math.max(1, Number(data.remainingInstallments ?? 1))
+
+    const resolvedInstallmentCount = data.billingMode === 'ONE_TIME'
+      ? 1
+      : data.billingMode === 'RECURRING'
+        ? 360
+        : Math.min(360, Math.max(
+            currentInstallmentNumber,
+            currentInstallmentNumber - 1 + remainingInstallments,
+          ))
+
+    const resolvedType = resolvedInstallmentCount > 1
+      ? 'INSTALLMENT' as const
+      : 'ONE_TIME' as const
 
     if (showFuelFields) {
       if (!data.fuelVehicleId || !data.fuelOdometer || !data.fuelLiters || !data.fuelPricePerLiter) {
@@ -233,6 +303,8 @@ export function EditCreditCardPurchaseModal({
       await mutateAsync({
         creditCardId: purchase.creditCardId,
         purchaseId: purchase.purchaseId,
+        type: resolvedType,
+        installmentCount: resolvedInstallmentCount,
         description: data.description,
         amount: currencyStringToNumber(data.amount),
         purchaseDate: toUTCDateISOString(data.purchaseDate),
@@ -256,8 +328,30 @@ export function EditCreditCardPurchaseModal({
     }
   })
 
+  if (isDeleteModalOpen) {
+    return (
+      <ConfirmDeleteModal
+        title="Tem certeza que deseja excluir esta compra?"
+        description="Ao excluir, as parcelas pendentes serão canceladas e estornos podem ser gerados para parcelas já pagas."
+        isLoading={isDeleting}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={handleDeletePurchase}
+      />
+    )
+  }
+
   return (
-    <Modal title="Editar compra" open={open} onClose={onClose} contentClassName="max-h-[90vh] overflow-hidden">
+    <Modal
+      title="Editar compra"
+      open={open}
+      onClose={onClose}
+      contentClassName="max-h-[90vh] overflow-hidden"
+      rightAction={(
+        <button onClick={() => setIsDeleteModalOpen(true)}>
+          <TrashIcon className="w-6 h-6 text-red-900" />
+        </button>
+      )}
+    >
       <form onSubmit={handleSubmit} className="flex h-full max-h-[calc(90vh-180px)] flex-col">
         <div className="flex flex-col gap-4 overflow-y-auto pr-1">
         <Input
@@ -296,6 +390,42 @@ export function EditCreditCardPurchaseModal({
             />
           )}
         />
+
+        <Controller
+          control={control}
+          name="billingMode"
+          defaultValue="ONE_TIME"
+          render={({ field: { onChange, value } }) => (
+            <Select
+              placeholder="Tipo da compra"
+              onChange={onChange}
+              value={value}
+              options={[
+                { value: 'ONE_TIME', label: 'À vista' },
+                { value: 'INSTALLMENT', label: 'Parcelada' },
+                { value: 'RECURRING', label: 'Recorrente mensal' },
+              ]}
+            />
+          )}
+        />
+
+        {selectedBillingMode !== 'ONE_TIME' && (
+          <Input
+            type="number"
+            min={1}
+            max={360}
+            step={1}
+            placeholder="Quantas parcelas faltam (incluindo esta)"
+            error={errors.remainingInstallments?.message}
+            {...register('remainingInstallments')}
+          />
+        )}
+
+        {purchase && selectedBillingMode !== 'ONE_TIME' && (
+          <p className="text-xs text-gray-500">
+            Parcela atual: {purchase.installmentNumber} de {purchase.installmentCount}
+          </p>
+        )}
 
         <Controller
           control={control}

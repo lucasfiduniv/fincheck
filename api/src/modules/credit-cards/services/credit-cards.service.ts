@@ -20,6 +20,7 @@ import { ImportCreditCardStatementUseCase } from '../use-cases/import-credit-car
 import { ExportCreditCardStatementUseCase } from '../use-cases/export-credit-card-statement.use-case'
 import { TransactionImportAiEnrichmentService } from '../../ai/services/transaction-import-ai-enrichment.service'
 import { CategoriesRepository } from 'src/shared/database/repositories/categories.repository'
+import { RecalibrateCreditCardStatementDto } from '../dto/recalibrate-credit-card-statement.dto'
 
 @Injectable()
 export class CreditCardsService {
@@ -108,10 +109,33 @@ export class CreditCardsService {
       )
     }
 
-    return this.creditCardsRepo.update({
+    const updatedCard = await this.creditCardsRepo.update({
       where: { id: currentCard.id },
       data: updateCreditCardDto,
     })
+
+    if (updateCreditCardDto.closingDay || updateCreditCardDto.dueDay) {
+      await this.recalculateInstallmentsSchedule(
+        userId,
+        updatedCard,
+        {
+          includePaid: false,
+          includeCanceled: false,
+        },
+      )
+    }
+
+    return updatedCard
+  }
+
+  async recalibrateStatementSchedule(
+    userId: string,
+    creditCardId: string,
+    recalibrateDto: RecalibrateCreditCardStatementDto,
+  ) {
+    const card = await this.validateCreditCardOwnership(userId, creditCardId)
+
+    return this.recalculateInstallmentsSchedule(userId, card, recalibrateDto)
   }
 
   async remove(userId: string, creditCardId: string) {
@@ -371,12 +395,34 @@ export class CreditCardsService {
       (installment) => installment.status === 'PAID',
     )
 
+    const nextInstallmentCount = updateCreditCardPurchaseDto.installmentCount
+      ?? purchase.installmentCount
+    const nextType = updateCreditCardPurchaseDto.type
+      ?? (nextInstallmentCount > 1 ? 'INSTALLMENT' : 'ONE_TIME')
+
+    if (nextType === 'ONE_TIME' && nextInstallmentCount !== 1) {
+      throw new BadRequestException('Compras à vista devem ter exatamente 1 parcela.')
+    }
+
+    if (nextType === 'INSTALLMENT' && nextInstallmentCount < 2) {
+      throw new BadRequestException('Compras parceladas devem ter no mínimo 2 parcelas.')
+    }
+
     const isAmountBeingUpdated = updateCreditCardPurchaseDto.amount !== undefined
     const isPurchaseDateBeingUpdated = updateCreditCardPurchaseDto.purchaseDate !== undefined
+    const isInstallmentCountBeingUpdated = updateCreditCardPurchaseDto.installmentCount !== undefined
+    const isTypeBeingUpdated = updateCreditCardPurchaseDto.type !== undefined
+    const isInstallmentStructureBeingUpdated =
+      isInstallmentCountBeingUpdated
+      || isTypeBeingUpdated
 
-    if (hasPaidInstallments && (isAmountBeingUpdated || isPurchaseDateBeingUpdated)) {
+    if (hasPaidInstallments && (
+      isAmountBeingUpdated
+      || isPurchaseDateBeingUpdated
+      || isInstallmentStructureBeingUpdated
+    )) {
       throw new BadRequestException(
-        'Compras com parcelas já pagas só permitem editar descrição e categoria.',
+        'Compras com parcelas já pagas só permitem editar descrição, categoria e metadados.',
       )
     }
 
@@ -424,28 +470,49 @@ export class CreditCardsService {
         purchaseDate: updateCreditCardPurchaseDto.purchaseDate
           ? nextPurchaseDate
           : undefined,
+        installmentCount: isInstallmentStructureBeingUpdated
+          ? nextInstallmentCount
+          : undefined,
+        type: isInstallmentStructureBeingUpdated
+          ? nextType
+          : undefined,
       },
     })
 
-    if (!hasPaidInstallments && (isAmountBeingUpdated || isPurchaseDateBeingUpdated)) {
-      const nextInstallmentAmounts = this.splitInstallments(nextAmount, purchase.installmentCount)
+    if (!hasPaidInstallments && (
+      isAmountBeingUpdated
+      || isPurchaseDateBeingUpdated
+      || isInstallmentStructureBeingUpdated
+    )) {
+      await this.creditCardInstallmentsRepo.deleteMany({
+        where: {
+          purchaseId,
+          userId,
+          creditCardId,
+        },
+      })
+
+      const nextInstallmentAmounts = this.splitInstallments(nextAmount, nextInstallmentCount)
       const firstStatement = this.resolveStatementForPurchase(nextPurchaseDate, card.closingDay)
 
-      await Promise.all(
-        installments.map((installment, index) => {
+      await this.creditCardInstallmentsRepo.createMany({
+        data: nextInstallmentAmounts.map((installmentAmount, index) => {
           const statementRef = this.addMonthsToStatement(firstStatement, index)
 
-          return this.creditCardInstallmentsRepo.update({
-            where: { id: installment.id },
-            data: {
-              amount: nextInstallmentAmounts[index],
-              statementMonth: statementRef.month,
-              statementYear: statementRef.year,
-              dueDate: this.buildDueDate(statementRef.year, statementRef.month, card.dueDay),
-            },
-          })
+          return {
+            userId,
+            creditCardId,
+            purchaseId,
+            installmentNumber: index + 1,
+            installmentCount: nextInstallmentCount,
+            amount: installmentAmount,
+            statementMonth: statementRef.month,
+            statementYear: statementRef.year,
+            dueDate: this.buildDueDate(statementRef.year, statementRef.month, card.dueDay),
+            status: 'PENDING' as const,
+          }
         }),
-      )
+      })
     }
 
     return updatedPurchase
@@ -728,6 +795,101 @@ export class CreditCardsService {
     return {
       month: now.getUTCMonth(),
       year: now.getUTCFullYear(),
+    }
+  }
+
+  private async recalculateInstallmentsSchedule(
+    userId: string,
+    card: {
+      id: string
+      closingDay: number
+      dueDay: number
+    },
+    options?: {
+      includePaid?: boolean
+      includeCanceled?: boolean
+    },
+  ) {
+    const includePaid = !!options?.includePaid
+    const includeCanceled = !!options?.includeCanceled
+
+    const purchases = await this.creditCardPurchasesRepo.findMany({
+      where: {
+        userId,
+        creditCardId: card.id,
+      },
+      select: {
+        id: true,
+        purchaseDate: true,
+        installments: {
+          orderBy: [{ installmentNumber: 'asc' }],
+          select: {
+            id: true,
+            installmentNumber: true,
+            statementMonth: true,
+            statementYear: true,
+            dueDate: true,
+            status: true,
+          },
+        },
+      },
+    })
+
+    let updatedInstallments = 0
+    let skippedInstallments = 0
+
+    for (const purchase of purchases) {
+      const firstStatement = this.resolveStatementForPurchase(
+        purchase.purchaseDate,
+        card.closingDay,
+      )
+
+      for (const installment of purchase.installments) {
+        const canRecalculate = installment.status === 'PENDING'
+          || (includePaid && installment.status === 'PAID')
+          || (includeCanceled && installment.status === 'CANCELED')
+
+        if (!canRecalculate) {
+          skippedInstallments += 1
+          continue
+        }
+
+        const statementRef = this.addMonthsToStatement(
+          firstStatement,
+          installment.installmentNumber - 1,
+        )
+        const nextDueDate = this.buildDueDate(statementRef.year, statementRef.month, card.dueDay)
+
+        const statementChanged = installment.statementMonth !== statementRef.month
+          || installment.statementYear !== statementRef.year
+        const dueDateChanged = installment.dueDate.getTime() !== nextDueDate.getTime()
+
+        if (!statementChanged && !dueDateChanged) {
+          skippedInstallments += 1
+          continue
+        }
+
+        await this.creditCardInstallmentsRepo.update({
+          where: {
+            id: installment.id,
+          },
+          data: {
+            statementMonth: statementRef.month,
+            statementYear: statementRef.year,
+            dueDate: nextDueDate,
+          },
+        })
+
+        updatedInstallments += 1
+      }
+    }
+
+    return {
+      creditCardId: card.id,
+      updatedInstallments,
+      skippedInstallments,
+      includePaid,
+      includeCanceled,
     }
   }
 

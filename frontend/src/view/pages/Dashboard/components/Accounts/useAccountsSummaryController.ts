@@ -15,6 +15,8 @@ interface PurchaseBeingEdited {
   description: string
   purchaseDate: string
   purchaseAmount: number
+  installmentNumber: number
+  installmentCount: number
   categoryId?: string | null
   fuelVehicleId?: string | null
   fuelOdometer?: number | null
@@ -71,6 +73,8 @@ export function useAccountsSummaryController() {
       description: purchase.description,
       purchaseDate: purchase.purchaseDate,
       purchaseAmount: purchase.purchaseAmount,
+      installmentNumber: purchase.installmentNumber,
+      installmentCount: purchase.installmentCount,
       categoryId: purchase.category?.id,
       fuelVehicleId: purchase.fuelVehicleId,
       fuelOdometer: purchase.fuelOdometer,

@@ -2,14 +2,27 @@ import {
   IsBoolean,
   IsDateString,
   IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
   IsPositive,
   IsString,
   IsUUID,
+  Max,
+  Min,
 } from 'class-validator'
 
 export class UpdateCreditCardPurchaseDto {
+  @IsOptional()
+  @IsIn(['ONE_TIME', 'INSTALLMENT'])
+    type?: 'ONE_TIME' | 'INSTALLMENT'
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(360)
+    installmentCount?: number
+
   @IsOptional()
   @IsString()
     description?: string
