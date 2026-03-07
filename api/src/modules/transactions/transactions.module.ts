@@ -7,7 +7,9 @@ import { ValidateTransactionOwnershipService } from './services/validate-transac
 import { StatementImportService } from './services/statement-import/statement-import.service'
 import { NubankStatementParser } from './services/statement-import/parsers/nubank-statement.parser'
 import { NubankOfxStatementParser } from './services/statement-import/parsers/nubank-ofx-statement.parser'
+import { BancoDoBrasilOfxStatementParser } from './services/statement-import/parsers/banco-do-brasil-ofx-statement.parser'
 import { AiModule } from '../ai/ai.module'
+import { TransactionsGateway } from './transactions.gateway'
 
 @Module({
   imports: [BankAccountsModule, CategoriesModule, AiModule],
@@ -18,6 +20,9 @@ import { AiModule } from '../ai/ai.module'
     StatementImportService,
     NubankStatementParser,
     NubankOfxStatementParser,
+    BancoDoBrasilOfxStatementParser,
+    TransactionsGateway,
   ],
+  exports: [TransactionsGateway],
 })
 export class TransactionsModule {}

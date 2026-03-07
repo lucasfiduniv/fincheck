@@ -7,9 +7,11 @@ import { PayCreditCardStatementUseCase } from './use-cases/pay-credit-card-state
 import { FindCreditCardStatementByMonthUseCase } from './use-cases/find-credit-card-statement-by-month.use-case'
 import { ImportCreditCardStatementUseCase } from './use-cases/import-credit-card-statement.use-case'
 import { ExportCreditCardStatementUseCase } from './use-cases/export-credit-card-statement.use-case'
+import { AiModule } from '../ai/ai.module'
+import { TransactionsModule } from '../transactions/transactions.module'
 
 @Module({
-  imports: [BankAccountsModule, CategoriesModule],
+  imports: [BankAccountsModule, CategoriesModule, AiModule, TransactionsModule],
   controllers: [CreditCardsController],
   providers: [
     CreditCardsService,

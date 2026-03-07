@@ -18,6 +18,8 @@ import { PayCreditCardStatementUseCase } from '../use-cases/pay-credit-card-stat
 import { FindCreditCardStatementByMonthUseCase } from '../use-cases/find-credit-card-statement-by-month.use-case'
 import { ImportCreditCardStatementUseCase } from '../use-cases/import-credit-card-statement.use-case'
 import { ExportCreditCardStatementUseCase } from '../use-cases/export-credit-card-statement.use-case'
+import { TransactionImportAiEnrichmentService } from '../../ai/services/transaction-import-ai-enrichment.service'
+import { CategoriesRepository } from 'src/shared/database/repositories/categories.repository'
 
 @Injectable()
 export class CreditCardsService {
@@ -27,8 +29,10 @@ export class CreditCardsService {
     private readonly creditCardInstallmentsRepo: CreditCardInstallmentsRepository,
     private readonly transactionsRepo: TransactionsRepository,
     private readonly vehiclesRepo: VehiclesRepository,
+    private readonly categoriesRepo: CategoriesRepository,
     private readonly validateBankAccountOwnershipService: ValidateBankAccountOwnershipService,
     private readonly validateCategoryOwnershipService: ValidateCategoryOwnershipService,
+    private readonly transactionImportAiEnrichmentService: TransactionImportAiEnrichmentService,
     private readonly payCreditCardStatementUseCase: PayCreditCardStatementUseCase,
     private readonly findCreditCardStatementByMonthUseCase: FindCreditCardStatementByMonthUseCase,
     private readonly importCreditCardStatementUseCase: ImportCreditCardStatementUseCase,
@@ -147,8 +151,18 @@ export class CreditCardsService {
       maintenanceOdometer,
     } = createCreditCardPurchaseDto
 
-    if (categoryId) {
-      await this.validateCategoryOwnershipService.validate(userId, categoryId)
+    const aiEnrichment = await this.enrichManualCardExpenseInput({
+      userId,
+      description,
+      amount,
+      currentCategoryId: categoryId,
+    })
+
+    const resolvedDescription = aiEnrichment.description
+    const resolvedCategoryId = aiEnrichment.categoryId
+
+    if (resolvedCategoryId) {
+      await this.validateCategoryOwnershipService.validate(userId, resolvedCategoryId)
     }
 
     await this.validateFuelMetadata(
@@ -174,7 +188,7 @@ export class CreditCardsService {
       data: {
         userId,
         creditCardId,
-        categoryId,
+        categoryId: resolvedCategoryId,
         fuelVehicleId,
         fuelOdometer,
         fuelLiters,
@@ -183,7 +197,7 @@ export class CreditCardsService {
         fuelFirstPumpClick: !!fuelFirstPumpClick,
         maintenanceVehicleId,
         maintenanceOdometer,
-        description,
+        description: resolvedDescription,
         amount,
         purchaseDate: normalizedPurchaseDate,
         type: installmentCount > 1 ? 'INSTALLMENT' : 'ONE_TIME',
@@ -216,6 +230,100 @@ export class CreditCardsService {
     })
 
     return purchase
+  }
+
+  private async enrichManualCardExpenseInput({
+    userId,
+    description,
+    amount,
+    currentCategoryId,
+  }: {
+    userId: string
+    description: string
+    amount: number
+    currentCategoryId?: string
+  }) {
+    try {
+      const availableCategories = await this.categoriesRepo.findMany({
+        where: {
+          userId,
+          type: 'EXPENSE',
+        },
+        select: {
+          id: true,
+          name: true,
+          type: true,
+        },
+      })
+
+      if (!availableCategories.length) {
+        return {
+          description,
+          categoryId: currentCategoryId,
+        }
+      }
+
+      const aiSuggestions = await this.transactionImportAiEnrichmentService.enrichEntries({
+        entries: [
+          {
+            index: 0,
+            description,
+            type: 'EXPENSE',
+            amount: Math.abs(amount),
+          },
+        ],
+        categories: availableCategories.map((category) => ({
+          id: category.id,
+          name: category.name,
+          type: 'EXPENSE' as const,
+        })),
+      })
+
+      const suggestion = aiSuggestions.get(0)
+      const normalizedDescription = suggestion?.normalizedDescription?.trim()
+        || this.transactionImportAiEnrichmentService.normalizeDescriptionFallback(description)
+
+      if (!suggestion?.categoryId || suggestion.categoryId === currentCategoryId) {
+        return {
+          description: normalizedDescription,
+          categoryId: currentCategoryId,
+        }
+      }
+
+      const categoriesById = new Map(availableCategories.map((category) => [category.id, category]))
+      const currentCategoryName = currentCategoryId
+        ? categoriesById.get(currentCategoryId)?.name
+        : undefined
+
+      const shouldReplaceCategory = !currentCategoryName || this.isGenericHomeCategory(currentCategoryName)
+
+      return {
+        description: normalizedDescription,
+        categoryId: shouldReplaceCategory ? suggestion.categoryId : currentCategoryId,
+      }
+    } catch {
+      return {
+        description,
+        categoryId: currentCategoryId,
+      }
+    }
+  }
+
+  private isGenericHomeCategory(categoryName?: string) {
+    if (!categoryName) {
+      return false
+    }
+
+    const normalized = categoryName
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .toLowerCase()
+      .trim()
+
+    return normalized.includes('casa')
+      || normalized.includes('lar')
+      || normalized.includes('moradia')
+      || normalized.includes('residenc')
   }
 
   async updatePurchase(

@@ -1,7 +1,8 @@
-import { IsEnum, IsNotEmpty, IsString, IsUUID } from 'class-validator'
+import { IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator'
 
 export enum SupportedBankStatementProvider {
   NUBANK = 'NUBANK',
+  BANCO_DO_BRASIL = 'BANCO_DO_BRASIL',
 }
 
 export class ImportBankStatementDto {
@@ -17,4 +18,8 @@ export class ImportBankStatementDto {
   @IsString()
   @IsNotEmpty()
     csvContent: string
+
+  @IsOptional()
+  @IsString()
+    requestId?: string
 }

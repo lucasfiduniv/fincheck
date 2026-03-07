@@ -26,6 +26,7 @@ import {
 } from '../dto/import-bank-statement.dto'
 import { StatementImportService } from './statement-import/statement-import.service'
 import { TransactionImportAiEnrichmentService } from '../../ai/services/transaction-import-ai-enrichment.service'
+import { TransactionsGateway } from '../transactions.gateway'
 
 @Injectable()
 export class TransactionsService {
@@ -44,9 +45,14 @@ export class TransactionsService {
     private readonly usersRepo: UsersRepository,
     private readonly statementImportService: StatementImportService,
     private readonly transactionImportAiEnrichmentService: TransactionImportAiEnrichmentService,
+    private readonly transactionsGateway: TransactionsGateway,
   ) {}
 
-  async create(userId: string, createTransactionDto: CreateTransactionDto) {
+  async create(
+    userId: string,
+    createTransactionDto: CreateTransactionDto,
+    options?: { suppressRealtime?: boolean },
+  ) {
     const {
       bankAccountId,
       categoryId,
@@ -68,6 +74,9 @@ export class TransactionsService {
       maintenanceOdometer,
     } =
       createTransactionDto
+
+    let enrichedName = name
+    let enrichedCategoryId = categoryId
 
     await this.validateEntitiesOwnership({
       userId,
@@ -150,6 +159,23 @@ export class TransactionsService {
       throw new BadRequestException('repeatCount is required for installments.')
     }
 
+    if (type === TransactionType.EXPENSE) {
+      const enrichment = await this.enrichManualExpenseInput({
+        userId,
+        bankAccountId,
+        name,
+        value,
+        currentCategoryId: categoryId,
+      })
+
+      enrichedName = enrichment.name
+      enrichedCategoryId = enrichment.categoryId
+
+      if (enrichedCategoryId && enrichedCategoryId !== categoryId) {
+        await this.validateCategoryOwnershipService.validate(userId, enrichedCategoryId)
+      }
+    }
+
     const transactionsCount =
       creationType === TransactionCreationType.ONCE
         ? 1
@@ -166,18 +192,17 @@ export class TransactionsService {
           creationType === TransactionCreationType.ONCE
             ? baseDate
             : this.buildMonthlyOccurrenceDate(baseDate, index, dueDay)
-        const installmentLabel = `${name} (${index + 1}/${transactionsCount})`
 
         return this.transactionsRepo.create({
           data: {
             userId,
             bankAccountId,
-            categoryId,
+            categoryId: enrichedCategoryId,
             date: occurrenceDate,
             name:
               creationType === TransactionCreationType.INSTALLMENT
-                ? installmentLabel
-                : name,
+                ? `${enrichedName} (${index + 1}/${transactionsCount})`
+                : enrichedName,
             type,
             value,
             status: this.getStatusForCreationType(creationType),
@@ -256,7 +281,114 @@ export class TransactionsService {
       })
     }
 
+    if (!options?.suppressRealtime) {
+      this.transactionsGateway.emitTransactionsChanged(userId, {
+        action: 'CREATED',
+        source: 'MANUAL',
+        count: createdTransactions.length,
+        transactionIds: createdTransactions.map((transaction) => transaction.id),
+      })
+    }
+
     return createdTransactions[0]
+  }
+
+  private async enrichManualExpenseInput({
+    userId,
+    bankAccountId,
+    name,
+    value,
+    currentCategoryId,
+  }: {
+    userId: string
+    bankAccountId: string
+    name: string
+    value: number
+    currentCategoryId: string
+  }) {
+    try {
+      const [user, userBankAccounts, availableCategories] = await Promise.all([
+        this.usersRepo.findUnique({
+          where: { id: userId },
+          select: { name: true },
+        }),
+        this.bankAccountsRepo.findMany({
+          where: { userId },
+          select: { id: true, name: true },
+        }),
+        this.categoriesRepo.findMany({
+          where: {
+            userId,
+            type: TransactionType.EXPENSE,
+          },
+          select: {
+            id: true,
+            name: true,
+            type: true,
+          },
+        }),
+      ])
+
+      const bankAccountName = userBankAccounts.find((account) => account.id === bankAccountId)?.name
+
+      const aiSuggestions = await this.transactionImportAiEnrichmentService.enrichEntries({
+        entries: [
+          {
+            index: 0,
+            description: name,
+            type: TransactionType.EXPENSE,
+            amount: Math.abs(value),
+          },
+        ],
+        categories: availableCategories.map((category) => ({
+          id: category.id,
+          name: category.name,
+          type: 'EXPENSE' as const,
+        })),
+        userName: user?.name,
+        bankAccountName,
+        userBankAccounts,
+      })
+
+      const suggestion = aiSuggestions.get(0)
+      const normalizedName = suggestion?.normalizedDescription?.trim()
+        || this.transactionImportAiEnrichmentService.normalizeDescriptionFallback(name)
+
+      if (!suggestion?.categoryId || suggestion.categoryId === currentCategoryId) {
+        return {
+          name: normalizedName,
+          categoryId: currentCategoryId,
+        }
+      }
+
+      const categoriesById = new Map(availableCategories.map((category) => [category.id, category]))
+      const currentCategoryName = categoriesById.get(currentCategoryId)?.name
+
+      const shouldReplaceCategory = !currentCategoryName || this.isGenericHomeCategory(currentCategoryName)
+
+      return {
+        name: normalizedName,
+        categoryId: shouldReplaceCategory ? suggestion.categoryId : currentCategoryId,
+      }
+    } catch {
+      return {
+        name,
+        categoryId: currentCategoryId,
+      }
+    }
+  }
+
+  private isGenericHomeCategory(categoryName?: string) {
+    if (!categoryName) {
+      return false
+    }
+
+    const normalized = this.normalizeText(categoryName)
+
+    return normalized.includes('casa')
+      || normalized.includes('lar')
+      || normalized.includes('moradia')
+      || normalized.includes('residenc')
   }
 
   async createTransfer(userId: string, createTransferDto: CreateTransferDto) {
@@ -306,6 +438,13 @@ export class TransactionsService {
         status: TransactionStatus.POSTED,
         entryType: 'SINGLE',
       },
+    })
+
+    this.transactionsGateway.emitTransactionsChanged(userId, {
+      action: 'CREATED',
+      source: 'MANUAL',
+      count: 2,
+      transactionIds: [outgoingTransaction.id, incomingTransaction.id],
     })
 
     return {
@@ -396,102 +535,168 @@ export class TransactionsService {
     let aiEnhancedCount = 0
     let transferDetectedCount = 0
     let cardBillPaymentDetectedCount = 0
+    let processedRows = 0
+    const totalRows = uniqueEntries.length
+    const startedAt = Date.now()
+    const requestId = importDto.requestId?.trim() || undefined
 
-    for (const [entryIndex, entry] of uniqueEntries.entries()) {
-      try {
-        const baseType = entry.value < 0 ? TransactionType.EXPENSE : TransactionType.INCOME
-        const value = Math.abs(entry.value)
-        const aiSuggestion = aiSuggestionsByIndex.get(entryIndex)
-        const normalizedName = this.buildImportedTransactionName(
-          aiSuggestion?.normalizedDescription
-          || this.transactionImportAiEnrichmentService.normalizeDescriptionFallback(entry.description),
-        )
-        const resolvedKind = this.resolveImportedTransactionKind({
-          description: entry.description,
-          userName: user?.name,
-          baseType,
-          suggestedKind: aiSuggestion?.transactionKind,
-        })
+    const emitImportProgress = (
+      stage: 'STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED',
+      message?: string,
+    ) => {
+      const elapsedMs = Date.now() - startedAt
+      const progress = totalRows === 0
+        ? stage === 'COMPLETED'
+          ? 100
+          : 0
+        : Math.min(100, Math.round((processedRows / totalRows) * 100))
 
-        if (aiSuggestion?.normalizedDescription || aiSuggestion?.categoryId || aiSuggestion?.transactionKind) {
-          aiEnhancedCount += 1
-        }
+      const etaMs = processedRows > 0 && processedRows < totalRows
+        ? Math.max(0, Math.round((elapsedMs / processedRows) * (totalRows - processedRows)))
+        : undefined
 
-        if (resolvedKind === 'TRANSFER') {
-          const alreadyImportedTransfer = await this.findPossibleDuplicateTransaction({
+      this.transactionsGateway.emitFinancialImportProgress(userId, {
+        source: 'BANK_STATEMENT',
+        stage,
+        requestId,
+        bankAccountId: importDto.bankAccountId,
+        progress,
+        processedRows,
+        totalRows,
+        importedCount,
+        skippedCount,
+        failedCount,
+        elapsedMs,
+        etaMs,
+        message,
+      })
+    }
+
+    emitImportProgress('STARTED', 'Importação iniciada.')
+
+    try {
+      for (const [entryIndex, entry] of uniqueEntries.entries()) {
+        try {
+          const baseType = entry.value < 0 ? TransactionType.EXPENSE : TransactionType.INCOME
+          const value = Math.abs(entry.value)
+          const aiSuggestion = aiSuggestionsByIndex.get(entryIndex)
+          const normalizedName = this.buildImportedTransactionName(
+            aiSuggestion?.normalizedDescription
+            || this.transactionImportAiEnrichmentService.normalizeDescriptionFallback(entry.description),
+          )
+          const resolvedKind = this.resolveImportedTransactionKind({
+            description: entry.description,
+            userName: user?.name,
+            baseType,
+            suggestedKind: aiSuggestion?.transactionKind,
+          })
+
+          if (aiSuggestion?.normalizedDescription || aiSuggestion?.categoryId || aiSuggestion?.transactionKind) {
+            aiEnhancedCount += 1
+          }
+
+          if (resolvedKind === 'TRANSFER') {
+            const alreadyImportedTransfer = await this.findPossibleDuplicateTransaction({
+              userId,
+              bankAccountId: importDto.bankAccountId,
+              date: entry.date,
+              value: entry.value,
+              type: TransactionType.TRANSFER,
+              name: normalizedName,
+              matchByName: false,
+            })
+
+            if (alreadyImportedTransfer) {
+              skippedCount += 1
+              continue
+            }
+
+            const counterpartBankAccountId = this.resolveOwnTransferCounterpartBankAccountId({
+              description: normalizedName,
+              currentBankAccountId: importDto.bankAccountId,
+              userBankAccounts,
+            })
+
+            await this.createImportedTransferTransaction({
+              userId,
+              bankAccountId: importDto.bankAccountId,
+              date: entry.date,
+              name: normalizedName,
+              signedValue: entry.value,
+              counterpartBankAccountId,
+              userBankAccounts,
+              suppressRealtime: true,
+            })
+
+            transferDetectedCount += 1
+            importedCount += 1
+            continue
+          }
+
+          if (resolvedKind === 'CARD_BILL_PAYMENT') {
+            cardBillPaymentDetectedCount += 1
+          }
+
+          const type = resolvedKind === 'INCOME'
+            ? TransactionType.INCOME
+            : TransactionType.EXPENSE
+
+          const resolvedCategoryId = this.resolveImportedCategoryId({
+            type,
+            transactionKind: resolvedKind,
+            suggestedCategoryId: aiSuggestion?.categoryId,
+            cardBillCategoryId,
+            description: normalizedName,
+            categoriesById,
+            fallbackCategories,
+          })
+
+          const alreadyImported = await this.findPossibleDuplicateTransaction({
             userId,
             bankAccountId: importDto.bankAccountId,
             date: entry.date,
-            value: entry.value,
-            type: TransactionType.TRANSFER,
+            value,
+            type,
             name: normalizedName,
           })
 
-          if (alreadyImportedTransfer) {
+          if (alreadyImported) {
             skippedCount += 1
             continue
           }
 
-          await this.createImportedTransferTransaction({
-            userId,
+          await this.create(userId, {
             bankAccountId: importDto.bankAccountId,
-            date: entry.date,
+            categoryId: resolvedCategoryId,
             name: normalizedName,
-            signedValue: entry.value,
-          })
+            value,
+            type,
+            date: entry.date.toISOString(),
+            repeatType: TransactionCreationType.ONCE,
+          }, { suppressRealtime: true })
 
-          transferDetectedCount += 1
           importedCount += 1
-          continue
+        } catch {
+          failedCount += 1
+        } finally {
+          processedRows += 1
+          emitImportProgress('PROCESSING', 'Processando lançamentos...')
         }
-
-        if (resolvedKind === 'CARD_BILL_PAYMENT') {
-          cardBillPaymentDetectedCount += 1
-        }
-
-        const type = resolvedKind === 'INCOME'
-          ? TransactionType.INCOME
-          : TransactionType.EXPENSE
-
-        const resolvedCategoryId = this.resolveImportedCategoryId({
-          type,
-          transactionKind: resolvedKind,
-          suggestedCategoryId: aiSuggestion?.categoryId,
-          cardBillCategoryId,
-          description: normalizedName,
-          categoriesById,
-          fallbackCategories,
-        })
-
-        const alreadyImported = await this.findPossibleDuplicateTransaction({
-          userId,
-          bankAccountId: importDto.bankAccountId,
-          date: entry.date,
-          value,
-          type,
-          name: normalizedName,
-        })
-
-        if (alreadyImported) {
-          skippedCount += 1
-          continue
-        }
-
-        await this.create(userId, {
-          bankAccountId: importDto.bankAccountId,
-          categoryId: resolvedCategoryId,
-          name: normalizedName,
-          value,
-          type,
-          date: entry.date.toISOString(),
-          repeatType: TransactionCreationType.ONCE,
-        })
-
-        importedCount += 1
-      } catch {
-        failedCount += 1
       }
+    } catch (error) {
+      emitImportProgress('FAILED', 'Falha no processamento da importação.')
+      throw error
     }
+
+    if (importedCount > 0) {
+      this.transactionsGateway.emitTransactionsChanged(userId, {
+        action: 'IMPORTED',
+        source: 'BANK_IMPORT',
+        count: importedCount,
+      })
+    }
+
+    emitImportProgress('COMPLETED', 'Importação concluída.')
 
     return {
       bank: importDto.bank,
@@ -569,7 +774,7 @@ export class TransactionsService {
       throw new BadRequestException('Transferências entre contas não podem ser editadas por esta rota.')
     }
 
-    return this.transactionsRepo.update({
+    const updatedTransaction = await this.transactionsRepo.update({
       where: { id: transactionId },
       data: {
         bankAccountId,
@@ -580,6 +785,15 @@ export class TransactionsService {
         value,
       },
     })
+
+    this.transactionsGateway.emitTransactionsChanged(userId, {
+      action: 'UPDATED',
+      source: 'MANUAL',
+      count: 1,
+      transactionIds: [transactionId],
+    })
+
+    return updatedTransaction
   }
 
   async updateStatus(
@@ -589,10 +803,19 @@ export class TransactionsService {
   ) {
     await this.validateEntitiesOwnership({ userId, transactionId })
 
-    return this.transactionsRepo.update({
+    const updatedTransaction = await this.transactionsRepo.update({
       where: { id: transactionId },
       data: { status },
     })
+
+    this.transactionsGateway.emitTransactionsChanged(userId, {
+      action: 'UPDATED',
+      source: 'MANUAL',
+      count: 1,
+      transactionIds: [transactionId],
+    })
+
+    return updatedTransaction
   }
 
   async adjustFutureValuesByRecurrenceGroup(
@@ -690,6 +913,13 @@ export class TransactionsService {
 
     await this.transactionsRepo.delete({
       where: { id: transactionId },
+    })
+
+    this.transactionsGateway.emitTransactionsChanged(userId, {
+      action: 'DELETED',
+      source: 'MANUAL',
+      count: 1,
+      transactionIds: [transactionId],
     })
   }
 
@@ -902,6 +1132,7 @@ export class TransactionsService {
     value,
     type,
     name,
+    matchByName = true,
   }: {
     userId: string;
     bankAccountId: string;
@@ -909,6 +1140,7 @@ export class TransactionsService {
     value: number;
     type: TransactionType;
     name: string;
+    matchByName?: boolean;
   }) {
     const dayStart = new Date(Date.UTC(
       date.getUTCFullYear(),
@@ -926,7 +1158,7 @@ export class TransactionsService {
       where: {
         userId,
         bankAccountId,
-        name,
+        ...(matchByName ? { name } : {}),
         value,
         type,
         date: {
@@ -1049,6 +1281,10 @@ export class TransactionsService {
       return 'CARD_BILL_PAYMENT' as const
     }
 
+    if (this.isInternalBalanceMovementDescription(description)) {
+      return 'TRANSFER' as const
+    }
+
     if (this.isLikelyOwnTransfer(description, userName)) {
       return 'TRANSFER' as const
     }
@@ -1072,10 +1308,20 @@ export class TransactionsService {
       || normalized.includes('fatura do cartao')
       || normalized.includes('pix para cartao de credito')
       || normalized.includes('pagamento cartao de credito')
+      || normalized.includes('pagto cartao credito')
+      || normalized.includes('pagto cartao de credito')
+      || normalized.includes('pagamento cartao credito')
   }
 
   private isLikelyOwnTransfer(description: string, userName?: string) {
     const normalizedDescription = this.normalizeText(description)
+
+    const isOwnAccountPhrase = normalizedDescription.includes('conta propria')
+      || normalizedDescription.includes('mesma titularidade')
+
+    if (isOwnAccountPhrase && normalizedDescription.includes('pix')) {
+      return true
+    }
 
     if (!normalizedDescription.includes('transferencia') || !normalizedDescription.includes('pix')) {
       return false
@@ -1102,6 +1348,17 @@ export class TransactionsService {
     const matchedTokens = userTokens.filter((token) => normalizedDescription.includes(token))
 
     return matchedTokens.length >= 2
+  }
+
+  private isInternalBalanceMovementDescription(description: string) {
+    const normalized = this.normalizeText(description)
+
+    return normalized.includes('resgate bb rende facil')
+      || normalized.includes('aplicacao bb rende facil')
+      || normalized.includes('bb rende facil')
+      || normalized.includes('resgate rdb')
+      || normalized.includes('aplicacao rdb')
+      || normalized.includes('debito em conta')
   }
 
   private normalizeText(value: string) {
@@ -1139,14 +1396,20 @@ export class TransactionsService {
     date,
     name,
     signedValue,
+    counterpartBankAccountId,
+    userBankAccounts,
+    suppressRealtime,
   }: {
     userId: string;
     bankAccountId: string;
     date: Date;
     name: string;
     signedValue: number;
+    counterpartBankAccountId?: string;
+    userBankAccounts: Array<{ id: string; name: string }>;
+    suppressRealtime?: boolean;
   }) {
-    return this.transactionsRepo.create({
+    const createdTransaction = await this.transactionsRepo.create({
       data: {
         userId,
         bankAccountId,
@@ -1159,6 +1422,149 @@ export class TransactionsService {
         entryType: 'SINGLE',
       },
     })
+
+    if (!counterpartBankAccountId || counterpartBankAccountId === bankAccountId) {
+      if (!suppressRealtime) {
+        this.transactionsGateway.emitTransactionsChanged(userId, {
+          action: 'CREATED',
+          source: 'MANUAL',
+          count: 1,
+          transactionIds: [createdTransaction.id],
+        })
+      }
+
+      return createdTransaction
+    }
+
+    const mirroredValue = -signedValue
+    const currentAccountName = userBankAccounts.find((account) => account.id === bankAccountId)?.name
+
+    const counterpartDescription = mirroredValue >= 0
+      ? `Transferência recebida de conta própria${currentAccountName ? ` (${currentAccountName})` : ''}`
+      : `Transferência enviada para conta própria${currentAccountName ? ` (${currentAccountName})` : ''}`
+
+    const duplicateCounterpart = await this.findPossibleDuplicateTransaction({
+      userId,
+      bankAccountId: counterpartBankAccountId,
+      date,
+      value: mirroredValue,
+      type: TransactionType.TRANSFER,
+      name: counterpartDescription,
+      matchByName: false,
+    })
+
+    let mirroredTransactionId: string | undefined
+
+    if (!duplicateCounterpart) {
+      const mirroredTransaction = await this.transactionsRepo.create({
+        data: {
+          userId,
+          bankAccountId: counterpartBankAccountId,
+          categoryId: null,
+          name: counterpartDescription,
+          value: mirroredValue,
+          date,
+          type: TransactionType.TRANSFER,
+          status: TransactionStatus.POSTED,
+          entryType: 'SINGLE',
+        },
+      })
+
+      mirroredTransactionId = mirroredTransaction.id
+    }
+
+    if (!suppressRealtime) {
+      this.transactionsGateway.emitTransactionsChanged(userId, {
+        action: 'CREATED',
+        source: 'MANUAL',
+        count: mirroredTransactionId ? 2 : 1,
+        transactionIds: mirroredTransactionId
+          ? [createdTransaction.id, mirroredTransactionId]
+          : [createdTransaction.id],
+      })
+    }
+
+    return createdTransaction
+  }
+
+  private resolveOwnTransferCounterpartBankAccountId({
+    description,
+    currentBankAccountId,
+    userBankAccounts,
+  }: {
+    description: string;
+    currentBankAccountId: string;
+    userBankAccounts: Array<{ id: string; name: string }>;
+  }) {
+    const normalizedDescription = this.normalizeText(description)
+
+    if (!normalizedDescription.includes('conta propria')) {
+      return undefined
+    }
+
+    const otherAccounts = userBankAccounts.filter((account) => account.id !== currentBankAccountId)
+
+    if (!otherAccounts.length) {
+      return undefined
+    }
+
+    const hintedText = this.extractParenthesesContent(description)
+    const normalizedHint = hintedText ? this.normalizeText(hintedText) : ''
+
+    if (normalizedHint) {
+      const hintedAccount = otherAccounts.find((account) => {
+        const normalizedAccountName = this.normalizeText(account.name)
+
+        return normalizedHint.includes(normalizedAccountName)
+          || normalizedAccountName.includes(normalizedHint)
+      })
+
+      if (hintedAccount) {
+        return hintedAccount.id
+      }
+    }
+
+    const keywordAliases: Array<{ keyword: string; aliases: string[] }> = [
+      { keyword: 'nubank', aliases: ['nubank', 'nu bank', 'nu'] },
+      { keyword: 'banco do brasil', aliases: ['banco do brasil', 'bb'] },
+      { keyword: 'sicoob', aliases: ['sicoob', 'ccla canoinhas', 'cooperativa'] },
+      { keyword: 'caixa', aliases: ['caixa', 'cef'] },
+      { keyword: 'itau', aliases: ['itau', 'itaú'] },
+      { keyword: 'bradesco', aliases: ['bradesco'] },
+      { keyword: 'santander', aliases: ['santander'] },
+      { keyword: 'inter', aliases: ['inter', 'banco inter'] },
+    ]
+
+    for (const account of otherAccounts) {
+      const normalizedAccountName = this.normalizeText(account.name)
+
+      if (normalizedDescription.includes(normalizedAccountName)) {
+        return account.id
+      }
+
+      const aliasGroup = keywordAliases.find((group) =>
+        group.aliases.some((alias) => normalizedAccountName.includes(this.normalizeText(alias))),
+      )
+
+      if (
+        aliasGroup &&
+        aliasGroup.aliases.some((alias) => normalizedDescription.includes(this.normalizeText(alias)))
+      ) {
+        return account.id
+      }
+    }
+
+    if (otherAccounts.length === 1) {
+      return otherAccounts[0].id
+    }
+
+    return undefined
+  }
+
+  private extractParenthesesContent(text: string) {
+    const match = text.match(/\(([^)]+)\)/)
+
+    return match?.[1]?.trim()
   }
 
   private findCardBillCategoryId(

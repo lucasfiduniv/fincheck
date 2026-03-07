@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common'
 import { SupportedBankStatementProvider } from '../../dto/import-bank-statement.dto'
 import { NubankStatementParser } from './parsers/nubank-statement.parser'
 import { NubankOfxStatementParser } from './parsers/nubank-ofx-statement.parser'
+import { BancoDoBrasilOfxStatementParser } from './parsers/banco-do-brasil-ofx-statement.parser'
 import { ParsedStatementEntry } from './statement-import.types'
 
 @Injectable()
@@ -9,11 +10,13 @@ export class StatementImportService {
   private readonly parsers = [
     this.nubankParser,
     this.nubankOfxParser,
+    this.bancoDoBrasilOfxParser,
   ]
 
   constructor(
     private readonly nubankParser: NubankStatementParser,
     private readonly nubankOfxParser: NubankOfxStatementParser,
+    private readonly bancoDoBrasilOfxParser: BancoDoBrasilOfxStatementParser,
   ) {}
 
   parse(provider: SupportedBankStatementProvider, csvContent: string) {

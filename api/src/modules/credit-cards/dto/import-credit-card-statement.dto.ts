@@ -1,4 +1,4 @@
-import { IsEnum, IsNotEmpty, IsString } from 'class-validator'
+import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator'
 
 export enum SupportedCreditCardStatementProvider {
   NUBANK = 'NUBANK',
@@ -12,4 +12,8 @@ export class ImportCreditCardStatementDto {
   @IsString()
   @IsNotEmpty()
     csvContent: string
+
+  @IsOptional()
+  @IsString()
+    requestId?: string
 }
