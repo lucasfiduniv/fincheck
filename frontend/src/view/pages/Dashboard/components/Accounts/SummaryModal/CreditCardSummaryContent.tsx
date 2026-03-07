@@ -101,7 +101,7 @@ export function CreditCardSummaryContent({
   return (
     <div className="max-h-[72vh] overflow-y-auto pr-1">
       <div className="space-y-4">
-        <section className="relative rounded-2xl border border-gray-100 p-4 lg:p-5 space-y-4">
+        <section className="rounded-2xl border border-gray-100 p-4 lg:p-5 space-y-4">
           <input
             ref={importInputRef}
             type="file"
@@ -112,16 +112,6 @@ export function CreditCardSummaryContent({
               event.target.value = ''
             }}
           />
-
-          <button
-            type="button"
-            title="Importar fatura Nubank"
-            onClick={() => importInputRef.current?.click()}
-            disabled={isImportingStatement}
-            className="absolute top-4 right-4 h-8 w-8 rounded-lg border border-gray-200 text-gray-500 hover:text-gray-700 hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center"
-          >
-            <UploadIcon className="w-4 h-4" />
-          </button>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -148,7 +138,18 @@ export function CreditCardSummaryContent({
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full sm:w-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 w-full sm:w-auto">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => importInputRef.current?.click()}
+                isLoading={isImportingStatement}
+                className="h-9 rounded-xl border-gray-200 bg-white text-gray-700 hover:bg-gray-50 px-3 text-xs font-semibold tracking-[-0.2px]"
+              >
+                <UploadIcon className="w-4 h-4 mr-1" />
+                Importar fatura
+              </Button>
+
               <Button type="button" variant="ghost" className="h-9 rounded-xl border-teal-200 bg-teal-50/70 text-teal-900 hover:bg-teal-100 px-3 text-xs font-semibold tracking-[-0.2px]" onClick={onNewCreditCardPurchase}>
                 Nova compra
               </Button>
