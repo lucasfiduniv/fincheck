@@ -16,6 +16,16 @@ export class CreditCardPurchasesRepository {
     return this.prismaService.creditCardPurchase.findFirst(findFirstDto)
   }
 
+  groupByCategoryAmountSum(where: Prisma.CreditCardPurchaseWhereInput) {
+    return this.prismaService.creditCardPurchase.groupBy({
+      by: ['categoryId'],
+      where,
+      _sum: {
+        amount: true,
+      },
+    })
+  }
+
   create(createDto: Prisma.CreditCardPurchaseCreateArgs) {
     return this.prismaService.creditCardPurchase.create(createDto)
   }

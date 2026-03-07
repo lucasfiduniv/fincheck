@@ -6,6 +6,7 @@ import {
 import { CategoriesRepository } from 'src/shared/database/repositories/categories.repository'
 import { CategoryBudgetsRepository } from 'src/shared/database/repositories/category-budgets.repository'
 import { TransactionsRepository } from 'src/shared/database/repositories/transactions.repository'
+import { CreditCardPurchasesRepository } from 'src/shared/database/repositories/credit-card-purchases.repository'
 import { CreateCategoryBudgetDto } from '../dto/create-category-budget.dto'
 import { UpdateCategoryBudgetDto } from '../dto/update-category-budget.dto'
 
@@ -15,6 +16,7 @@ export class CategoryBudgetsService {
     private readonly categoryBudgetsRepo: CategoryBudgetsRepository,
     private readonly categoriesRepo: CategoriesRepository,
     private readonly transactionsRepo: TransactionsRepository,
+    private readonly creditCardPurchasesRepo: CreditCardPurchasesRepository,
   ) {}
 
   async create(userId: string, createCategoryBudgetDto: CreateCategoryBudgetDto) {
@@ -94,7 +96,12 @@ export class CategoryBudgetsService {
 
     const categoryIds = expenseCategories.map((category) => category.id)
 
-    const [currentMonthGroupedSpent, previousMonthGroupedSpent] = await Promise.all([
+    const [
+      currentMonthGroupedSpent,
+      previousMonthGroupedSpent,
+      currentMonthGroupedCardSpent,
+      previousMonthGroupedCardSpent,
+    ] = await Promise.all([
       this.transactionsRepo.groupByCategoryValueSum({
         userId,
         type: 'EXPENSE',
@@ -111,6 +118,22 @@ export class CategoryBudgetsService {
         status: 'POSTED',
         categoryId: { in: categoryIds },
         date: {
+          gte: previousMonthStart,
+          lt: currentMonthStart,
+        },
+      }),
+      this.creditCardPurchasesRepo.groupByCategoryAmountSum({
+        userId,
+        categoryId: { in: categoryIds },
+        purchaseDate: {
+          gte: currentMonthStart,
+          lt: nextMonthStart,
+        },
+      }),
+      this.creditCardPurchasesRepo.groupByCategoryAmountSum({
+        userId,
+        categoryId: { in: categoryIds },
+        purchaseDate: {
           gte: previousMonthStart,
           lt: currentMonthStart,
         },
@@ -134,6 +157,26 @@ export class CategoryBudgetsService {
       acc[grouped.categoryId] = grouped._sum.value ?? 0
       return acc
     }, {} as Record<string, number>)
+
+    currentMonthGroupedCardSpent.forEach((grouped) => {
+      if (!grouped.categoryId) {
+        return
+      }
+
+      spentByCategory[grouped.categoryId] = Number(
+        ((spentByCategory[grouped.categoryId] ?? 0) + (grouped._sum.amount ?? 0)).toFixed(2),
+      )
+    })
+
+    previousMonthGroupedCardSpent.forEach((grouped) => {
+      if (!grouped.categoryId) {
+        return
+      }
+
+      previousSpentByCategory[grouped.categoryId] = Number(
+        ((previousSpentByCategory[grouped.categoryId] ?? 0) + (grouped._sum.amount ?? 0)).toFixed(2),
+      )
+    })
 
     return expenseCategories.map((category) => {
       const budget = budgetByCategory.get(category.id)

@@ -467,7 +467,7 @@ export class TransactionsService {
       }),
     ])
 
-    const parsedEntries = this.statementImportService.parse(
+    const parsedEntries = await this.statementImportService.parse(
       importDto.bank,
       importDto.csvContent,
     )

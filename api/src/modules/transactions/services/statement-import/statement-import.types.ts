@@ -10,5 +10,5 @@ export interface ParsedStatementEntry {
 export interface BankStatementParser {
   readonly provider: SupportedBankStatementProvider
   canParse(content: string): boolean
-  parse(csvContent: string): ParsedStatementEntry[]
+  parse(content: string): Promise<ParsedStatementEntry[]>
 }

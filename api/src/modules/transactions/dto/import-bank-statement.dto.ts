@@ -3,6 +3,7 @@ import { IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validato
 export enum SupportedBankStatementProvider {
   NUBANK = 'NUBANK',
   BANCO_DO_BRASIL = 'BANCO_DO_BRASIL',
+  SICOOB = 'SICOOB',
 }
 
 export class ImportBankStatementDto {

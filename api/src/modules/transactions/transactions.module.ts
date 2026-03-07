@@ -8,6 +8,7 @@ import { StatementImportService } from './services/statement-import/statement-im
 import { NubankStatementParser } from './services/statement-import/parsers/nubank-statement.parser'
 import { NubankOfxStatementParser } from './services/statement-import/parsers/nubank-ofx-statement.parser'
 import { BancoDoBrasilOfxStatementParser } from './services/statement-import/parsers/banco-do-brasil-ofx-statement.parser'
+import { SicoobPdfStatementParser } from './services/statement-import/parsers/sicoob-pdf-statement.parser'
 import { AiModule } from '../ai/ai.module'
 import { TransactionsGateway } from './transactions.gateway'
 
@@ -21,6 +22,7 @@ import { TransactionsGateway } from './transactions.gateway'
     NubankStatementParser,
     NubankOfxStatementParser,
     BancoDoBrasilOfxStatementParser,
+    SicoobPdfStatementParser,
     TransactionsGateway,
   ],
   exports: [TransactionsGateway],

@@ -15,7 +15,7 @@ export class NubankOfxStatementParser implements BankStatementParser {
     return normalizedContent.includes('<OFX>') && normalizedContent.includes('<STMTTRN>')
   }
 
-  parse(content: string): ParsedStatementEntry[] {
+  async parse(content: string): Promise<ParsedStatementEntry[]> {
     const normalizedContent = content.replace(/^\uFEFF/, '').trim()
 
     if (!normalizedContent) {

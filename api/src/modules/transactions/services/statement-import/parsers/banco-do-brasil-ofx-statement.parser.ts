@@ -20,7 +20,7 @@ export class BancoDoBrasilOfxStatementParser implements BankStatementParser {
       || normalizedContent.includes('<BANKID>1</BANKID>')
   }
 
-  parse(content: string): ParsedStatementEntry[] {
+  async parse(content: string): Promise<ParsedStatementEntry[]> {
     const normalizedContent = content.replace(/^\uFEFF/, '').trim()
 
     if (!normalizedContent) {

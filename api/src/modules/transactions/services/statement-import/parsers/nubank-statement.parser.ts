@@ -28,7 +28,7 @@ export class NubankStatementParser implements BankStatementParser {
       && normalizedHeader.includes('descricao')
   }
 
-  parse(csvContent: string): ParsedStatementEntry[] {
+  async parse(csvContent: string): Promise<ParsedStatementEntry[]> {
     const normalizedContent = csvContent.replace(/^\uFEFF/, '').trim()
 
     if (!normalizedContent) {
