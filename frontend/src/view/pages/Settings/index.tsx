@@ -1,4 +1,4 @@
-import { ChangeEvent, useEffect, useMemo, useState } from 'react'
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Logo } from '../../components/Logo'
@@ -24,6 +24,13 @@ import {
   ImportCreditCardStatementResponse,
 } from '../../../app/services/creditCardsService/importStatement'
 import { creditCardsService } from '../../../app/services/creditCardsService'
+import { revalidateFinancialQueries } from '../../../app/utils/revalidateFinancialQueries'
+import { notifyFinancialImportCompleted } from '../../../app/utils/financialImportRealtime'
+import {
+  connectFinancialImportSocket,
+  FINANCIAL_IMPORT_PROGRESS_SOCKET_EVENT,
+  FinancialImportProgressSocketEvent,
+} from '../../../app/utils/financialImportSocket'
 
 function toLocalDigits(value: string) {
   const digits = value.replace(/\D/g, '')
@@ -126,6 +133,23 @@ const settingsMenuItems: SettingsMenuItem[] = [
   },
 ]
 
+function formatSeconds(valueInMs?: number) {
+  if (!valueInMs || valueInMs <= 0) {
+    return '0s'
+  }
+
+  const totalSeconds = Math.max(0, Math.round(valueInMs / 1000))
+
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`
+  }
+
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+
+  return `${minutes}m ${seconds}s`
+}
+
 export function Settings() {
   const queryClient = useQueryClient()
   const { accounts } = useBankAccounts()
@@ -137,11 +161,19 @@ export function Settings() {
   const [statementFileName, setStatementFileName] = useState('')
   const [statementCsvContent, setStatementCsvContent] = useState('')
   const [importResult, setImportResult] = useState<ImportStatementResponse | null>(null)
+  const [statementImportProgress, setStatementImportProgress] = useState(0)
+  const [statementImportStatus, setStatementImportStatus] = useState('')
+  const [statementImportTimingLabel, setStatementImportTimingLabel] = useState('')
   const [creditCardStatementCardId, setCreditCardStatementCardId] = useState('')
   const [creditCardStatementFileName, setCreditCardStatementFileName] = useState('')
   const [creditCardStatementContent, setCreditCardStatementContent] = useState('')
   const [creditCardImportResult, setCreditCardImportResult] = useState<ImportCreditCardStatementResponse | null>(null)
+  const [creditCardImportProgress, setCreditCardImportProgress] = useState(0)
+  const [creditCardImportStatus, setCreditCardImportStatus] = useState('')
+  const [creditCardImportTimingLabel, setCreditCardImportTimingLabel] = useState('')
   const [activeMenuKey, setActiveMenuKey] = useState('notifications')
+  const statementImportRequestIdRef = useRef<string | null>(null)
+  const creditCardImportRequestIdRef = useRef<string | null>(null)
   const { creditCards } = useCreditCards()
 
   const { data } = useQuery({
@@ -180,6 +212,52 @@ export function Settings() {
     setCreditCardStatementCardId(creditCards[0].id)
   }, [creditCards, creditCardStatementCardId])
 
+  useEffect(() => {
+    const socket = connectFinancialImportSocket()
+
+    if (!socket) {
+      return
+    }
+
+    function handleImportProgress(event: FinancialImportProgressSocketEvent) {
+      if (event.source === 'BANK_STATEMENT') {
+        if (!statementImportRequestIdRef.current || event.requestId !== statementImportRequestIdRef.current) {
+          return
+        }
+
+        setStatementImportProgress(event.progress)
+        setStatementImportStatus(event.message || 'Processando extrato...')
+
+        const etaLabel = event.etaMs && event.etaMs > 0
+          ? ` • ETA ${formatSeconds(event.etaMs)}`
+          : ''
+        setStatementImportTimingLabel(`Tempo ${formatSeconds(event.elapsedMs)}${etaLabel}`)
+        return
+      }
+
+      if (event.source === 'CREDIT_CARD_STATEMENT') {
+        if (!creditCardImportRequestIdRef.current || event.requestId !== creditCardImportRequestIdRef.current) {
+          return
+        }
+
+        setCreditCardImportProgress(event.progress)
+        setCreditCardImportStatus(event.message || 'Processando fatura...')
+
+        const etaLabel = event.etaMs && event.etaMs > 0
+          ? ` • ETA ${formatSeconds(event.etaMs)}`
+          : ''
+        setCreditCardImportTimingLabel(`Tempo ${formatSeconds(event.elapsedMs)}${etaLabel}`)
+      }
+    }
+
+    socket.on(FINANCIAL_IMPORT_PROGRESS_SOCKET_EVENT, handleImportProgress)
+
+    return () => {
+      socket.off(FINANCIAL_IMPORT_PROGRESS_SOCKET_EVENT, handleImportProgress)
+      socket.disconnect()
+    }
+  }, [])
+
   const { mutateAsync: updateSettings, isLoading: isSaving } = useMutation(
     notificationsService.updateSettings,
   )
@@ -189,11 +267,23 @@ export function Settings() {
   )
 
   const { mutateAsync: importStatement, isLoading: isImportingStatement } = useMutation(
-    transactionsService.importStatement,
+    ({
+      params,
+      onUploadProgress,
+    }: {
+      params: Parameters<typeof transactionsService.importStatement>[0]
+      onUploadProgress?: (percentage: number) => void
+    }) => transactionsService.importStatement(params, { onUploadProgress }),
   )
 
   const { mutateAsync: importCreditCardStatement, isLoading: isImportingCreditCardStatement } = useMutation(
-    creditCardsService.importStatement,
+    ({
+      params,
+      onUploadProgress,
+    }: {
+      params: Parameters<typeof creditCardsService.importStatement>[0]
+      onUploadProgress?: (percentage: number) => void
+    }) => creditCardsService.importStatement(params, { onUploadProgress }),
   )
 
   const canSave = useMemo(() => {
@@ -263,24 +353,49 @@ export function Settings() {
     }
 
     try {
+      const requestId = crypto.randomUUID()
+      statementImportRequestIdRef.current = requestId
+
+      setStatementImportProgress(0)
+      setStatementImportStatus('Enviando extrato...')
+      setStatementImportTimingLabel('')
+
       const response = await importStatement({
-        bank: statementBank,
-        bankAccountId: statementBankAccountId,
-        csvContent: statementCsvContent,
+        params: {
+          bank: statementBank,
+          bankAccountId: statementBankAccountId,
+          csvContent: statementCsvContent,
+          requestId,
+        },
       })
 
       setImportResult(response)
 
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['transactions'] }),
-        queryClient.invalidateQueries({ queryKey: ['bankAccounts'] }),
-        queryClient.invalidateQueries({ queryKey: ['categoryBudgets'] }),
-        queryClient.invalidateQueries({ queryKey: ['transactionDueAlerts'] }),
-      ])
+      await revalidateFinancialQueries(queryClient)
+
+      if (response.importedCount > 0) {
+        notifyFinancialImportCompleted({
+          source: 'BANK_STATEMENT',
+          importedCount: response.importedCount,
+        })
+      }
+
+      setStatementImportProgress(100)
+      setStatementImportStatus('Importação concluída.')
+      setStatementImportTimingLabel('')
 
       toast.success(`Extrato importado! ${response.importedCount} lançamento(s) criado(s).`)
     } catch {
+      setStatementImportStatus('Falha na importação.')
+      setStatementImportTimingLabel('')
       toast.error('Não foi possível importar o extrato. Confira o arquivo CSV/OFX e tente novamente.')
+    } finally {
+      setTimeout(() => {
+        setStatementImportProgress(0)
+        setStatementImportStatus('')
+        setStatementImportTimingLabel('')
+        statementImportRequestIdRef.current = null
+      }, 1200)
     }
   }
 
@@ -319,22 +434,49 @@ export function Settings() {
     }
 
     try {
+      const requestId = crypto.randomUUID()
+      creditCardImportRequestIdRef.current = requestId
+
+      setCreditCardImportProgress(0)
+      setCreditCardImportStatus('Enviando fatura...')
+      setCreditCardImportTimingLabel('')
+
       const response = await importCreditCardStatement({
-        creditCardId: creditCardStatementCardId,
-        bank: 'NUBANK',
-        csvContent: creditCardStatementContent,
+        params: {
+          creditCardId: creditCardStatementCardId,
+          bank: 'NUBANK',
+          csvContent: creditCardStatementContent,
+          requestId,
+        },
       })
 
       setCreditCardImportResult(response)
 
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['creditCards'] }),
-        queryClient.invalidateQueries({ queryKey: ['creditCardStatement'] }),
-      ])
+      await revalidateFinancialQueries(queryClient)
 
-      toast.success(`Fatura importada! ${response.importedCount} compra(s) criada(s).`)
+      if ((response.importedPaymentsCount ?? 0) > 0) {
+        notifyFinancialImportCompleted({
+          source: 'CREDIT_CARD_STATEMENT',
+          importedCount: response.importedPaymentsCount ?? 0,
+        })
+      }
+
+      setCreditCardImportProgress(100)
+      setCreditCardImportStatus('Importação concluída.')
+      setCreditCardImportTimingLabel('')
+
+      toast.success(`Fatura importada! ${response.importedCount} compra(s) e ${response.importedPaymentsCount ?? 0} pagamento(s).`)
     } catch {
+      setCreditCardImportStatus('Falha na importação.')
+      setCreditCardImportTimingLabel('')
       toast.error('Não foi possível importar a fatura do cartão. Confira o arquivo CSV/OFX e tente novamente.')
+    } finally {
+      setTimeout(() => {
+        setCreditCardImportProgress(0)
+        setCreditCardImportStatus('')
+        setCreditCardImportTimingLabel('')
+        creditCardImportRequestIdRef.current = null
+      }, 1200)
     }
   }
 
@@ -516,7 +658,7 @@ export function Settings() {
               <div className="space-y-4">
                 <SettingsSection
                   title="Importar extrato do banco"
-                  description="Importe CSV ou OFX do Nubank e crie lançamentos automaticamente com classificação inteligente."
+                  description="Importe CSV ou OFX do Nubank ou Banco do Brasil e crie lançamentos automaticamente com classificação inteligente."
                 >
                   <div className="rounded-xl border border-teal-100 bg-teal-50 p-4 space-y-2">
                     <strong className="text-sm text-teal-900 block">O que acontece ao importar</strong>
@@ -537,7 +679,10 @@ export function Settings() {
                       placeholder="Banco"
                       value={statementBank}
                       onChange={(value) => setStatementBank(value as SupportedStatementBank)}
-                      options={[{ value: 'NUBANK', label: 'Nubank (CSV/OFX)' }]}
+                      options={[
+                        { value: 'NUBANK', label: 'Nubank (CSV/OFX)' },
+                        { value: 'BANCO_DO_BRASIL', label: 'Banco do Brasil (OFX)' },
+                      ]}
                     />
 
                     <Select
@@ -573,6 +718,24 @@ export function Settings() {
                     >
                       Importar extrato
                     </Button>
+
+                    {(isImportingStatement || statementImportStatus) && (
+                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
+                        <div className="flex items-center justify-between text-xs text-gray-700">
+                          <span>{statementImportStatus || 'Importando extrato...'}</span>
+                          <strong>{statementImportProgress}%</strong>
+                        </div>
+                        {!!statementImportTimingLabel && (
+                          <div className="text-[11px] text-gray-500">{statementImportTimingLabel}</div>
+                        )}
+                        <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-teal-800 transition-all"
+                            style={{ width: `${statementImportProgress}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
 
                     {importResult && (
                       <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
@@ -634,11 +797,32 @@ export function Settings() {
                       Importar fatura do cartão
                     </Button>
 
+                    {(isImportingCreditCardStatement || creditCardImportStatus) && (
+                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
+                        <div className="flex items-center justify-between text-xs text-gray-700">
+                          <span>{creditCardImportStatus || 'Importando fatura...'}</span>
+                          <strong>{creditCardImportProgress}%</strong>
+                        </div>
+                        {!!creditCardImportTimingLabel && (
+                          <div className="text-[11px] text-gray-500">{creditCardImportTimingLabel}</div>
+                        )}
+                        <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-teal-800 transition-all"
+                            style={{ width: `${creditCardImportProgress}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
                     {creditCardImportResult && (
                       <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
                         <p>Total de linhas: <strong>{creditCardImportResult.totalRows}</strong></p>
                         <p>Linhas únicas: <strong>{creditCardImportResult.uniqueRows}</strong></p>
                         <p>Importadas: <strong>{creditCardImportResult.importedCount}</strong></p>
+                        {typeof creditCardImportResult.importedPaymentsCount === 'number' && (
+                          <p>Pagamentos aplicados: <strong>{creditCardImportResult.importedPaymentsCount}</strong></p>
+                        )}
                         <p>Ignoradas (duplicadas): <strong>{creditCardImportResult.skippedCount}</strong></p>
                         <p>Falharam: <strong>{creditCardImportResult.failedCount}</strong></p>
                       </div>

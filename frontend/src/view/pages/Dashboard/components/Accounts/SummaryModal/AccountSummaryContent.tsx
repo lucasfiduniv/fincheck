@@ -3,6 +3,18 @@ import { Transaction } from '../../../../../../app/entities/Transaction'
 import { formatCurrency } from '../../../../../../app/utils/formatCurrency'
 import { formatDate } from '../../../../../../app/utils/formatDate'
 import { Button } from '../../../../../components/Button'
+import { UploadIcon } from '@radix-ui/react-icons'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useRef, useState } from 'react'
+import toast from 'react-hot-toast'
+import { transactionsService } from '../../../../../../app/services/transactionsService'
+import { revalidateFinancialQueries } from '../../../../../../app/utils/revalidateFinancialQueries'
+import { notifyFinancialImportCompleted } from '../../../../../../app/utils/financialImportRealtime'
+import {
+  connectFinancialImportSocket,
+  FINANCIAL_IMPORT_PROGRESS_SOCKET_EVENT,
+  FinancialImportProgressSocketEvent,
+} from '../../../../../../app/utils/financialImportSocket'
 
 interface AccountSummaryContentProps {
   account: BankAccount
@@ -21,6 +33,23 @@ const ACCOUNT_TYPE_LABEL: Record<BankAccount['type'], string> = {
   INVESTMENT: 'Investimento',
 }
 
+function formatSeconds(valueInMs?: number) {
+  if (!valueInMs || valueInMs <= 0) {
+    return '0s'
+  }
+
+  const totalSeconds = Math.max(0, Math.round(valueInMs / 1000))
+
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`
+  }
+
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+
+  return `${minutes}m ${seconds}s`
+}
+
 export function AccountSummaryContent({
   account,
   accountIncomeMonth,
@@ -31,8 +60,150 @@ export function AccountSummaryContent({
   onCreateTransaction,
   isDeletingAccount,
 }: AccountSummaryContentProps) {
+  const queryClient = useQueryClient()
+  const importInputRef = useRef<HTMLInputElement | null>(null)
+  const importRequestIdRef = useRef<string | null>(null)
+  const [importProgress, setImportProgress] = useState(0)
+  const [importStatus, setImportStatus] = useState('')
+  const [importTimingLabel, setImportTimingLabel] = useState('')
+
+  useEffect(() => {
+    const socket = connectFinancialImportSocket()
+
+    if (!socket) {
+      return
+    }
+
+    function handleImportProgress(event: FinancialImportProgressSocketEvent) {
+      if (event.source !== 'BANK_STATEMENT') {
+        return
+      }
+
+      if (event.bankAccountId !== account.id) {
+        return
+      }
+
+      if (!importRequestIdRef.current || event.requestId !== importRequestIdRef.current) {
+        return
+      }
+
+      setImportProgress(event.progress)
+      setImportStatus(event.message || 'Processando importação...')
+
+      const etaLabel = event.etaMs && event.etaMs > 0
+        ? ` • ETA ${formatSeconds(event.etaMs)}`
+        : ''
+      setImportTimingLabel(`Tempo ${formatSeconds(event.elapsedMs)}${etaLabel}`)
+    }
+
+    socket.on(FINANCIAL_IMPORT_PROGRESS_SOCKET_EVENT, handleImportProgress)
+
+    return () => {
+      socket.off(FINANCIAL_IMPORT_PROGRESS_SOCKET_EVENT, handleImportProgress)
+      socket.disconnect()
+    }
+  }, [account.id])
+
+  const { mutateAsync: importStatementMutation, isLoading: isImportingStatement } = useMutation(
+    ({
+      params,
+      onUploadProgress,
+    }: {
+      params: Parameters<typeof transactionsService.importStatement>[0]
+      onUploadProgress?: (percentage: number) => void
+    }) => transactionsService.importStatement(params, { onUploadProgress }),
+  )
+
+  function resolveStatementProvider(content: string) {
+    const normalized = content.replace(/^\uFEFF/, '').trim().toUpperCase()
+
+    if (
+      normalized.includes('<OFX>')
+      && (normalized.includes('BANCO DO BRASIL') || normalized.includes('<BANKID>1</BANKID>'))
+    ) {
+      return 'BANCO_DO_BRASIL' as const
+    }
+
+    return 'NUBANK' as const
+  }
+
+  async function handleImportStatementFile(file?: File) {
+    if (!file) {
+      return
+    }
+
+    const lowerCaseName = file.name.toLowerCase()
+    const isCsvOrOfx = lowerCaseName.endsWith('.csv') || lowerCaseName.endsWith('.ofx')
+
+    if (!isCsvOrOfx) {
+      toast.error('Selecione um arquivo CSV ou OFX válido.')
+      return
+    }
+
+    try {
+      const requestId = crypto.randomUUID()
+      importRequestIdRef.current = requestId
+
+      setImportProgress(0)
+      setImportStatus(`Lendo ${file.name}...`)
+      setImportTimingLabel('')
+
+      const content = await file.text()
+      const provider = resolveStatementProvider(content)
+
+      setImportProgress(0)
+      setImportStatus('Enviando extrato...')
+
+      const response = await importStatementMutation({
+        params: {
+          bank: provider,
+          bankAccountId: account.id,
+          csvContent: content,
+          requestId,
+        },
+      })
+
+      await revalidateFinancialQueries(queryClient)
+
+      if (response.importedCount > 0) {
+        notifyFinancialImportCompleted({
+          source: 'BANK_STATEMENT',
+          importedCount: response.importedCount,
+        })
+      }
+
+      setImportProgress(100)
+      setImportStatus('Importação concluída.')
+      setImportTimingLabel('')
+
+      toast.success(`Extrato importado nesta conta: ${response.importedCount} lançamento(s) criado(s).`)
+    } catch {
+      setImportStatus('Falha na importação.')
+      setImportTimingLabel('')
+      toast.error('Não foi possível importar o extrato desta conta.')
+    } finally {
+      setTimeout(() => {
+        setImportProgress(0)
+        setImportStatus('')
+        setImportTimingLabel('')
+        importRequestIdRef.current = null
+      }, 1200)
+    }
+  }
+
   return (
     <div className="space-y-4">
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".csv,.ofx,text/csv,application/vnd.ms-excel"
+        className="hidden"
+        onChange={(event) => {
+          void handleImportStatementFile(event.target.files?.[0])
+          event.target.value = ''
+        }}
+      />
+
       <div className="rounded-xl bg-gray-50 p-4 space-y-2">
         <strong className="text-gray-800 block text-lg tracking-[-0.5px]">{account.name}</strong>
         <span className="text-xs text-gray-600 block">{ACCOUNT_TYPE_LABEL[account.type]}</span>
@@ -99,10 +270,37 @@ export function AccountSummaryContent({
       <div className="pt-2 grid grid-cols-1 gap-2">
         <Button type="button" onClick={onEditAccount}>Editar conta</Button>
         <Button type="button" onClick={onCreateTransaction}>Nova transação</Button>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => importInputRef.current?.click()}
+          isLoading={isImportingStatement}
+        >
+          <UploadIcon className="w-4 h-4 mr-1" />
+          Importar extrato
+        </Button>
         <Button type="button" variant="danger" onClick={onDeleteAccount} isLoading={isDeletingAccount}>
           Excluir conta
         </Button>
       </div>
+
+      {(isImportingStatement || importStatus) && (
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
+          <div className="flex items-center justify-between text-xs text-gray-700">
+            <span>{importStatus || 'Importando extrato...'}</span>
+            <strong>{importProgress}%</strong>
+          </div>
+          {!!importTimingLabel && (
+            <div className="text-[11px] text-gray-500">{importTimingLabel}</div>
+          )}
+          <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-teal-800 transition-all"
+              style={{ width: `${importProgress}%` }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

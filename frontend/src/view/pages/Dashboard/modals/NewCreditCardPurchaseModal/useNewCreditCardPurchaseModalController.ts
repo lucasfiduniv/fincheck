@@ -11,6 +11,7 @@ import { creditCardsService } from '../../../../../app/services/creditCardsServi
 import { currencyStringToNumber } from '../../../../../app/utils/currencyStringToNumber'
 import { useEffect, useRef } from 'react'
 import { toUTCDateISOString } from '../../../../../app/utils/toUTCDateISOString'
+import { revalidateFinancialQueries } from '../../../../../app/utils/revalidateFinancialQueries'
 
 function normalizeCategoryName(value?: string) {
   return (value ?? '')
@@ -211,8 +212,7 @@ export function useNewCreditCardPurchaseModalController() {
         maintenanceOdometer: showMaintenanceFields ? data.maintenanceOdometer : undefined,
       })
 
-      queryClient.invalidateQueries({ queryKey: ['creditCards'] })
-      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      await revalidateFinancialQueries(queryClient)
       toast.success('Compra lançada com sucesso!')
       onClose()
       reset()

@@ -13,6 +13,7 @@ import { currencyStringToNumber } from '../../../../../app/utils/currencyStringT
 import { toUTCDateISOString } from '../../../../../app/utils/toUTCDateISOString'
 import { useVehicles } from '../../../../../app/hooks/useVehicles'
 import { showActionToast } from '../../../../components/ActionToast'
+import { revalidateFinancialQueries } from '../../../../../app/utils/revalidateFinancialQueries'
 
 function normalizeCategoryName(value?: string) {
   return (value ?? '')
@@ -292,8 +293,7 @@ export function useNewTransactionModalController() {
         maintenanceOdometer: showMaintenanceFields ? data.maintenanceOdometer : undefined,
       })
 
-      queryClient.invalidateQueries({ queryKey: ['transactions'] })
-      queryClient.invalidateQueries({ queryKey: ['bankAccounts'] })
+      await revalidateFinancialQueries(queryClient)
 
       const isExpense = newTransactionType === 'EXPENSE'
 

@@ -3,20 +3,26 @@ import {
   CreditCardStatement,
   CreditCardStatementInstallment,
 } from '../../../../../../app/entities/CreditCard'
-import { Pencil2Icon, UploadIcon } from '@radix-ui/react-icons'
-import { useMemo, useRef } from 'react'
+import { ChevronLeftIcon, ChevronRightIcon, UploadIcon } from '@radix-ui/react-icons'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatCurrency } from '../../../../../../app/utils/formatCurrency'
 import { formatDate } from '../../../../../../app/utils/formatDate'
-import { formatStatusLabel } from '../../../../../../app/utils/formatStatusLabel'
 import { cn } from '../../../../../../app/utils/cn'
 import { Button } from '../../../../../components/Button'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { creditCardsService } from '../../../../../../app/services/creditCardsService'
 import toast from 'react-hot-toast'
+import { revalidateFinancialQueries } from '../../../../../../app/utils/revalidateFinancialQueries'
+import { notifyFinancialImportCompleted } from '../../../../../../app/utils/financialImportRealtime'
+import {
+  connectFinancialImportSocket,
+  FINANCIAL_IMPORT_PROGRESS_SOCKET_EVENT,
+  FinancialImportProgressSocketEvent,
+} from '../../../../../../app/utils/financialImportSocket'
 
 interface CreditCardSummaryContentProps {
   creditCard: CreditCard
-  nextStatements: CreditCardStatement[]
+  monthlyStatements: CreditCardStatement[]
   onEditCreditCard?(): void
   onNewCreditCardPurchase?(): void
   onPayCreditCardStatement?(): void
@@ -25,25 +31,40 @@ interface CreditCardSummaryContentProps {
   isDeactivatingCreditCard: boolean
 }
 
-const STATEMENT_STATUS_CLASS: Record<CreditCardStatement['status'], string> = {
-  OPEN: 'text-yellow-800 bg-yellow-100',
-  OVERDUE: 'text-red-800 bg-red-100',
-  PAID: 'text-green-800 bg-green-100',
-}
-
-const INSTALLMENT_STATUS_CLASS: Record<CreditCardStatementInstallment['status'], string> = {
-  PENDING: 'text-yellow-800 bg-yellow-100',
-  PAID: 'text-green-800 bg-green-100',
-  CANCELED: 'text-gray-700 bg-gray-200',
-}
-
 function getCreditLimitUsagePercentage(creditCard: CreditCard) {
   return Math.min(100, Math.round((creditCard.usedLimit / Math.max(creditCard.creditLimit, 1)) * 100))
 }
 
+function getStatementKey(statement: CreditCardStatement) {
+  return `${statement.year}-${statement.month}`
+}
+
+function formatStatementMonth(month: number, year: number) {
+  return new Date(year, month, 1)
+    .toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })
+    .replace('.', '')
+}
+
+function formatSeconds(valueInMs?: number) {
+  if (!valueInMs || valueInMs <= 0) {
+    return '0s'
+  }
+
+  const totalSeconds = Math.max(0, Math.round(valueInMs / 1000))
+
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`
+  }
+
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+
+  return `${minutes}m ${seconds}s`
+}
+
 export function CreditCardSummaryContent({
   creditCard,
-  nextStatements,
+  monthlyStatements,
   onEditCreditCard,
   onNewCreditCardPurchase,
   onPayCreditCardStatement,
@@ -53,25 +74,124 @@ export function CreditCardSummaryContent({
 }: CreditCardSummaryContentProps) {
   const queryClient = useQueryClient()
   const importInputRef = useRef<HTMLInputElement | null>(null)
+  const importRequestIdRef = useRef<string | null>(null)
+  const [importProgress, setImportProgress] = useState(0)
+  const [importStatus, setImportStatus] = useState('')
+  const [importTimingLabel, setImportTimingLabel] = useState('')
   const creditLimitUsagePercentage = getCreditLimitUsagePercentage(creditCard)
   const now = new Date()
-  const currentStatement = useMemo(
-    () =>
-      nextStatements.find(
-        (statement) => statement.month === now.getMonth() && statement.year === now.getFullYear(),
-      ),
-    [nextStatements, now],
+  const sortedStatements = useMemo(
+    () => [...monthlyStatements].sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()),
+    [monthlyStatements],
   )
-  const currentStatementInstallments = currentStatement?.installments ?? []
-  const currentStatementPending = currentStatement?.pending ?? 0
-  const currentStatementTotal = currentStatement?.total ?? 0
-  const pendingPercentage = currentStatementTotal > 0
-    ? Math.min(100, Math.round((currentStatementPending / currentStatementTotal) * 100))
-    : 0
+  const [selectedStatementKey, setSelectedStatementKey] = useState('')
+  const selectedMonthlyStatement = useMemo(() => {
+    const foundStatement = sortedStatements.find((statement) => getStatementKey(statement) === selectedStatementKey)
+    if (foundStatement) {
+      return foundStatement
+    }
+
+    const currentMonthStatement = sortedStatements.find(
+      (statement) => statement.month === now.getMonth() && statement.year === now.getFullYear(),
+    )
+
+    return currentMonthStatement ?? sortedStatements[sortedStatements.length - 1]
+  }, [selectedStatementKey, sortedStatements, now])
+  const selectedMonthlyStatementKey = selectedMonthlyStatement ? getStatementKey(selectedMonthlyStatement) : ''
+  const selectedMonthlyStatementIndex = selectedMonthlyStatement
+    ? sortedStatements.findIndex((statement) => getStatementKey(statement) === selectedMonthlyStatementKey)
+    : -1
+
+  function handleGoToPreviousMonth() {
+    if (selectedMonthlyStatementIndex <= 0) {
+      return
+    }
+
+    const previousStatement = sortedStatements[selectedMonthlyStatementIndex - 1]
+
+    setSelectedStatementKey(getStatementKey(previousStatement))
+  }
+
+  function handleGoToNextMonth() {
+    if (
+      selectedMonthlyStatementIndex < 0 ||
+      selectedMonthlyStatementIndex >= sortedStatements.length - 1
+    ) {
+      return
+    }
+
+    const nextStatement = sortedStatements[selectedMonthlyStatementIndex + 1]
+
+    setSelectedStatementKey(getStatementKey(nextStatement))
+  }
+
+  const limitUsageTone = useMemo(() => {
+    if (creditLimitUsagePercentage >= 90) {
+      return {
+        text: 'text-red-800',
+        bar: 'bg-red-800',
+      }
+    }
+
+    if (creditLimitUsagePercentage >= 75) {
+      return {
+        text: 'text-yellow-800',
+        bar: 'bg-yellow-700',
+      }
+    }
+
+    return {
+      text: 'text-gray-800',
+      bar: 'bg-teal-800',
+    }
+  }, [creditLimitUsagePercentage])
 
   const { mutateAsync: importStatementMutation, isLoading: isImportingStatement } = useMutation(
-    creditCardsService.importStatement,
+    ({
+      params,
+      onUploadProgress,
+    }: {
+      params: Parameters<typeof creditCardsService.importStatement>[0]
+      onUploadProgress?: (percentage: number) => void
+    }) => creditCardsService.importStatement(params, { onUploadProgress }),
   )
+
+  useEffect(() => {
+    const socket = connectFinancialImportSocket()
+
+    if (!socket) {
+      return
+    }
+
+    function handleImportProgress(event: FinancialImportProgressSocketEvent) {
+      if (event.source !== 'CREDIT_CARD_STATEMENT') {
+        return
+      }
+
+      if (event.creditCardId !== creditCard.id) {
+        return
+      }
+
+      if (!importRequestIdRef.current || event.requestId !== importRequestIdRef.current) {
+        return
+      }
+
+      setImportProgress(event.progress)
+      setImportStatus(event.message || 'Processando fatura...')
+
+      const etaLabel = event.etaMs && event.etaMs > 0
+        ? ` • ETA ${formatSeconds(event.etaMs)}`
+        : ''
+      setImportTimingLabel(`Tempo ${formatSeconds(event.elapsedMs)}${etaLabel}`)
+    }
+
+    socket.on(FINANCIAL_IMPORT_PROGRESS_SOCKET_EVENT, handleImportProgress)
+
+    return () => {
+      socket.off(FINANCIAL_IMPORT_PROGRESS_SOCKET_EVENT, handleImportProgress)
+      socket.disconnect()
+    }
+  }, [creditCard.id])
 
   async function handleImportStatementFile(file?: File) {
     if (!file) {
@@ -79,29 +199,61 @@ export function CreditCardSummaryContent({
     }
 
     try {
+      const requestId = crypto.randomUUID()
+      importRequestIdRef.current = requestId
+
+      setImportProgress(0)
+      setImportStatus(`Lendo ${file.name}...`)
+      setImportTimingLabel('')
+
       const content = await file.text()
 
+      setImportProgress(0)
+      setImportStatus('Enviando arquivo para importação...')
+
       const response = await importStatementMutation({
-        creditCardId: creditCard.id,
-        bank: 'NUBANK',
-        csvContent: content,
+        params: {
+          creditCardId: creditCard.id,
+          bank: 'NUBANK',
+          csvContent: content,
+          requestId,
+        },
       })
 
-      queryClient.invalidateQueries({ queryKey: ['creditCards'] })
-      queryClient.invalidateQueries({ queryKey: ['creditCardStatement'] })
+      await revalidateFinancialQueries(queryClient)
+
+      if ((response.importedPaymentsCount ?? 0) > 0) {
+        notifyFinancialImportCompleted({
+          source: 'CREDIT_CARD_STATEMENT',
+          importedCount: response.importedPaymentsCount ?? 0,
+        })
+      }
+
+      setImportProgress(100)
+      setImportStatus('Importação concluída.')
+      setImportTimingLabel('')
 
       toast.success(
-        `Importação concluída: ${response.importedCount} importado(s), ${response.skippedCount} ignorado(s).`,
+        `Importação concluída: ${response.importedCount} compra(s), ${response.importedPaymentsCount ?? 0} pagamento(s), ${response.skippedCount} ignorado(s).`,
       )
     } catch {
+      setImportStatus('Falha na importação.')
+      setImportTimingLabel('')
       toast.error('Não foi possível importar a fatura do cartão.')
+    } finally {
+      setTimeout(() => {
+        setImportProgress(0)
+        setImportStatus('')
+        setImportTimingLabel('')
+        importRequestIdRef.current = null
+      }, 1200)
     }
   }
 
   return (
     <div className="max-h-[72vh] overflow-y-auto pr-1">
       <div className="space-y-4">
-        <section className="rounded-2xl border border-gray-100 p-4 lg:p-5 space-y-4">
+        <section className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4 lg:p-5 space-y-4">
           <input
             ref={importInputRef}
             type="file"
@@ -117,6 +269,9 @@ export function CreditCardSummaryContent({
             <div>
               <strong className="text-gray-800 block text-xl tracking-[-0.5px]">{creditCard.name}</strong>
               <span className="text-xs text-gray-600 block mt-1">{creditCard.brand ?? 'Cartão de crédito'}</span>
+              <span className="text-xs text-gray-500 block mt-1">
+                Fecha dia {creditCard.closingDay} • Vence dia {creditCard.dueDay}
+              </span>
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
@@ -128,40 +283,46 @@ export function CreditCardSummaryContent({
               >
                 {creditCard.isActive ? 'Ativo' : 'Inativo'}
               </span>
-              <span className="text-[10px] px-2 py-1 rounded-full font-medium text-gray-700 bg-gray-100">
-                Fechamento dia {creditCard.closingDay}
-              </span>
-              <span className="text-[10px] px-2 py-1 rounded-full font-medium text-gray-700 bg-gray-100">
-                Vencimento dia {creditCard.dueDay}
-              </span>
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 w-full sm:w-auto">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => importInputRef.current?.click()}
-                isLoading={isImportingStatement}
-                className="h-9 rounded-xl border-gray-200 bg-white text-gray-700 hover:bg-gray-50 px-3 text-xs font-semibold tracking-[-0.2px]"
-              >
-                <UploadIcon className="w-4 h-4 mr-1" />
-                Importar fatura
-              </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              onClick={onNewCreditCardPurchase}
+              className="h-9 rounded-xl px-3 text-xs font-semibold tracking-[-0.2px]"
+            >
+              Nova compra
+            </Button>
 
-              <Button type="button" variant="ghost" className="h-9 rounded-xl border-teal-200 bg-teal-50/70 text-teal-900 hover:bg-teal-100 px-3 text-xs font-semibold tracking-[-0.2px]" onClick={onNewCreditCardPurchase}>
-                Nova compra
-              </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-9 rounded-xl border-teal-200 bg-teal-50/70 text-teal-900 hover:bg-teal-100 px-3 text-xs font-semibold tracking-[-0.2px]"
+              onClick={onPayCreditCardStatement}
+            >
+              Pagar fatura
+            </Button>
 
-              <Button type="button" variant="ghost" className="h-9 rounded-xl border-sky-200 bg-sky-50/70 text-sky-900 hover:bg-sky-100 px-3 text-xs font-semibold tracking-[-0.2px]" onClick={onPayCreditCardStatement}>
-                Pagar fatura
-              </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => importInputRef.current?.click()}
+              isLoading={isImportingStatement}
+              className="h-9 rounded-xl border-gray-200 bg-white text-gray-700 hover:bg-gray-50 px-3 text-xs font-semibold tracking-[-0.2px]"
+            >
+              <UploadIcon className="w-4 h-4 mr-1" />
+              Importar fatura
+            </Button>
 
-              <Button type="button" variant="ghost" className="h-9 rounded-xl border-violet-200 bg-violet-50/70 text-violet-900 hover:bg-violet-100 px-3 text-xs font-semibold tracking-[-0.2px]" onClick={onEditCreditCard}>
-                Editar cartão
-              </Button>
-            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-9 rounded-xl border-violet-200 bg-violet-50/70 text-violet-900 hover:bg-violet-100 px-3 text-xs font-semibold tracking-[-0.2px]"
+              onClick={onEditCreditCard}
+            >
+              Editar cartão
+            </Button>
 
             {creditCard.isActive && (
               <Button
@@ -171,10 +332,28 @@ export function CreditCardSummaryContent({
                 isLoading={isDeactivatingCreditCard}
                 className="h-9 rounded-xl px-3 text-xs font-semibold tracking-[-0.2px]"
               >
-                Inativar cartão
+                Excluir cartão
               </Button>
             )}
           </div>
+
+          {(isImportingStatement || importStatus) && (
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
+              <div className="flex items-center justify-between text-xs text-gray-700">
+                <span>{importStatus || 'Importando...'}</span>
+                <strong>{importProgress}%</strong>
+              </div>
+              {!!importTimingLabel && (
+                <div className="text-[11px] text-gray-500">{importTimingLabel}</div>
+              )}
+              <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-teal-800 transition-all"
+                  style={{ width: `${importProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
             <div className="rounded-xl bg-gray-50 p-3">
@@ -187,7 +366,7 @@ export function CreditCardSummaryContent({
             </div>
             <div className="rounded-xl bg-gray-50 p-3">
               <span className="text-[11px] text-gray-600 block">Usado</span>
-              <strong className="text-sm text-red-800">{formatCurrency(creditCard.usedLimit)}</strong>
+              <strong className={cn('text-sm', limitUsageTone.text)}>{formatCurrency(creditCard.usedLimit)}</strong>
             </div>
             <div className="rounded-xl bg-gray-50 p-3">
               <span className="text-[11px] text-gray-600 block">Próx. vencimento</span>
@@ -204,149 +383,113 @@ export function CreditCardSummaryContent({
             </div>
             <div className="h-2.5 rounded-full bg-gray-100 overflow-hidden">
               <div
-                className={cn(
-                  'h-full rounded-full transition-all',
-                  creditLimitUsagePercentage >= 90 && 'bg-red-800',
-                  creditLimitUsagePercentage >= 70 && creditLimitUsagePercentage < 90 && 'bg-yellow-700',
-                  creditLimitUsagePercentage < 70 && 'bg-green-800',
-                )}
+                className={cn('h-full rounded-full transition-all', limitUsageTone.bar)}
                 style={{ width: `${creditLimitUsagePercentage}%` }}
               />
             </div>
           </div>
         </section>
 
-        <section className="grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-4">
+        <section>
           <div className="rounded-2xl border border-gray-100 p-4 lg:p-5 space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <strong className="text-sm tracking-[-0.5px] text-gray-800 block">Compras da fatura atual</strong>
-              <span className="text-xs text-gray-600">{currentStatementInstallments.length} item(ns)</span>
-            </div>
+              <div className="flex items-center justify-between gap-2">
+                <strong className="text-sm tracking-[-0.5px] text-gray-800 block">Compras por mês</strong>
+                {selectedMonthlyStatement && (
+                  <span className="text-xs text-gray-600">{selectedMonthlyStatement.installments.length} item(ns)</span>
+                )}
+              </div>
 
-            <div className="rounded-xl bg-gray-50 p-3 space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-600">Fatura em aberto</span>
-                <strong className="text-gray-800">{formatCurrency(currentStatementPending)}</strong>
-              </div>
-              <div className="h-2 rounded-full bg-white overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-yellow-700"
-                  style={{ width: `${pendingPercentage}%` }}
-                />
-              </div>
-              <div className="flex items-center justify-between text-[11px] text-gray-600">
-                <span>Total da fatura: {formatCurrency(currentStatementTotal)}</span>
-                <span>{pendingPercentage}% pendente</span>
-              </div>
-            </div>
-
-            {currentStatementInstallments.length === 0 && (
-              <div className="h-20 rounded-xl border border-dashed border-gray-200 flex items-center justify-center text-xs text-gray-600">
-                Sem compras nesta fatura.
-              </div>
-            )}
-
-            {currentStatementInstallments.length > 0 && (
-              <div className="rounded-xl border border-gray-100 overflow-hidden">
-                <div className="hidden md:grid grid-cols-[1.7fr_0.7fr_0.7fr_0.8fr_0.6fr] gap-2 px-3 py-2 bg-gray-50 border-b border-gray-100">
-                  <span className="text-[11px] text-gray-500 font-medium">Descrição</span>
-                  <span className="text-[11px] text-gray-500 font-medium">Data</span>
-                  <span className="text-[11px] text-gray-500 font-medium">Parcela</span>
-                  <span className="text-[11px] text-gray-500 font-medium">Status</span>
-                  <span className="text-[11px] text-gray-500 font-medium text-right">Valor</span>
+              {sortedStatements.length === 0 && (
+                <div className="h-20 rounded-xl border border-dashed border-gray-200 flex items-center justify-center text-xs text-gray-600">
+                  Sem faturas para visualizar por mês.
                 </div>
-
-                <div className="divide-y divide-gray-100">
-                  {currentStatementInstallments.slice(0, 8).map((installment) => (
-                    <div key={installment.id} className="px-3 py-2.5 md:py-2">
-                      <div className="md:hidden space-y-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <strong className="text-sm text-gray-800 block truncate">{installment.description}</strong>
-                            <div className="flex items-center gap-1 text-[11px] text-gray-600 mt-0.5">
-                              <span className="w-1 h-1 rounded-full bg-gray-400" />
-                              <span>{formatDate(new Date(installment.purchaseDate))}</span>
-                            </div>
-                          </div>
-                          <strong className="text-sm text-gray-800">{formatCurrency(installment.amount)}</strong>
-                        </div>
-
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[11px] text-gray-600">
-                            {installment.installmentNumber}/{installment.installmentCount}
-                          </span>
-                          <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium', INSTALLMENT_STATUS_CLASS[installment.status])}>
-                            {formatStatusLabel(installment.status)}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="hidden md:grid grid-cols-[1.7fr_0.7fr_0.7fr_0.8fr_0.6fr] gap-2 items-center">
-                        <div className="min-w-0">
-                          <strong className="text-xs text-gray-800 block truncate">{installment.description}</strong>
-                          <span className="text-[11px] text-gray-500 truncate block">
-                            {installment.category?.name ?? 'Sem categoria'}
-                          </span>
-                        </div>
-
-                        <span className="text-xs text-gray-600">{formatDate(new Date(installment.purchaseDate))}</span>
-                        <span className="text-xs text-gray-600">{installment.installmentNumber}/{installment.installmentCount}</span>
-                        <span className={cn('justify-self-start text-[10px] px-2 py-0.5 rounded-full font-medium', INSTALLMENT_STATUS_CLASS[installment.status])}>
-                          {formatStatusLabel(installment.status)}
-                        </span>
-                        <strong className="text-xs text-gray-800 text-right">{formatCurrency(installment.amount)}</strong>
-                      </div>
-
-                      {installment.status === 'PENDING' && onEditCreditCardPurchase && (
-                        <div className="mt-2 flex justify-end">
-                          <button
-                            type="button"
-                            className="h-7 px-2.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors inline-flex items-center gap-1 text-[11px]"
-                            onClick={() => onEditCreditCardPurchase(installment)}
-                          >
-                            <Pencil2Icon className="w-3.5 h-3.5" />
-                            Editar
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div>
-            <div className="rounded-2xl border border-gray-100 p-4 space-y-3">
-              <strong className="text-sm tracking-[-0.5px] text-gray-800 block">Próximas faturas</strong>
-
-              {nextStatements.length === 0 && (
-                <span className="text-xs text-gray-600">Sem faturas encontradas.</span>
               )}
 
-              {nextStatements.map((statement) => (
-                <div
-                  key={`${statement.year}-${statement.month}`}
-                  className="rounded-xl border border-gray-100 p-3 space-y-2"
-                >
-                  <div className="flex items-center justify-between text-xs gap-2">
-                    <strong className="text-gray-700">
-                      {String(statement.month + 1).padStart(2, '0')}/{statement.year}
-                    </strong>
+              {sortedStatements.length > 0 && selectedMonthlyStatement && (
+                <>
+                  <div className="rounded-xl border border-gray-200 bg-white p-2 flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={handleGoToPreviousMonth}
+                      disabled={selectedMonthlyStatementIndex <= 0}
+                      className="h-8 w-8 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center"
+                    >
+                      <ChevronLeftIcon className="w-4 h-4" />
+                    </button>
 
-                    <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-medium', STATEMENT_STATUS_CLASS[statement.status])}>
-                      {formatStatusLabel(statement.status)}
-                    </span>
+                    <div className="min-w-0 text-center">
+                      <span className="text-xs font-semibold text-gray-800 block capitalize">
+                        {formatStatementMonth(selectedMonthlyStatement.month, selectedMonthlyStatement.year)}
+                      </span>
+                      <span className="text-[11px] text-gray-500">
+                        {selectedMonthlyStatementIndex + 1} de {sortedStatements.length}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleGoToNextMonth}
+                      disabled={selectedMonthlyStatementIndex >= sortedStatements.length - 1}
+                      className="h-8 w-8 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center"
+                    >
+                      <ChevronRightIcon className="w-4 h-4" />
+                    </button>
                   </div>
 
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-600">Vence em {formatDate(new Date(statement.dueDate))}</span>
-                    <strong className="text-red-800">{formatCurrency(statement.pending)}</strong>
+                  <div className="rounded-xl bg-gray-50 p-3 flex flex-col gap-1 text-xs text-gray-700">
+                    <div className="flex items-center justify-between">
+                      <span>Total</span>
+                      <strong className="text-gray-800">{formatCurrency(selectedMonthlyStatement.total)}</strong>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Em aberto</span>
+                      <strong className={cn(selectedMonthlyStatement.status === 'OVERDUE' ? 'text-red-800' : 'text-gray-800')}>
+                        {formatCurrency(selectedMonthlyStatement.pending)}
+                      </strong>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Vencimento</span>
+                      <strong className="text-gray-800">{formatDate(new Date(selectedMonthlyStatement.dueDate))}</strong>
+                    </div>
                   </div>
-                </div>
-              ))}
+
+                  {selectedMonthlyStatement.installments.length === 0 && (
+                    <div className="h-20 rounded-xl border border-dashed border-gray-200 flex items-center justify-center text-xs text-gray-600">
+                      Sem compras registradas neste mês.
+                    </div>
+                  )}
+
+                  {selectedMonthlyStatement.installments.length > 0 && (
+                    <div className="rounded-xl border border-gray-100 overflow-hidden">
+                      <div className="divide-y divide-gray-100">
+                        {selectedMonthlyStatement.installments.map((installment) => (
+                          <div key={installment.id} className="px-3 py-2.5 flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <strong className="text-xs text-gray-800 block truncate">{installment.description}</strong>
+                              <span className="text-[11px] text-gray-500 block mt-0.5">
+                                {formatDate(new Date(installment.purchaseDate))} • {installment.installmentNumber}/{installment.installmentCount}
+                              </span>
+                            </div>
+                            <div className="shrink-0 flex items-center gap-2">
+                              <strong className="text-xs text-gray-800">{formatCurrency(installment.amount)}</strong>
+                              {onEditCreditCardPurchase && installment.status !== 'CANCELED' && (
+                                <button
+                                  type="button"
+                                  onClick={() => onEditCreditCardPurchase(installment)}
+                                  className="text-[11px] px-2 py-1 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
+                                >
+                                  Editar
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
-          </div>
         </section>
       </div>
     </div>

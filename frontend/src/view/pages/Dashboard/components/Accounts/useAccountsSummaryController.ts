@@ -7,7 +7,7 @@ import { bankAccountsService } from '../../../../../app/services/bankAccounts'
 import toast from 'react-hot-toast'
 import { creditCardsService } from '../../../../../app/services/creditCardsService'
 
-type ConfirmAction = 'DELETE_ACCOUNT' | 'DEACTIVATE_CARD' | null
+type ConfirmAction = 'DELETE_ACCOUNT' | 'DELETE_CARD' | null
 
 interface PurchaseBeingEdited {
   creditCardId: string
@@ -43,7 +43,7 @@ export function useAccountsSummaryController() {
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
 
   const { mutateAsync: removeAccount, isLoading: isRemovingAccount } = useMutation(bankAccountsService.remove)
-  const { mutateAsync: updateCreditCard, isLoading: isUpdatingCreditCard } = useMutation(creditCardsService.update)
+  const { mutateAsync: removeCreditCard, isLoading: isRemovingCreditCard } = useMutation(creditCardsService.remove)
 
   function handleOpenAccountSummary(account: BankAccount) {
     setSelectedCreditCard(null)
@@ -92,8 +92,8 @@ export function useAccountsSummaryController() {
     setConfirmAction('DELETE_ACCOUNT')
   }
 
-  function handleOpenConfirmDeactivateCard() {
-    setConfirmAction('DEACTIVATE_CARD')
+  function handleOpenConfirmDeleteCard() {
+    setConfirmAction('DELETE_CARD')
   }
 
   function handleCloseConfirmModal() {
@@ -164,22 +164,22 @@ export function useAccountsSummaryController() {
     }
   }
 
-  async function handleDeactivateCreditCard() {
+  async function handleDeleteCreditCard() {
     if (!selectedCreditCard) {
       return
     }
 
     try {
-      await updateCreditCard({ id: selectedCreditCard.id, isActive: false })
+      await removeCreditCard(selectedCreditCard.id)
 
       queryClient.invalidateQueries({ queryKey: ['creditCards'] })
       queryClient.invalidateQueries({ queryKey: ['creditCardStatement'] })
-      toast.success('Cartão inativado com sucesso!')
+      toast.success('Cartão excluído com sucesso!')
 
       handleCloseConfirmModal()
       handleCloseSummary()
     } catch {
-      toast.error('Erro ao inativar cartão!')
+      toast.error('Erro ao excluir cartão!')
     }
   }
 
@@ -189,14 +189,14 @@ export function useAccountsSummaryController() {
     purchaseBeingEdited,
     confirmAction,
     isRemovingAccount,
-    isUpdatingCreditCard,
+    isRemovingCreditCard,
     handleOpenAccountSummary,
     handleOpenCreditCardSummary,
     handleCloseSummary,
     handleOpenEditPurchaseFromSummary,
     handleCloseEditPurchaseModal,
     handleOpenConfirmDeleteAccount,
-    handleOpenConfirmDeactivateCard,
+    handleOpenConfirmDeleteCard,
     handleCloseConfirmModal,
     handleEditAccountFromSummary,
     handleCreateTransactionFromSummary,
@@ -204,6 +204,6 @@ export function useAccountsSummaryController() {
     handleNewPurchaseFromSummary,
     handlePayStatementFromSummary,
     handleDeleteAccount,
-    handleDeactivateCreditCard,
+    handleDeleteCreditCard,
   }
 }

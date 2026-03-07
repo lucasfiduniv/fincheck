@@ -1,3 +1,38 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@keyframes transactionImportEnter {
+	0% {
+		opacity: 0;
+		transform: translateY(10px) scale(0.99);
+		background-color: #ccfbf1;
+	}
+	60% {
+		opacity: 1;
+		transform: translateY(0) scale(1);
+	}
+	100% {
+		opacity: 1;
+		transform: translateY(0) scale(1);
+		background-color: #ffffff;
+	}
+}
+
+@keyframes transactionImportNoticePulse {
+	0%,
+	100% {
+		box-shadow: 0 0 0 0 rgba(13, 148, 136, 0.15);
+	}
+	50% {
+		box-shadow: 0 0 0 6px rgba(13, 148, 136, 0.05);
+	}
+}
+
+.transaction-import-enter {
+	animation: transactionImportEnter 650ms ease-out both;
+}
+
+.transaction-import-notice {
+	animation: transactionImportNoticePulse 1.4s ease-in-out infinite;
+}

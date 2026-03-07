@@ -32,14 +32,14 @@ export function Accounts() {
     purchaseBeingEdited,
     confirmAction,
     isRemovingAccount,
-    isUpdatingCreditCard,
+    isRemovingCreditCard,
     handleOpenAccountSummary,
     handleOpenCreditCardSummary,
     handleCloseSummary,
     handleOpenEditPurchaseFromSummary,
     handleCloseEditPurchaseModal,
     handleOpenConfirmDeleteAccount,
-    handleOpenConfirmDeactivateCard,
+    handleOpenConfirmDeleteCard,
     handleCloseConfirmModal,
     handleEditAccountFromSummary,
     handleCreateTransactionFromSummary,
@@ -47,7 +47,7 @@ export function Accounts() {
     handleNewPurchaseFromSummary,
     handlePayStatementFromSummary,
     handleDeleteAccount,
-    handleDeactivateCreditCard,
+    handleDeleteCreditCard,
   } = useAccountsSummaryController()
 
   const { creditCards } = useCreditCards()
@@ -77,18 +77,18 @@ export function Accounts() {
         />
       )}
 
-      {confirmAction === 'DEACTIVATE_CARD' && (
+      {confirmAction === 'DELETE_CARD' && (
         <ConfirmDeleteModal
-          title="Tem certeza que deseja inativar este cartão?"
-          description="Você ainda poderá consultar faturas e histórico, mas novas compras serão bloqueadas."
-          isLoading={isUpdatingCreditCard}
+          title="Tem certeza que deseja excluir este cartão?"
+          description="Ao excluir o cartão, também serão removidas as compras e faturas vinculadas a ele."
+          isLoading={isRemovingCreditCard}
           onClose={handleCloseConfirmModal}
-          onConfirm={handleDeactivateCreditCard}
+          onConfirm={handleDeleteCreditCard}
         />
       )}
 
       <SummaryModal
-        open={!!selectedAccount || !!selectedCreditCard}
+        open={(!!selectedAccount || !!selectedCreditCard) && !confirmAction}
         onClose={handleCloseSummary}
         account={selectedAccount}
         creditCard={selectedCreditCard}
@@ -99,9 +99,9 @@ export function Accounts() {
         onNewCreditCardPurchase={handleNewPurchaseFromSummary}
         onPayCreditCardStatement={handlePayStatementFromSummary}
         onEditCreditCardPurchase={handleOpenEditPurchaseFromSummary}
-        onDeactivateCreditCard={handleOpenConfirmDeactivateCard}
+        onDeactivateCreditCard={handleOpenConfirmDeleteCard}
         isDeletingAccount={isRemovingAccount && confirmAction === 'DELETE_ACCOUNT'}
-        isDeactivatingCreditCard={isUpdatingCreditCard && confirmAction === 'DEACTIVATE_CARD'}
+        isDeactivatingCreditCard={isRemovingCreditCard && confirmAction === 'DELETE_CARD'}
       />
 
       <EditCreditCardPurchaseModal

@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { io } from 'socket.io-client'
+import { useQueryClient } from '@tanstack/react-query'
 import { FilterIcon } from '../../../../components/icons/FilterIcon'
 import { TransactionsIcon } from '../../../../components/icons/TransactionsIcon'
 import { Swiper, SwiperSlide } from 'swiper/react'
@@ -20,9 +22,31 @@ import { formatStatusLabel } from '../../../../../app/utils/formatStatusLabel.ts
 import { useDashboard } from '../DashboardContext/useDashboard.ts'
 import { useBankAccounts } from '../../../../../app/hooks/useBankAccounts.ts'
 import { resolveBankBrand } from '../../../../../app/utils/resolveBankBrand.ts'
+import {
+  FINANCIAL_IMPORT_COMPLETED_EVENT,
+  FinancialImportCompletedDetail,
+} from '../../../../../app/utils/financialImportRealtime.ts'
+import { localStorageKeys } from '../../../../../app/config/localStorageKeys.ts'
+
+interface ImportNoticeState {
+  source: FinancialImportCompletedDetail['source'] | 'REALTIME'
+  importedCount: number
+}
+
+interface TransactionsChangedRealtimeEvent {
+  action: 'CREATED' | 'UPDATED' | 'DELETED' | 'IMPORTED'
+  count?: number
+  source?: 'MANUAL' | 'BANK_IMPORT' | 'SYSTEM'
+  emittedAt: string
+}
 
 export function Transactions() {
+  const queryClient = useQueryClient()
   const [showAttentionDetails, setShowAttentionDetails] = useState(false)
+  const [importNotice, setImportNotice] = useState<ImportNoticeState | null>(null)
+  const [animatedTransactionIds, setAnimatedTransactionIds] = useState<string[]>([])
+  const previousTransactionIdsRef = useRef<string[]>([])
+  const pendingImportRef = useRef<ImportNoticeState | null>(null)
 
   const {
     openCategoriesModal,
@@ -97,6 +121,111 @@ export function Transactions() {
 
     setShowAttentionDetails((state) => !state)
   }
+
+  useEffect(() => {
+    function handleFinancialImportCompleted(event: Event) {
+      const customEvent = event as CustomEvent<FinancialImportCompletedDetail>
+      const detail = customEvent.detail
+
+      if (!detail || detail.importedCount <= 0) {
+        return
+      }
+
+      pendingImportRef.current = {
+        source: detail.source,
+        importedCount: detail.importedCount,
+      }
+
+      setImportNotice({
+        source: detail.source,
+        importedCount: detail.importedCount,
+      })
+    }
+
+    window.addEventListener(FINANCIAL_IMPORT_COMPLETED_EVENT, handleFinancialImportCompleted)
+
+    return () => {
+      window.removeEventListener(FINANCIAL_IMPORT_COMPLETED_EVENT, handleFinancialImportCompleted)
+    }
+  }, [])
+
+  useEffect(() => {
+    const accessToken = localStorage.getItem(localStorageKeys.ACCESS_TOKEN)
+
+    if (!accessToken) {
+      return
+    }
+
+    const socket = io(import.meta.env.VITE_API_URL, {
+      transports: ['websocket'],
+      auth: {
+        token: accessToken,
+      },
+    })
+
+    socket.on('transactions.changed', (event: TransactionsChangedRealtimeEvent) => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['bankAccounts'] })
+      queryClient.invalidateQueries({ queryKey: ['categoryBudgets'] })
+      queryClient.invalidateQueries({ queryKey: ['transactionDueAlerts'] })
+
+      if (event.action === 'CREATED' || event.action === 'IMPORTED') {
+        const importedCount = Math.max(1, event.count ?? 1)
+
+        pendingImportRef.current = {
+          source: 'REALTIME',
+          importedCount,
+        }
+
+        setImportNotice({
+          source: 'REALTIME',
+          importedCount,
+        })
+      }
+    })
+
+    return () => {
+      socket.disconnect()
+    }
+  }, [queryClient])
+
+  useEffect(() => {
+    const currentIds = transactions.map((transaction) => transaction.id)
+    const previousIds = previousTransactionIdsRef.current
+
+    if (pendingImportRef.current) {
+      const newIds = currentIds.filter((id) => !previousIds.includes(id))
+
+      if (newIds.length > 0) {
+        const maxAnimatedItems = Math.max(1, Math.min(newIds.length, pendingImportRef.current.importedCount))
+        const idsToAnimate = newIds.slice(0, maxAnimatedItems)
+
+        setAnimatedTransactionIds(idsToAnimate)
+
+        window.setTimeout(() => {
+          setAnimatedTransactionIds([])
+        }, 3200)
+      }
+
+      pendingImportRef.current = null
+    }
+
+    previousTransactionIdsRef.current = currentIds
+  }, [transactions])
+
+  useEffect(() => {
+    if (!importNotice) {
+      return
+    }
+
+    const timeout = window.setTimeout(() => {
+      setImportNotice(null)
+    }, 5000)
+
+    return () => {
+      window.clearTimeout(timeout)
+    }
+  }, [importNotice])
 
   if (isInitialLoading) {
     return (
@@ -290,6 +419,18 @@ export function Transactions() {
       </section>
 
       <div className="mt-4 space-y-2 flex-1 overflow-y-auto">
+        {importNotice && (
+          <div className="transaction-import-notice rounded-xl border border-teal-200 bg-teal-50 px-3 py-2">
+            <p className="text-xs text-teal-900 font-medium">
+              {importNotice.source === 'BANK_STATEMENT'
+                ? `${importNotice.importedCount} transação(ões) do extrato chegaram agora no menu.`
+                : importNotice.source === 'CREDIT_CARD_STATEMENT'
+                  ? `${importNotice.importedCount} pagamento(s) de fatura refletiram agora no menu.`
+                  : `${importNotice.importedCount} nova(s) transação(ões) chegaram em tempo real.`}
+            </p>
+          </div>
+        )}
+
         {isLoading && (
           <div className="flex flex-col items-center justify-center h-full">
             <Spinner className="w-10 h-10" />
@@ -350,13 +491,19 @@ export function Transactions() {
                   ? '+ '
                   : '- '
 
+              const animationIndex = animatedTransactionIds.indexOf(transaction.id)
+
               return (
               <div
                 key={transaction.id}
                 className={cn(
                   'bg-white p-4 rounded-2xl flex items-center justify-between gap-4',
+                  animationIndex >= 0 && 'transaction-import-enter ring-1 ring-teal-200',
                   !isTransfer && 'cursor-pointer'
                 )}
+                style={animationIndex >= 0
+                  ? { animationDelay: `${animationIndex * 90}ms` }
+                  : undefined}
                 role={!isTransfer ? 'button' : undefined}
                 onClick={!isTransfer ? () => handleOpenEditModal(transaction) : undefined}
               >

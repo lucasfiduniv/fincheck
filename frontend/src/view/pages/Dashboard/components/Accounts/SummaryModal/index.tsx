@@ -1,5 +1,4 @@
-import { CreditCard } from '../../../../../../app/entities/CreditCard'
-import { CreditCardStatementInstallment } from '../../../../../../app/entities/CreditCard'
+import { CreditCard, CreditCardStatementInstallment } from '../../../../../../app/entities/CreditCard'
 import { BankAccount } from '../../../../../../app/entities/BankAccount'
 import { useTransactions } from '../../../../../../app/hooks/useTransactions'
 import { Modal } from '../../../../../components/Modal'
@@ -62,7 +61,7 @@ export function SummaryModal({
     .sort((a, b) => +new Date(b.date) - +new Date(a.date))
     .slice(0, 5)
 
-  const statementMonths = [0, 1, 2].map((offset) => {
+  const statementMonths = Array.from({ length: 17 }, (_, index) => index - 14).map((offset) => {
     const statementDate = new Date(now.getFullYear(), now.getMonth() + offset, 1)
 
     return {
@@ -84,7 +83,7 @@ export function SummaryModal({
     })),
   })
 
-  const nextStatements = statementQueries
+  const allStatements = statementQueries
     .map((query) => query.data)
     .filter((statement): statement is NonNullable<typeof statement> => !!statement)
 
@@ -111,7 +110,7 @@ export function SummaryModal({
       {creditCard && (
         <CreditCardSummaryContent
           creditCard={creditCard}
-          nextStatements={nextStatements}
+          monthlyStatements={allStatements}
           onEditCreditCard={onEditCreditCard}
           onNewCreditCardPurchase={onNewCreditCardPurchase}
           onPayCreditCardStatement={onPayCreditCardStatement}

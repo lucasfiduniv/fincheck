@@ -7,6 +7,7 @@ import { useDashboard } from '../../components/DashboardContext/useDashboard'
 import { useBankAccounts } from '../../../../../app/hooks/useBankAccounts'
 import { creditCardsService } from '../../../../../app/services/creditCardsService'
 import { currencyStringToNumber } from '../../../../../app/utils/currencyStringToNumber'
+import { revalidateFinancialQueries } from '../../../../../app/utils/revalidateFinancialQueries'
 
 const schema = z.object({
   name: z.string().nonempty('Informe o nome do cartão'),
@@ -51,7 +52,7 @@ export function useNewCreditCardModalController() {
         brand: data.brand || undefined,
       })
 
-      queryClient.invalidateQueries({ queryKey: ['creditCards'] })
+      await revalidateFinancialQueries(queryClient)
       toast.success('Cartão cadastrado com sucesso!')
       onClose()
       reset()

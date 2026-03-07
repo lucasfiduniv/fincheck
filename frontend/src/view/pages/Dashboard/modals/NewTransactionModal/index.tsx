@@ -22,11 +22,9 @@ export function NewTransactionModal() {
     categories,
     vehicles,
     repeatType,
-    selectedCategoryId,
     showFuelFields,
     showMaintenanceFields,
     hasFuelCategory,
-    setValue,
     isLoading
   } = useNewTransactionModalController()
 
@@ -36,13 +34,8 @@ export function NewTransactionModal() {
   useEffect(() => {
     if (!isNewTransactionModalOpen) {
       setShowAdvancedFields(false)
-      return
     }
-
-    if (!selectedCategoryId && categories.length > 0) {
-      setValue('categoryId', categories[0].id)
-    }
-  }, [categories, isNewTransactionModalOpen, selectedCategoryId, setValue])
+  }, [isNewTransactionModalOpen])
 
   const hasAdvancedErrors = useMemo(() => (
     !!errors.categoryId
