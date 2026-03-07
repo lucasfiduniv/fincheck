@@ -4,6 +4,7 @@ export interface VehicleFuelStats {
   recordsCount: number
   totalCost: number
   totalLiters: number
+  currentMonthCost?: number
   averagePricePerLiter: number
   averageConsumptionKmPerLiter: number | null
   costPerKm: number | null

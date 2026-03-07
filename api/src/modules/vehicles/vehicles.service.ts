@@ -233,29 +233,6 @@ export class VehiclesService {
       const referenceDailyKm = vehicle.averageDailyKm ?? null
       const fuelAnalytics = this.calculateFuelAnalytics(allVehicleRecords, referenceDailyKm)
 
-      const now = new Date()
-      try {
-        await this.persistFuelAnalyticsSnapshot({
-          userId,
-          vehicleId: vehicle.id,
-          year: now.getUTCFullYear(),
-          month: now.getUTCMonth() + 1,
-          segments: fuelAnalytics.segments,
-          stats: {
-            officialConsumptionKmPerLiter: fuelAnalytics.officialConsumptionKmPerLiter,
-            officialCostPerKm: fuelAnalytics.officialCostPerKm,
-            officialDistanceKm: fuelAnalytics.officialDistanceKm,
-            officialLiters: fuelAnalytics.officialLiters,
-            currentMonthCost: fuelAnalytics.currentMonthCost,
-            projectedMonthCost: fuelAnalytics.projectedMonthCost,
-            nextRefuelInDays: fuelAnalytics.nextRefuelInDays,
-            nextRefuelAtKm: fuelAnalytics.nextRefuelAtKm,
-            lastFuelRecordId: allVehicleRecords.at(-1)?.source === 'ACCOUNT' ? allVehicleRecords.at(-1)?.id : null,
-          },
-        })
-      } catch {
-      }
-
       const odometerEvents: OdometerEvent[] = [
         ...allVehicleRecords.map((record) => ({
           date: record.date,
@@ -301,6 +278,7 @@ export class VehiclesService {
           recordsCount: allVehicleRecords.length,
           totalCost: Number(totalCost.toFixed(2)),
           totalLiters: Number(totalLiters.toFixed(2)),
+          currentMonthCost: fuelAnalytics.currentMonthCost,
           averagePricePerLiter: Number(averagePricePerLiter.toFixed(2)),
           averageConsumptionKmPerLiter: fuelAnalytics.officialConsumptionKmPerLiter,
           costPerKm: fuelAnalytics.officialCostPerKm,
@@ -543,29 +521,6 @@ export class VehiclesService {
     const fuelAveragePricePerLiter = fuelTotalLiters > 0 ? fuelTotalCost / fuelTotalLiters : 0
     const fuelAnalytics = this.calculateFuelAnalytics(allVehicleRecords, vehicle.averageDailyKm)
 
-    const now = new Date()
-    try {
-      await this.persistFuelAnalyticsSnapshot({
-        userId,
-        vehicleId,
-        year: now.getUTCFullYear(),
-        month: now.getUTCMonth() + 1,
-        segments: fuelAnalytics.segments,
-        stats: {
-          officialConsumptionKmPerLiter: fuelAnalytics.officialConsumptionKmPerLiter,
-          officialCostPerKm: fuelAnalytics.officialCostPerKm,
-          officialDistanceKm: fuelAnalytics.officialDistanceKm,
-          officialLiters: fuelAnalytics.officialLiters,
-          currentMonthCost: fuelAnalytics.currentMonthCost,
-          projectedMonthCost: fuelAnalytics.projectedMonthCost,
-          nextRefuelInDays: fuelAnalytics.nextRefuelInDays,
-          nextRefuelAtKm: fuelAnalytics.nextRefuelAtKm,
-          lastFuelRecordId: allVehicleRecords.at(-1)?.source === 'ACCOUNT' ? allVehicleRecords.at(-1)?.id : null,
-        },
-      })
-    } catch {
-    }
-
     return {
       ...vehicle,
       effectiveCurrentOdometer,
@@ -573,6 +528,7 @@ export class VehiclesService {
         recordsCount: allVehicleRecords.length,
         totalCost: Number(fuelTotalCost.toFixed(2)),
         totalLiters: Number(fuelTotalLiters.toFixed(2)),
+        currentMonthCost: fuelAnalytics.currentMonthCost,
         averagePricePerLiter: Number(fuelAveragePricePerLiter.toFixed(2)),
         averageConsumptionKmPerLiter: fuelAnalytics.officialConsumptionKmPerLiter,
         costPerKm: fuelAnalytics.officialCostPerKm,

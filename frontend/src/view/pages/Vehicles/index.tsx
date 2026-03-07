@@ -1,6 +1,6 @@
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Logo } from '../../components/Logo'
 import { Button } from '../../components/Button'
 import { Input } from '../../components/Input'
@@ -34,13 +34,6 @@ type InlineFeedbackState = {
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString('pt-BR')
-}
-
-function isCurrentMonth(value: string) {
-  const date = new Date(value)
-  const now = new Date()
-
-  return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear()
 }
 
 function getHealthBadgeLabel(status?: 'OK' | 'ATTENTION' | 'URGENT') {
@@ -240,15 +233,6 @@ export function Vehicles() {
     mutationFn: vehiclesService.trackUsageEvent,
   })
 
-  const vehicleDetailsQueries = useQueries({
-    queries: vehicles.map((vehicle) => ({
-      queryKey: ['vehicles', 'card-summary', vehicle.id],
-      queryFn: () => vehiclesService.getById(vehicle.id),
-      staleTime: 1000 * 60,
-      enabled: vehicles.length > 0,
-    })),
-  })
-
   const summary = useMemo(() => {
     const totalCost = vehicles.reduce((acc, vehicle) => acc + (vehicle.fuelStats?.totalCost ?? 0), 0)
     const totalLiters = vehicles.reduce((acc, vehicle) => acc + (vehicle.fuelStats?.totalLiters ?? 0), 0)
@@ -273,27 +257,12 @@ export function Vehicles() {
   const monthlySpentByVehicleId = useMemo(() => {
     const map = new Map<string, number>()
 
-    vehicles.forEach((vehicle, index) => {
-      const details = vehicleDetailsQueries[index]?.data
-
-      if (!details) {
-        map.set(vehicle.id, 0)
-        return
-      }
-
-      const fuelSpent = details.fuelRecords
-        .filter((record) => isCurrentMonth(record.transaction.date))
-        .reduce((acc, record) => acc + record.totalCost, 0)
-
-      const maintenanceSpent = details.maintenances
-        .filter((maintenance) => isCurrentMonth(maintenance.date))
-        .reduce((acc, maintenance) => acc + maintenance.amount, 0)
-
-      map.set(vehicle.id, fuelSpent + maintenanceSpent)
+    vehicles.forEach((vehicle) => {
+      map.set(vehicle.id, vehicle.fuelStats?.currentMonthCost ?? 0)
     })
 
     return map
-  }, [vehicleDetailsQueries, vehicles])
+  }, [vehicles])
 
   const selectedVehicleMonthlySpent = selectedVehicle
     ? monthlySpentByVehicleId.get(selectedVehicle.id) ?? 0
