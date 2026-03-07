@@ -578,12 +578,22 @@ export class TransactionsService {
       for (const [entryIndex, entry] of uniqueEntries.entries()) {
         try {
           const baseType = entry.value < 0 ? TransactionType.EXPENSE : TransactionType.INCOME
-          const value = Math.abs(entry.value)
+          const signedValue = this.roundMoney(entry.value)
+          const value = Math.abs(signedValue)
           const aiSuggestion = aiSuggestionsByIndex.get(entryIndex)
           const normalizedName = this.buildImportedTransactionName(
             aiSuggestion?.normalizedDescription
             || this.transactionImportAiEnrichmentService.normalizeDescriptionFallback(entry.description),
           )
+
+          if (
+            this.isInternalBalanceMovementDescription(entry.description)
+            || this.isInternalBalanceMovementDescription(normalizedName)
+          ) {
+            skippedCount += 1
+            continue
+          }
+
           const resolvedKind = this.resolveImportedTransactionKind({
             description: entry.description,
             userName: user?.name,
@@ -600,7 +610,7 @@ export class TransactionsService {
               userId,
               bankAccountId: importDto.bankAccountId,
               date: entry.date,
-              value: entry.value,
+              value: signedValue,
               type: TransactionType.TRANSFER,
               name: normalizedName,
               matchByName: false,
@@ -622,7 +632,7 @@ export class TransactionsService {
               bankAccountId: importDto.bankAccountId,
               date: entry.date,
               name: normalizedName,
-              signedValue: entry.value,
+              signedValue,
               counterpartBankAccountId,
               userBankAccounts,
               suppressRealtime: true,
@@ -753,13 +763,6 @@ export class TransactionsService {
     const { bankAccountId, categoryId, date, name, type, value } =
       updateTransactionDto
 
-    await this.validateEntitiesOwnership({
-      userId,
-      bankAccountId,
-      categoryId,
-      transactionId,
-    })
-
     const currentTransaction = await this.transactionsRepo.findFirst({
       where: {
         id: transactionId,
@@ -770,18 +773,39 @@ export class TransactionsService {
       },
     })
 
-    if (currentTransaction?.type === TransactionType.TRANSFER || type === TransactionType.TRANSFER) {
-      throw new BadRequestException('Transferências entre contas não podem ser editadas por esta rota.')
+    if (!currentTransaction) {
+      throw new BadRequestException('Transação não encontrada.')
     }
+
+    const isCurrentTransfer = currentTransaction.type === TransactionType.TRANSFER
+
+    if (isCurrentTransfer && type !== TransactionType.TRANSFER) {
+      throw new BadRequestException('Não é permitido converter transferência para outro tipo nesta rota.')
+    }
+
+    if (!isCurrentTransfer && type === TransactionType.TRANSFER) {
+      throw new BadRequestException('Use o endpoint de transferências para criar transferências entre contas.')
+    }
+
+    if (!isCurrentTransfer && !categoryId) {
+      throw new BadRequestException('Categoria é obrigatória para receitas e despesas.')
+    }
+
+    await this.validateEntitiesOwnership({
+      userId,
+      bankAccountId,
+      categoryId: isCurrentTransfer ? undefined : categoryId,
+      transactionId,
+    })
 
     const updatedTransaction = await this.transactionsRepo.update({
       where: { id: transactionId },
       data: {
         bankAccountId,
-        categoryId,
+        categoryId: isCurrentTransfer ? null : categoryId,
         date,
         name,
-        type,
+        type: isCurrentTransfer ? TransactionType.TRANSFER : type,
         value,
       },
     })
@@ -1154,12 +1178,10 @@ export class TransactionsService {
       date.getUTCDate() + 1,
     ))
 
-    return this.transactionsRepo.findFirst({
+    const candidates = await this.transactionsRepo.findMany({
       where: {
         userId,
         bankAccountId,
-        ...(matchByName ? { name } : {}),
-        value,
         type,
         date: {
           gte: dayStart,
@@ -1168,8 +1190,34 @@ export class TransactionsService {
       },
       select: {
         id: true,
+        name: true,
+        value: true,
       },
     })
+
+    const targetValueInCents = this.toMoneyCents(value)
+
+    const duplicate = candidates.find((candidate) => {
+      const candidateValueInCents = this.toMoneyCents(Number(candidate.value))
+
+      if (candidateValueInCents !== targetValueInCents) {
+        return false
+      }
+
+      if (!matchByName) {
+        return true
+      }
+
+      return this.isDuplicateNameEquivalent(candidate.name, name)
+    })
+
+    if (!duplicate) {
+      return null
+    }
+
+    return {
+      id: duplicate.id,
+    }
   }
 
   private buildImportedTransactionName(description: string) {
@@ -1281,10 +1329,6 @@ export class TransactionsService {
       return 'CARD_BILL_PAYMENT' as const
     }
 
-    if (this.isInternalBalanceMovementDescription(description)) {
-      return 'TRANSFER' as const
-    }
-
     if (this.isLikelyOwnTransfer(description, userName)) {
       return 'TRANSFER' as const
     }
@@ -1368,6 +1412,182 @@ export class TransactionsService {
       .toLowerCase()
       .replace(/\s+/g, ' ')
       .trim()
+  }
+
+  private normalizeDuplicateName(value: string) {
+    return this.normalizeText(value)
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+
+  private normalizeDuplicateNameForTokens(value: string) {
+    return this.normalizeDuplicateName(value)
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+
+  private getDuplicateSemanticCategory(normalized: string) {
+    if (normalized.includes('conta propria') || normalized.includes('contas proprias')) {
+      return '__conta_propria__'
+    }
+
+    if (
+      normalized.includes('pagamento de fatura de cartao')
+      || normalized.includes('pagamento de fatura')
+    ) {
+      return '__fatura__'
+    }
+
+    if (
+      normalized.includes('pix no credito')
+      || normalized.includes('valor adicionado via pix no credito')
+    ) {
+      return '__pix_credito__'
+    }
+
+    if (
+      normalized.includes('aplicacao em investimento')
+      || normalized === 'investimento'
+      || normalized.includes('aplicacao em rdb')
+      || normalized.includes('aplicacao bb rende facil')
+    ) {
+      return '__investimento_aplicacao__'
+    }
+
+    if (
+      normalized.includes('resgate de rdb')
+      || normalized.includes('resgate bb rende facil')
+      || normalized.includes('devolucao de aplicacao em investimento')
+    ) {
+      return '__investimento_resgate__'
+    }
+
+    return null
+  }
+
+  private extractDuplicateCounterpartyName(normalized: string) {
+    const patterns = [
+      /^pix para\s+(.+)$/,
+      /^pix de\s+(.+)$/,
+      /^pix recebido de\s+(.+)$/,
+      /^transferencia recebida de\s+(.+)$/,
+    ]
+
+    for (const pattern of patterns) {
+      const match = normalized.match(pattern)
+
+      if (match?.[1]) {
+        return match[1].trim()
+      }
+    }
+
+    return normalized
+  }
+
+  private normalizeDuplicateEntityName(value: string) {
+    return this.normalizeDuplicateNameForTokens(value)
+      .replace(/^pagamento\s+/g, '')
+      .replace(/\b(ltda|ltd|eireli|me|s\.?a\.?|sa|companhia)\b/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+
+  private getDuplicateSemanticTokens(value: string) {
+    const normalized = this.normalizeDuplicateName(value)
+    const category = this.getDuplicateSemanticCategory(normalized)
+
+    if (category) {
+      return [category]
+    }
+
+    const extracted = this.extractDuplicateCounterpartyName(normalized)
+    const cleaned = this.normalizeDuplicateEntityName(extracted)
+    const stopwords = new Set([
+      'pix',
+      'para',
+      'de',
+      'recebido',
+      'recebida',
+      'transferencia',
+      'entre',
+      'conta',
+      'contas',
+      'propria',
+      'proprias',
+      'banco',
+      'brasil',
+      'nubank',
+      'valor',
+      'adicionado',
+      'via',
+      'no',
+      'credito',
+      'fatura',
+      'cartao',
+      'aplicacao',
+      'resgate',
+      'rdb',
+      'rende',
+      'facil',
+      'em',
+      'investimento',
+    ])
+
+    const tokens = cleaned
+      .split(' ')
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 3)
+      .filter((token) => !stopwords.has(token))
+
+    return Array.from(new Set(tokens))
+  }
+
+  private isDuplicateNameEquivalent(leftName: string, rightName: string) {
+    const leftNormalized = this.normalizeDuplicateName(leftName)
+    const rightNormalized = this.normalizeDuplicateName(rightName)
+
+    if (leftNormalized === rightNormalized) {
+      return true
+    }
+
+    const leftTokens = this.getDuplicateSemanticTokens(leftName)
+    const rightTokens = this.getDuplicateSemanticTokens(rightName)
+
+    if (!leftTokens.length || !rightTokens.length) {
+      return false
+    }
+
+    if (leftTokens.length === 1 && rightTokens.length === 1) {
+      return leftTokens[0] === rightTokens[0]
+    }
+
+    if (leftTokens.length === 1) {
+      return rightTokens.includes(leftTokens[0])
+    }
+
+    if (rightTokens.length === 1) {
+      return leftTokens.includes(rightTokens[0])
+    }
+
+    const rightSet = new Set(rightTokens)
+    const intersection = leftTokens.filter((token) => rightSet.has(token)).length
+    const union = new Set([...leftTokens, ...rightTokens]).size
+    const similarity = union > 0 ? intersection / union : 0
+
+    if (similarity >= 0.6) {
+      return true
+    }
+
+    return intersection >= 1
+  }
+
+  private toMoneyCents(value: number) {
+    return Math.round(value * 100)
+  }
+
+  private roundMoney(value: number) {
+    return Number(value.toFixed(2))
   }
 
   private expandMerchantAliases(normalizedDescription: string) {
