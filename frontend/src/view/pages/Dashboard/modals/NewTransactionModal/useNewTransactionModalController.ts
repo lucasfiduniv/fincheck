@@ -177,6 +177,28 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>;
 
+function buildDefaultValues(bankAccountId?: string | null) {
+  return {
+    value: '',
+    name: '',
+    categoryId: '',
+    date: new Date(),
+    repeatType: 'ONCE' as const,
+    dueDay: new Date().getDate(),
+    alertDaysBefore: 3,
+    repeatCount: undefined,
+    bankAccountId: bankAccountId ?? '',
+    fuelVehicleId: undefined,
+    fuelOdometer: undefined,
+    fuelLiters: undefined,
+    fuelPricePerLiter: undefined,
+    fuelFillType: 'PARTIAL' as const,
+    fuelFirstPumpClick: false,
+    maintenanceVehicleId: undefined,
+    maintenanceOdometer: undefined,
+  }
+}
+
 export function useNewTransactionModalController() {
   const {
     isNewTransactionModalOpen,
@@ -197,13 +219,7 @@ export function useNewTransactionModalController() {
     setValue,
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: {
-      value: '',
-      date: new Date(),
-      repeatType: 'ONCE',
-      dueDay: new Date().getDate(),
-      alertDaysBefore: 3,
-    }
+    defaultValues: buildDefaultValues(),
   })
 
   const queryClient = useQueryClient()
@@ -217,19 +233,30 @@ export function useNewTransactionModalController() {
 
   const repeatType = watch('repeatType')
   const selectedCategoryId = watch('categoryId')
+  const selectedBankAccountId = watch('bankAccountId')
 
   useEffect(() => {
     if (!isNewTransactionModalOpen) {
+      reset(buildDefaultValues(transactionPresetBankAccountId))
       return
     }
 
     if (transactionPresetBankAccountId) {
       setValue('bankAccountId', transactionPresetBankAccountId)
+    } else if (!selectedBankAccountId && accounts.length > 0) {
+      setValue('bankAccountId', accounts[0].id)
     }
 
     setValue('fuelFillType', 'PARTIAL')
     setValue('fuelFirstPumpClick', false)
-  }, [isNewTransactionModalOpen, setValue, transactionPresetBankAccountId])
+  }, [
+    isNewTransactionModalOpen,
+    setValue,
+    transactionPresetBankAccountId,
+    selectedBankAccountId,
+    accounts,
+    reset,
+  ])
 
   const handleSubmit = hookFormSubmit(async (data) => {
     if (showMaintenanceFields && !data.maintenanceVehicleId) {
@@ -255,14 +282,14 @@ export function useNewTransactionModalController() {
           data.repeatType === 'ONCE'
             ? undefined
             : data.alertDaysBefore,
-        fuelVehicleId: data.fuelVehicleId,
-        fuelOdometer: data.fuelOdometer,
-        fuelLiters: data.fuelLiters,
-        fuelPricePerLiter: data.fuelPricePerLiter,
-        fuelFillType: data.fuelFillType,
-        fuelFirstPumpClick: data.fuelFirstPumpClick,
-        maintenanceVehicleId: data.maintenanceVehicleId,
-        maintenanceOdometer: data.maintenanceOdometer,
+        fuelVehicleId: showFuelFields ? data.fuelVehicleId || undefined : undefined,
+        fuelOdometer: showFuelFields ? data.fuelOdometer : undefined,
+        fuelLiters: showFuelFields ? data.fuelLiters : undefined,
+        fuelPricePerLiter: showFuelFields ? data.fuelPricePerLiter : undefined,
+        fuelFillType: showFuelFields ? data.fuelFillType : undefined,
+        fuelFirstPumpClick: showFuelFields ? data.fuelFirstPumpClick : undefined,
+        maintenanceVehicleId: showMaintenanceFields ? data.maintenanceVehicleId || undefined : undefined,
+        maintenanceOdometer: showMaintenanceFields ? data.maintenanceOdometer : undefined,
       })
 
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
@@ -283,18 +310,20 @@ export function useNewTransactionModalController() {
       })
 
       closeNewTransactionModal()
-      reset({
-        value: '',
-        date: new Date(),
-        repeatType: 'ONCE',
-        bankAccountId: transactionPresetBankAccountId ?? '',
-        dueDay: new Date().getDate(),
-        alertDaysBefore: 3,
-        fuelVehicleId: '',
-        fuelFillType: 'PARTIAL',
-        fuelFirstPumpClick: false,
-      })
-    } catch {
+      reset(buildDefaultValues(transactionPresetBankAccountId))
+    } catch (error: any) {
+      const apiMessage = error?.response?.data?.message
+
+      if (Array.isArray(apiMessage)) {
+        toast.error(apiMessage[0] ?? 'Erro ao cadastrar transação!')
+        return
+      }
+
+      if (typeof apiMessage === 'string' && apiMessage.trim()) {
+        toast.error(apiMessage)
+        return
+      }
+
       toast.error(
         newTransactionType === 'EXPENSE'
           ? 'Erro ao cadastrar despesa!'
