@@ -139,7 +139,19 @@ export function usePayCreditCardStatementModalController() {
       toast.success('Fatura paga com sucesso!')
       onClose()
       reset()
-    } catch {
+    } catch (error: any) {
+      const apiMessage = error?.response?.data?.message
+
+      if (Array.isArray(apiMessage)) {
+        toast.error(apiMessage[0] ?? 'Erro ao pagar fatura!')
+        return
+      }
+
+      if (typeof apiMessage === 'string' && apiMessage.trim()) {
+        toast.error(apiMessage)
+        return
+      }
+
       toast.error('Erro ao pagar fatura!')
     }
   })
