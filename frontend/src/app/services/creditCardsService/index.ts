@@ -6,6 +6,7 @@ import { getStatementByMonth } from './getStatementByMonth'
 import { importStatement } from './importStatement'
 import { exportStatement } from './exportStatement'
 import { payStatement } from './payStatement'
+import { remove } from './remove'
 import { update } from './update'
 import { updatePurchase } from './updatePurchase'
 
@@ -18,6 +19,7 @@ export const creditCardsService = {
   getAll,
   getStatementByMonth,
   payStatement,
+  remove,
   updatePurchase,
   update,
 }
