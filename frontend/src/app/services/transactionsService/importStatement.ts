@@ -1,6 +1,6 @@
 import { httpClient } from '../httpClient'
 
-export type SupportedStatementBank = 'NUBANK' | 'BANCO_DO_BRASIL'
+export type SupportedStatementBank = 'NUBANK' | 'BANCO_DO_BRASIL' | 'SICOOB'
 
 export interface ImportStatementParams {
   bank: SupportedStatementBank

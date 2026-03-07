@@ -17,7 +17,17 @@ const BANK_BRANDS: BankBrand[] = [
   },
 ]
 
-export function resolveBankBrand(accountName: string) {
+export function resolveBankBrand(
+  accountName: string,
+  accountType?: 'CHECKING' | 'INVESTMENT' | 'CASH',
+) {
+  if (accountType === 'CASH') {
+    return {
+      displayName: 'Dinheiro',
+      logoSrc: '/bancos/dinheiro_papel.png',
+    }
+  }
+
   const normalizedName = accountName.toLowerCase().trim()
 
   const matchedBrand = BANK_BRANDS.find((brand) =>

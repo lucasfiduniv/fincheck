@@ -27,6 +27,7 @@ import {
   FinancialImportCompletedDetail,
 } from '../../../../../app/utils/financialImportRealtime.ts'
 import { localStorageKeys } from '../../../../../app/config/localStorageKeys.ts'
+import { Transaction } from '../../../../../app/entities/Transaction.ts'
 
 interface ImportNoticeState {
   source: FinancialImportCompletedDetail['source'] | 'REALTIME'
@@ -39,6 +40,19 @@ interface TransactionsChangedRealtimeEvent {
   source?: 'MANUAL' | 'BANK_IMPORT' | 'SYSTEM'
   emittedAt: string
 }
+
+type DisplayTransactionItem =
+  | {
+    kind: 'SINGLE'
+    id: string
+    transaction: Transaction
+  }
+  | {
+    kind: 'TRANSFER_PAIR'
+    id: string
+    outgoing: Transaction
+    incoming: Transaction
+  }
 
 export function Transactions() {
   const queryClient = useQueryClient()
@@ -89,6 +103,80 @@ export function Transactions() {
     () => new Map(accounts.map((account) => [account.id, account])),
     [accounts],
   )
+
+  const displayTransactions = useMemo(() => {
+    const usedTransactionIds = new Set<string>()
+    const items: DisplayTransactionItem[] = []
+    const toMoneyCents = (value: number) => Math.round(value * 100)
+
+    for (const transaction of transactions) {
+      if (usedTransactionIds.has(transaction.id)) {
+        continue
+      }
+
+      if (transaction.type !== 'TRANSFER') {
+        usedTransactionIds.add(transaction.id)
+        items.push({
+          kind: 'SINGLE',
+          id: transaction.id,
+          transaction,
+        })
+        continue
+      }
+
+      const transactionDateKey = new Date(transaction.date).toISOString().slice(0, 10)
+      const transactionValueInCents = toMoneyCents(Math.abs(transaction.value))
+
+      const counterpart = transactions.find((candidate) => {
+        if (candidate.id === transaction.id || usedTransactionIds.has(candidate.id)) {
+          return false
+        }
+
+        if (candidate.type !== 'TRANSFER' || candidate.bankAccountId === transaction.bankAccountId) {
+          return false
+        }
+
+        const candidateDateKey = new Date(candidate.date).toISOString().slice(0, 10)
+
+        if (candidateDateKey !== transactionDateKey) {
+          return false
+        }
+
+        const candidateValueInCents = toMoneyCents(Math.abs(candidate.value))
+
+        if (candidateValueInCents !== transactionValueInCents) {
+          return false
+        }
+
+        return transaction.value < 0 ? candidate.value > 0 : candidate.value < 0
+      })
+
+      if (!counterpart) {
+        usedTransactionIds.add(transaction.id)
+        items.push({
+          kind: 'SINGLE',
+          id: transaction.id,
+          transaction,
+        })
+        continue
+      }
+
+      const outgoing = transaction.value < 0 ? transaction : counterpart
+      const incoming = transaction.value > 0 ? transaction : counterpart
+
+      usedTransactionIds.add(outgoing.id)
+      usedTransactionIds.add(incoming.id)
+
+      items.push({
+        kind: 'TRANSFER_PAIR',
+        id: `pair:${outgoing.id}:${incoming.id}`,
+        outgoing,
+        incoming,
+      })
+    }
+
+    return items
+  }, [transactions])
 
   const dueSummary = isLoadingDueAlerts
     ? 'Carregando vencimentos...'
@@ -471,9 +559,91 @@ export function Transactions() {
               />
             )}
 
-            {transactions.map((transaction) => {
+            {displayTransactions.map((item) => {
+              if (item.kind === 'TRANSFER_PAIR') {
+                const outgoingAccount = accountsById.get(item.outgoing.bankAccountId)
+                const incomingAccount = accountsById.get(item.incoming.bankAccountId)
+                const outgoingBrand = outgoingAccount
+                  ? resolveBankBrand(outgoingAccount.name, outgoingAccount.type)
+                  : null
+                const incomingBrand = incomingAccount
+                  ? resolveBankBrand(incomingAccount.name, incomingAccount.type)
+                  : null
+                const outgoingAnimationIndex = animatedTransactionIds.indexOf(item.outgoing.id)
+                const incomingAnimationIndex = animatedTransactionIds.indexOf(item.incoming.id)
+                const animationIndex = outgoingAnimationIndex >= 0
+                  ? outgoingAnimationIndex
+                  : incomingAnimationIndex
+
+                return (
+                  <div
+                    key={item.id}
+                    className={cn(
+                      'bg-white p-4 rounded-2xl flex items-center justify-between gap-4 cursor-pointer',
+                      animationIndex >= 0 && 'transaction-import-enter ring-1 ring-teal-200',
+                    )}
+                    style={animationIndex >= 0
+                      ? { animationDelay: `${animationIndex * 90}ms` }
+                      : undefined}
+                    role="button"
+                    onClick={() => handleOpenEditModal(item.outgoing)}
+                  >
+                    <div className="flex-1 flex items-center gap-3">
+                      <TransactionsIcon />
+                      <div>
+                        <strong className="font-bold tracking-[-0.5px] block">
+                          Transferência entre contas próprias
+                        </strong>
+
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm text-gray-600">
+                            {formatDate(new Date(item.outgoing.date))}
+                          </span>
+
+                          {outgoingBrand && (
+                            <span className="inline-flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 max-w-[160px]">
+                              <img
+                                src={outgoingBrand.logoSrc}
+                                alt={outgoingBrand.displayName}
+                                className="w-3.5 h-3.5 rounded-full object-contain bg-white"
+                              />
+                              <span className="truncate">{outgoingAccount?.name}</span>
+                            </span>
+                          )}
+
+                          <span className="text-xs text-gray-500">→</span>
+
+                          {incomingBrand && (
+                            <span className="inline-flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 max-w-[160px]">
+                              <img
+                                src={incomingBrand.logoSrc}
+                                alt={incomingBrand.displayName}
+                                className="w-3.5 h-3.5 rounded-full object-contain bg-white"
+                              />
+                              <span className="truncate">{incomingAccount?.name}</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <span
+                      className={cn(
+                        'tracking-[-0.5px] font-medium text-gray-700',
+                        !areValuesVisible && 'blur-md',
+                      )}
+                    >
+                      {formatCurrency(Math.abs(item.outgoing.value))}
+                    </span>
+                  </div>
+                )
+              }
+
+              const transaction = item.transaction
               const account = accountsById.get(transaction.bankAccountId)
-              const bankBrand = account ? resolveBankBrand(account.name) : null
+              const bankBrand = account
+                ? resolveBankBrand(account.name, account.type)
+                : null
               const isTransfer = transaction.type === 'TRANSFER'
               const isIncome = transaction.type === 'INCOME'
               const categoryType = isIncome ? 'INCOME' : 'EXPENSE'
@@ -495,17 +665,17 @@ export function Transactions() {
 
               return (
               <div
-                key={transaction.id}
+                key={item.id}
                 className={cn(
                   'bg-white p-4 rounded-2xl flex items-center justify-between gap-4',
                   animationIndex >= 0 && 'transaction-import-enter ring-1 ring-teal-200',
-                  !isTransfer && 'cursor-pointer'
+                  'cursor-pointer'
                 )}
                 style={animationIndex >= 0
                   ? { animationDelay: `${animationIndex * 90}ms` }
                   : undefined}
-                role={!isTransfer ? 'button' : undefined}
-                onClick={!isTransfer ? () => handleOpenEditModal(transaction) : undefined}
+                role="button"
+                onClick={() => handleOpenEditModal(transaction)}
               >
                 <div className="flex-1 flex items-center gap-3">
                   {isTransfer ? <TransactionsIcon /> : (

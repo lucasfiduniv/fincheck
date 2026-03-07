@@ -388,7 +388,7 @@ export function Settings() {
     } catch {
       setStatementImportStatus('Falha na importação.')
       setStatementImportTimingLabel('')
-      toast.error('Não foi possível importar o extrato. Confira o arquivo CSV/OFX e tente novamente.')
+      toast.error('Não foi possível importar o extrato. Confira o arquivo CSV/OFX/PDF e tente novamente.')
     } finally {
       setTimeout(() => {
         setStatementImportProgress(0)
@@ -409,16 +409,36 @@ export function Settings() {
     }
 
     const lowerCaseName = file.name.toLowerCase()
+    const isPdf = lowerCaseName.endsWith('.pdf')
     const isCsvOrOfx = lowerCaseName.endsWith('.csv') || lowerCaseName.endsWith('.ofx')
+    const isSupportedStatementFile = isCsvOrOfx || isPdf
 
-    if (!isCsvOrOfx) {
-      toast.error('Selecione um arquivo CSV ou OFX válido.')
+    if (!isSupportedStatementFile) {
+      toast.error('Selecione um arquivo CSV, OFX ou PDF válido.')
       event.target.value = ''
       return
     }
 
     try {
-      const content = await file.text()
+      const content = isPdf
+        ? await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+
+          reader.onload = () => {
+            const result = reader.result
+
+            if (typeof result !== 'string') {
+              reject(new Error('Falha ao ler PDF'))
+              return
+            }
+
+            resolve(result)
+          }
+
+          reader.onerror = () => reject(reader.error)
+          reader.readAsDataURL(file)
+        })
+        : await file.text()
 
       setStatementFileName(file.name)
       setStatementCsvContent(content)
@@ -658,12 +678,12 @@ export function Settings() {
               <div className="space-y-4">
                 <SettingsSection
                   title="Importar extrato do banco"
-                  description="Importe CSV ou OFX do Nubank ou Banco do Brasil e crie lançamentos automaticamente com classificação inteligente."
+                  description="Importe CSV/OFX do Nubank, OFX do Banco do Brasil ou PDF do Sicoob e crie lançamentos automaticamente com classificação inteligente."
                 >
                   <div className="rounded-xl border border-teal-100 bg-teal-50 p-4 space-y-2">
                     <strong className="text-sm text-teal-900 block">O que acontece ao importar</strong>
                     <ul className="text-sm text-teal-900 space-y-1 list-disc pl-5">
-                      <li>lê o arquivo CSV/OFX e transforma em lançamentos válidos</li>
+                      <li>lê o arquivo CSV/OFX/PDF e transforma em lançamentos válidos</li>
                       <li>remove duplicados já importados para evitar repetição</li>
                       <li>identifica transferências (incluindo Pix entre suas contas)</li>
                       <li>detecta pagamentos de fatura de cartão</li>
@@ -682,6 +702,7 @@ export function Settings() {
                       options={[
                         { value: 'NUBANK', label: 'Nubank (CSV/OFX)' },
                         { value: 'BANCO_DO_BRASIL', label: 'Banco do Brasil (OFX)' },
+                        { value: 'SICOOB', label: 'Sicoob (PDF)' },
                       ]}
                     />
 
@@ -696,10 +717,10 @@ export function Settings() {
                     />
 
                     <label className="flex flex-col gap-2">
-                      <span className="text-sm text-gray-700">Arquivo (.csv ou .ofx)</span>
+                      <span className="text-sm text-gray-700">Arquivo (.csv, .ofx ou .pdf)</span>
                       <input
                         type="file"
-                        accept=".csv,.ofx,text/csv,application/x-ofx"
+                        accept=".csv,.ofx,.pdf,text/csv,application/x-ofx,application/pdf"
                         onChange={handleStatementFileChange}
                         className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-gray-800 hover:file:bg-gray-200"
                       />

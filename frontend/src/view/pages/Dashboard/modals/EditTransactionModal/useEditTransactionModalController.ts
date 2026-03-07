@@ -25,7 +25,7 @@ const schema = z.object({
       return val
     }),
   name: z.string().nonempty('Informe o nome'),
-  categoryId: z.string().nonempty('Informe a categoria'),
+  categoryId: z.string().optional(),
   bankAccountId: z.string().nonempty('Informe a conta'),
   date: z.date(),
 })
@@ -36,10 +36,7 @@ export function useEditTransactionModalController(
   transaction: Transaction | null,
   onClose: () => void
 ) {
-  const editableTransactionType =
-    transaction?.type === 'INCOME' || transaction?.type === 'EXPENSE'
-      ? transaction.type
-      : null
+  const editableTransactionType = transaction?.type
 
   const {
     register,
@@ -91,7 +88,16 @@ export function useEditTransactionModalController(
 
   const handleSubmit = hookFormSubmit(async (data) => {
     if (!editableTransactionType) {
-      toast.error('Transferências devem ser gerenciadas pelo fluxo de transferência entre contas.')
+      toast.error('Transação inválida para edição.')
+      return
+    }
+
+    const categoryId = editableTransactionType === 'TRANSFER'
+      ? undefined
+      : data.categoryId
+
+    if (editableTransactionType !== 'TRANSFER' && !categoryId) {
+      toast.error('Informe a categoria.')
       return
     }
 
@@ -100,6 +106,7 @@ export function useEditTransactionModalController(
         ...data,
         id: transaction!.id,
         type: editableTransactionType,
+        categoryId,
         value: currencyStringToNumber(data.value),
         date: new Date(
           Date.UTC(
@@ -114,14 +121,18 @@ export function useEditTransactionModalController(
       queryClient.invalidateQueries({ queryKey: ['bankAccounts'] })
 
       toast.success(
-        editableTransactionType === 'EXPENSE'
+        editableTransactionType === 'TRANSFER'
+          ? 'Transferência editada com sucesso!'
+          : editableTransactionType === 'EXPENSE'
           ? 'Despesa editada com sucesso!'
           : 'Receita editada com sucesso!'
       )
       onClose()
     } catch {
       toast.error(
-        editableTransactionType === 'EXPENSE'
+        editableTransactionType === 'TRANSFER'
+          ? 'Erro ao editar transferência!'
+          : editableTransactionType === 'EXPENSE'
           ? 'Erro ao editar despesa!'
           : 'Erro ao editar receita!'
       )
@@ -130,6 +141,9 @@ export function useEditTransactionModalController(
 
   const categories = useMemo(
     () =>
+      transaction?.type === 'TRANSFER'
+        ? []
+        :
       categoriesList.filter((category) => category.type === transaction?.type),
     [categoriesList, transaction]
   )

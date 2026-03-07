@@ -53,6 +53,7 @@ export function EditTransactionModal({
   const [adjustmentScope, setAdjustmentScope] = useState<RecurrenceAdjustmentScope>('THIS_AND_NEXT')
   const [showSeriesAdjustment, setShowSeriesAdjustment] = useState(false)
 
+  const isTransfer = transaction?.type === 'TRANSFER'
   const isExpense = transaction?.type === 'EXPENSE'
   const canAdjustFutureValues = !!transaction?.recurrenceGroupId
 
@@ -80,7 +81,7 @@ export function EditTransactionModal({
   if (isDeleteModalOpen)
     return (
       <ConfirmDeleteModal
-        title={`Tem certeza que deseja excluir esta ${isExpense ? 'despesa' : 'receita'}?`}
+        title={`Tem certeza que deseja excluir esta ${isTransfer ? 'transferência' : isExpense ? 'despesa' : 'receita'}?`}
         isLoading={isLoadingDelete}
         onClose={handleCloseDeleteModal}
         onConfirm={handleDeleteTransaction}
@@ -89,7 +90,7 @@ export function EditTransactionModal({
 
   return (
     <Modal
-      title={isExpense ? 'Editar Despesa' : 'Editar Receita'}
+      title={isTransfer ? 'Editar Transferência' : isExpense ? 'Editar Despesa' : 'Editar Receita'}
       open={open}
       onClose={onClose}
       contentClassName="max-w-[420px] lg:max-w-[880px] lg:px-8 max-h-[92vh] overflow-y-auto"
@@ -102,7 +103,7 @@ export function EditTransactionModal({
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="rounded-2xl bg-gray-50 p-4 lg:p-5">
           <span className="text-gray-600 tracking-[-0.5px] text-xs block mb-1">
-            Valor da {isExpense ? 'despesa' : 'receita'}
+            Valor da {isTransfer ? 'transferência' : isExpense ? 'despesa' : 'receita'}
           </span>
 
           <div className="flex items-center gap-2">
@@ -131,29 +132,31 @@ export function EditTransactionModal({
             <div className="lg:col-span-2">
               <Input
                 type="text"
-                placeholder={isExpense ? 'Nome da Despesa' : 'Nome da Receita'}
+                placeholder={isTransfer ? 'Nome da Transferência' : isExpense ? 'Nome da Despesa' : 'Nome da Receita'}
                 error={errors.name?.message}
                 {...register('name')}
               />
             </div>
 
-            <Controller
-              control={control}
-              name="categoryId"
-              defaultValue=""
-              render={({ field: { onChange, value } }) => (
-                <Select
-                  placeholder="Categoria"
-                  onChange={onChange}
-                  value={value}
-                  error={errors.categoryId?.message}
-                  options={categories.map((category) => ({
-                    value: category.id,
-                    label: category.name,
-                  }))}
-                />
-              )}
-            />
+            {!isTransfer && (
+              <Controller
+                control={control}
+                name="categoryId"
+                defaultValue=""
+                render={({ field: { onChange, value } }) => (
+                  <Select
+                    placeholder="Categoria"
+                    onChange={onChange}
+                    value={value}
+                    error={errors.categoryId?.message}
+                    options={categories.map((category) => ({
+                      value: category.id,
+                      label: category.name,
+                    }))}
+                  />
+                )}
+              />
+            )}
 
             <Controller
               control={control}
@@ -161,7 +164,7 @@ export function EditTransactionModal({
               defaultValue=""
               render={({ field: { onChange, value } }) => (
                 <Select
-                  placeholder={isExpense ? 'Pagar com' : 'Receber com'}
+                  placeholder={isTransfer ? 'Conta' : isExpense ? 'Pagar com' : 'Receber com'}
                   onChange={onChange}
                   value={value}
                   error={errors.bankAccountId?.message}

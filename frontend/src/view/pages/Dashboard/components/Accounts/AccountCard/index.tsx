@@ -10,10 +10,10 @@ interface AccountCardProps {
 }
 
 export function AccountCard({ data, onClick }: AccountCardProps) {
-  const { color, name, currentBalance } = data
+  const { color, name, currentBalance, type } = data
   const { areValuesVisible } = useDashboard()
 
-  const bankBrand = resolveBankBrand(name)
+  const bankBrand = resolveBankBrand(name, type)
   const showCustomName =
     bankBrand.displayName.toLowerCase() !== name.toLowerCase().trim()
 

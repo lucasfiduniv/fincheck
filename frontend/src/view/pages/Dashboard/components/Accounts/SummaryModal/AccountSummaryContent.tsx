@@ -117,6 +117,10 @@ export function AccountSummaryContent({
   function resolveStatementProvider(content: string) {
     const normalized = content.replace(/^\uFEFF/, '').trim().toUpperCase()
 
+    if (normalized.startsWith('DATA:APPLICATION/PDF;BASE64,')) {
+      return 'SICOOB' as const
+    }
+
     if (
       normalized.includes('<OFX>')
       && (normalized.includes('BANCO DO BRASIL') || normalized.includes('<BANKID>1</BANKID>'))
@@ -133,10 +137,12 @@ export function AccountSummaryContent({
     }
 
     const lowerCaseName = file.name.toLowerCase()
+    const isPdf = lowerCaseName.endsWith('.pdf')
     const isCsvOrOfx = lowerCaseName.endsWith('.csv') || lowerCaseName.endsWith('.ofx')
+    const isSupportedStatementFile = isCsvOrOfx || isPdf
 
-    if (!isCsvOrOfx) {
-      toast.error('Selecione um arquivo CSV ou OFX válido.')
+    if (!isSupportedStatementFile) {
+      toast.error('Selecione um arquivo CSV, OFX ou PDF válido.')
       return
     }
 
@@ -148,8 +154,26 @@ export function AccountSummaryContent({
       setImportStatus(`Lendo ${file.name}...`)
       setImportTimingLabel('')
 
-      const content = await file.text()
-      const provider = resolveStatementProvider(content)
+      const content = isPdf
+        ? await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+
+          reader.onload = () => {
+            const result = reader.result
+
+            if (typeof result !== 'string') {
+              reject(new Error('Falha ao ler PDF'))
+              return
+            }
+
+            resolve(result)
+          }
+
+          reader.onerror = () => reject(reader.error)
+          reader.readAsDataURL(file)
+        })
+        : await file.text()
+      const provider = isPdf ? 'SICOOB' as const : resolveStatementProvider(content)
 
       setImportProgress(0)
       setImportStatus('Enviando extrato...')
@@ -196,7 +220,7 @@ export function AccountSummaryContent({
       <input
         ref={importInputRef}
         type="file"
-        accept=".csv,.ofx,text/csv,application/vnd.ms-excel"
+        accept=".csv,.ofx,.pdf,text/csv,application/vnd.ms-excel,application/pdf"
         className="hidden"
         onChange={(event) => {
           void handleImportStatementFile(event.target.files?.[0])
