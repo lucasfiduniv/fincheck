@@ -26,6 +26,10 @@ export function UserMenu() {
           Veículos
         </DropdownMenu.Item>
 
+        <DropdownMenu.Item onSelect={() => navigate('/reports')}>
+          Relatórios
+        </DropdownMenu.Item>
+
         <DropdownMenu.Item onSelect={() => navigate('/settings')}>
           Configurações
         </DropdownMenu.Item>

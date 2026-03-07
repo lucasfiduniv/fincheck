@@ -10,6 +10,7 @@ import { NotFound } from '../view/pages/NotFound'
 import { Settings } from '../view/pages/Settings'
 import { SavingsBoxes } from '../view/pages/SavingsBoxes'
 import { Vehicles } from '../view/pages/Vehicles'
+import { Reports } from '../view/pages/Reports'
 
 export function Router() {
   return (
@@ -30,6 +31,7 @@ export function Router() {
           <Route path="/settings" element={<Settings />} />
           <Route path="/savings-boxes" element={<SavingsBoxes />} />
           <Route path="/vehicles" element={<Vehicles />} />
+          <Route path="/reports" element={<Reports />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -52,6 +52,11 @@ export function Fab() {
       renderIcon: () => <BankAccountIcon />,
     },
     {
+      label: 'Relatórios',
+      onSelect: () => navigate('/reports'),
+      renderIcon: () => <BankAccountIcon />,
+    },
+    {
       label: 'Compra no Cartão',
       onSelect: openNewCreditCardPurchaseModal,
       renderIcon: () => <CategoryIcon type="EXPENSE" />,
