@@ -1,0 +1,3 @@
+-- No-op migration.
+-- This migration duplicates changes already applied by
+-- `20260306120000_add_fuel_analytics_domain`.

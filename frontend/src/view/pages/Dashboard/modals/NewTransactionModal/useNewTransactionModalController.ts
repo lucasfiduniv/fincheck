@@ -72,6 +72,8 @@ const schema = z.object({
     .union([z.coerce.number(), z.literal(''), z.undefined()])
     .optional()
     .transform((value) => value === '' || value === undefined ? undefined : value),
+  fuelFillType: z.enum(['FULL', 'PARTIAL']).optional(),
+  fuelFirstPumpClick: z.boolean().optional(),
   maintenanceVehicleId: z.string().optional(),
   maintenanceOdometer: z
     .union([z.coerce.number(), z.literal(''), z.undefined()])
@@ -224,6 +226,9 @@ export function useNewTransactionModalController() {
     if (transactionPresetBankAccountId) {
       setValue('bankAccountId', transactionPresetBankAccountId)
     }
+
+    setValue('fuelFillType', 'PARTIAL')
+    setValue('fuelFirstPumpClick', false)
   }, [isNewTransactionModalOpen, setValue, transactionPresetBankAccountId])
 
   const handleSubmit = hookFormSubmit(async (data) => {
@@ -254,6 +259,8 @@ export function useNewTransactionModalController() {
         fuelOdometer: data.fuelOdometer,
         fuelLiters: data.fuelLiters,
         fuelPricePerLiter: data.fuelPricePerLiter,
+        fuelFillType: data.fuelFillType,
+        fuelFirstPumpClick: data.fuelFirstPumpClick,
         maintenanceVehicleId: data.maintenanceVehicleId,
         maintenanceOdometer: data.maintenanceOdometer,
       })
@@ -284,6 +291,8 @@ export function useNewTransactionModalController() {
         dueDay: new Date().getDate(),
         alertDaysBefore: 3,
         fuelVehicleId: '',
+        fuelFillType: 'PARTIAL',
+        fuelFirstPumpClick: false,
       })
     } catch {
       toast.error(

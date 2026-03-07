@@ -40,6 +40,8 @@ model User {
   savingsBoxCollaborationsInvited SavingsBoxCollaborator[] @relation("SavingsBoxCollaboratorInvitedBy")
   vehicles Vehicle[]
   fuelRecords FuelRecord[]
+  fuelTripSegments FuelTripSegment[]
+  fuelStatsSnapshots FuelStatsSnapshot[]
   vehicleParts VehiclePart[]
   vehicleAuditLogs VehicleAuditLog[]
   vehicleUsageEvents VehicleUsageEvent[]
@@ -314,6 +316,8 @@ model CreditCardPurchase {
   fuelOdometer     Float?                 @map("fuel_odometer")
   fuelLiters       Float?                 @map("fuel_liters")
   fuelPricePerLiter Float?                @map("fuel_price_per_liter")
+  fuelFillType     FuelFillType           @default(PARTIAL) @map("fuel_fill_type")
+  fuelFirstPumpClick Boolean              @default(false) @map("fuel_first_pump_click")
   maintenanceVehicleId String?            @map("maintenance_vehicle_id") @db.Uuid
   maintenanceOdometer Float?              @map("maintenance_odometer")
   description      String
@@ -440,6 +444,21 @@ enum FuelType {
   @@map("fuel_type")
 }
 
+enum FuelFillType {
+  FULL
+  PARTIAL
+
+  @@map("fuel_fill_type")
+}
+
+enum FuelSegmentConfidence {
+  HIGH
+  MEDIUM
+  LOW
+
+  @@map("fuel_segment_confidence")
+}
+
 model Vehicle {
   id String @id @default(uuid()) @db.Uuid
   userId String @map("user_id") @db.Uuid
@@ -458,6 +477,8 @@ model Vehicle {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   fuelRecords FuelRecord[]
+  fuelTripSegments FuelTripSegment[]
+  fuelStatsSnapshots FuelStatsSnapshot[]
   fuelPurchases CreditCardPurchase[]
   maintenanceTransactions Transaction[] @relation("VehicleMaintenanceTransactions")
   maintenancePurchases CreditCardPurchase[] @relation("VehicleMaintenancePurchases")
@@ -533,6 +554,8 @@ model FuelRecord {
   transactionId String @unique @map("transaction_id") @db.Uuid
   odometer Float
   liters Float
+  fillType FuelFillType @default(PARTIAL) @map("fill_type")
+  firstPumpClick Boolean @default(false) @map("first_pump_click")
   pricePerLiter Float @map("price_per_liter")
   totalCost Float @map("total_cost")
   createdAt DateTime @default(now()) @map("created_at")
@@ -541,9 +564,68 @@ model FuelRecord {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  startSegments FuelTripSegment[] @relation("FuelTripStartRecord")
+  endSegments FuelTripSegment[] @relation("FuelTripEndRecord")
+  statsSnapshots FuelStatsSnapshot[] @relation("FuelStatsLastRecord")
 
   @@index([userId, vehicleId, createdAt])
   @@map("fuel_records")
+}
+
+model FuelTripSegment {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  vehicleId String @map("vehicle_id") @db.Uuid
+  startFuelRecordId String @map("start_fuel_record_id") @db.Uuid
+  endFuelRecordId String @map("end_fuel_record_id") @db.Uuid
+  startDate DateTime @map("start_date")
+  endDate DateTime @map("end_date")
+  startOdometer Float @map("start_odometer")
+  endOdometer Float @map("end_odometer")
+  distanceKm Float @map("distance_km")
+  litersConsumed Float @map("liters_consumed")
+  totalCost Float @map("total_cost")
+  consumptionKmPerLiter Float @map("consumption_km_per_liter")
+  costPerKm Float @map("cost_per_km")
+  confidence FuelSegmentConfidence @default(MEDIUM)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  startFuelRecord FuelRecord @relation("FuelTripStartRecord", fields: [startFuelRecordId], references: [id], onDelete: Cascade)
+  endFuelRecord FuelRecord @relation("FuelTripEndRecord", fields: [endFuelRecordId], references: [id], onDelete: Cascade)
+
+  @@index([userId, vehicleId, endDate])
+  @@unique([userId, vehicleId, startFuelRecordId, endFuelRecordId])
+  @@map("fuel_trip_segments")
+}
+
+model FuelStatsSnapshot {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  vehicleId String @map("vehicle_id") @db.Uuid
+  month Int
+  year Int
+  officialConsumptionKmPerLiter Float? @map("official_consumption_km_per_liter")
+  officialCostPerKm Float? @map("official_cost_per_km")
+  officialDistanceKm Float @default(0) @map("official_distance_km")
+  officialLiters Float @default(0) @map("official_liters")
+  currentMonthCost Float @default(0) @map("current_month_cost")
+  projectedMonthCost Float? @map("projected_month_cost")
+  nextRefuelInDays Float? @map("next_refuel_in_days")
+  nextRefuelAtKm Float? @map("next_refuel_at_km")
+  lastFuelRecordId String? @map("last_fuel_record_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  lastFuelRecord FuelRecord? @relation("FuelStatsLastRecord", fields: [lastFuelRecordId], references: [id], onDelete: SetNull)
+
+  @@index([userId, vehicleId, year, month])
+  @@unique([userId, vehicleId, year, month])
+  @@map("fuel_stats_snapshots")
 }
 
 model CategoryBudget {

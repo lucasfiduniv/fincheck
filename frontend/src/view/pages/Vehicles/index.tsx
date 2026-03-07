@@ -25,6 +25,7 @@ const fuelTypeOptions = [
 
 const timelineFilterStoragePrefix = 'fincheck:vehicles:timeline-filter:'
 const compactModeStoragePrefix = 'fincheck:vehicles:compact-mode:'
+const odometerDraftStoragePrefix = 'fincheck:vehicles:odometer-draft:'
 
 type InlineFeedbackState = {
   status: 'saving' | 'synced' | 'error' | 'stale'
@@ -149,6 +150,8 @@ export function Vehicles() {
   const [quickFuelPricePerLiter, setQuickFuelPricePerLiter] = useState('')
   const [quickFuelOdometer, setQuickFuelOdometer] = useState('')
   const [quickFuelDate, setQuickFuelDate] = useState(new Date().toISOString().slice(0, 10))
+  const [quickFuelFillType, setQuickFuelFillType] = useState<'FULL' | 'PARTIAL'>('PARTIAL')
+  const [quickFuelFirstPumpClick, setQuickFuelFirstPumpClick] = useState(false)
 
   const [quickMaintenanceBankAccountId, setQuickMaintenanceBankAccountId] = useState('')
   const [quickMaintenanceCategoryId, setQuickMaintenanceCategoryId] = useState('')
@@ -164,6 +167,8 @@ export function Vehicles() {
   const [isTimelineCompactMode, setIsTimelineCompactMode] = useState(false)
   const [expandedTimelineItems, setExpandedTimelineItems] = useState<Record<string, boolean>>({})
   const [mobileOpenSection, setMobileOpenSection] = useState<'SUMMARY' | 'ODOMETER' | 'METRICS' | 'TIMELINE'>('SUMMARY')
+  const [odometerStep, setOdometerStep] = useState<'CURRENT' | 'AUTO'>('CURRENT')
+  const [showOutlierConfirm, setShowOutlierConfirm] = useState(false)
 
   const { data: vehicles = [], isLoading } = useQuery({
     queryKey: ['vehicles'],
@@ -302,6 +307,10 @@ export function Vehicles() {
       return 'Selecione um veículo'
     }
 
+    const referenceDailyKm = selectedVehicle.averageDailyKm
+      ?? selectedVehicle.odometerLearning?.learnedAverageDailyKm
+      ?? null
+
     const partsWithNextReplacement = selectedVehicle.parts.filter(
       (part) => part.nextReplacementOdometer !== null,
     )
@@ -324,16 +333,20 @@ export function Vehicles() {
     }
 
     const remainingKm = nextReplacementOdometer - lastOdometer
+    const remainingDays = referenceDailyKm && referenceDailyKm > 0
+      ? Math.ceil(Math.abs(remainingKm) / referenceDailyKm)
+      : null
+    const daysLabel = remainingDays !== null ? ` (~${remainingDays} dias)` : ''
 
     if (remainingKm <= 0) {
-      return `Troca atrasada: ${nextPart.name}`
+      return `Troca atrasada: ${nextPart.name}${daysLabel}`
     }
 
     if (remainingKm <= 500) {
-      return `Troca próxima: ${nextPart.name} em ${remainingKm.toFixed(0)} km`
+      return `Troca próxima: ${nextPart.name} em ${remainingKm.toFixed(0)} km${daysLabel}`
     }
 
-    return `Em dia: ${nextPart.name} em ${remainingKm.toFixed(0)} km`
+    return `Em dia: ${nextPart.name} em ${remainingKm.toFixed(0)} km${daysLabel}`
   }, [selectedVehicle])
 
   const timelineItems = useMemo(() => {
@@ -399,6 +412,23 @@ export function Vehicles() {
 
   const selectedHealthBadge = selectedVehicle?.healthBadge ?? 'OK'
   const selectedConfidenceLevel = selectedVehicle?.odometerConfidence?.level ?? 'LOW'
+  const estimatedOdometer = selectedVehicle?.effectiveCurrentOdometer ?? null
+  const parsedCurrentOdometerInput = Number(currentOdometerInput.replace(',', '.').trim())
+  const hasComparableOdometerValues = Number.isFinite(parsedCurrentOdometerInput)
+    && estimatedOdometer !== null
+    && estimatedOdometer !== undefined
+
+  const deltaVsEstimated = hasComparableOdometerValues
+    ? Number((parsedCurrentOdometerInput - estimatedOdometer).toFixed(1))
+    : null
+
+  const deltaLabel = deltaVsEstimated === null
+    ? null
+    : Math.abs(deltaVsEstimated) <= 20
+      ? { text: `Diferença vs estimado: ${deltaVsEstimated >= 0 ? '+' : ''}${deltaVsEstimated.toFixed(1)} km (ok)`, className: 'text-emerald-700' }
+      : Math.abs(deltaVsEstimated) <= 80
+        ? { text: `Diferença vs estimado: ${deltaVsEstimated >= 0 ? '+' : ''}${deltaVsEstimated.toFixed(1)} km (atenção)`, className: 'text-amber-700' }
+        : { text: `Diferença vs estimado: ${deltaVsEstimated >= 0 ? '+' : ''}${deltaVsEstimated.toFixed(1)} km (alto)`, className: 'text-rose-700' }
 
   useEffect(() => {
     if (!selectedVehicleId && vehicles.length > 0) {
@@ -483,18 +513,42 @@ export function Vehicles() {
       return
     }
 
+    const draftKey = `${odometerDraftStoragePrefix}${selectedVehicle.id}`
+    const savedDraftRaw = localStorage.getItem(draftKey)
+    let savedDraft: {
+      currentOdometerInput?: string
+      autoOdometerEnabledInput?: boolean
+      averageDailyKmInput?: string
+      odometerStep?: 'CURRENT' | 'AUTO'
+    } | null = null
+
+    if (savedDraftRaw) {
+      try {
+        savedDraft = JSON.parse(savedDraftRaw)
+      } catch {
+        localStorage.removeItem(draftKey)
+      }
+    }
+
     setCurrentOdometerInput(
-      selectedVehicle.currentOdometer !== null && selectedVehicle.currentOdometer !== undefined
-        ? selectedVehicle.currentOdometer.toFixed(1)
-        : '',
+      savedDraft?.currentOdometerInput
+        ?? (
+          selectedVehicle.currentOdometer !== null && selectedVehicle.currentOdometer !== undefined
+            ? selectedVehicle.currentOdometer.toFixed(1)
+            : ''
+        ),
     )
 
-    setAutoOdometerEnabledInput(!!selectedVehicle.autoOdometerEnabled)
+    setAutoOdometerEnabledInput(savedDraft?.autoOdometerEnabledInput ?? !!selectedVehicle.autoOdometerEnabled)
     setAverageDailyKmInput(
-      selectedVehicle.averageDailyKm !== null && selectedVehicle.averageDailyKm !== undefined
-        ? selectedVehicle.averageDailyKm.toFixed(1)
-        : '',
+      savedDraft?.averageDailyKmInput
+        ?? (
+          selectedVehicle.averageDailyKm !== null && selectedVehicle.averageDailyKm !== undefined
+            ? selectedVehicle.averageDailyKm.toFixed(1)
+            : ''
+        ),
     )
+    setOdometerStep(savedDraft?.odometerStep ?? 'CURRENT')
 
     const referenceOdometer = selectedVehicle.effectiveCurrentOdometer ?? selectedVehicle.currentOdometer
 
@@ -515,8 +569,31 @@ export function Vehicles() {
     )
 
     setConfirmOdometerOutlier(false)
+    setShowOutlierConfirm(false)
     setTimelineVisibleCount(20)
   }, [selectedVehicle, partInstalledOdometer])
+
+  useEffect(() => {
+    if (!selectedVehicle) {
+      return
+    }
+
+    localStorage.setItem(
+      `${odometerDraftStoragePrefix}${selectedVehicle.id}`,
+      JSON.stringify({
+        currentOdometerInput,
+        autoOdometerEnabledInput,
+        averageDailyKmInput,
+        odometerStep,
+      }),
+    )
+  }, [
+    selectedVehicle,
+    currentOdometerInput,
+    autoOdometerEnabledInput,
+    averageDailyKmInput,
+    odometerStep,
+  ])
 
   useEffect(() => {
     if (!inlineFeedback || inlineFeedback.status === 'saving' || inlineFeedback.status === 'stale') {
@@ -580,6 +657,8 @@ export function Vehicles() {
         : '',
     )
     setQuickFuelDate(new Date().toISOString().slice(0, 10))
+    setQuickFuelFillType('PARTIAL')
+    setQuickFuelFirstPumpClick(false)
   }
 
   function resetQuickMaintenanceForm() {
@@ -753,6 +832,23 @@ export function Vehicles() {
     }
 
     try {
+      const previousOdometer = selectedVehicle?.currentOdometer ?? selectedVehicle?.effectiveCurrentOdometer
+
+      if (
+        previousOdometer !== null
+        && previousOdometer !== undefined
+        && Number.isFinite(previousOdometer)
+        && previousOdometer !== odometer
+      ) {
+        const confirmed = window.confirm(
+          `Você alterou de ${previousOdometer.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} para ${odometer.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} km. Deseja continuar?`,
+        )
+
+        if (!confirmed) {
+          return
+        }
+      }
+
       setInlineFeedback({ status: 'saving', message: 'Salvando odômetro...' })
       await updateVehicle({
         vehicleId: selectedVehicleId,
@@ -764,11 +860,13 @@ export function Vehicles() {
       queryClient.invalidateQueries({ queryKey: ['vehicles', selectedVehicleId] })
       setPartInstalledOdometer(odometer.toFixed(1))
       setConfirmOdometerOutlier(false)
+      setShowOutlierConfirm(false)
       setInlineFeedback({ status: 'synced', message: 'Odômetro atualizado e sincronizado.' })
       toast.success('Odômetro atualizado com sucesso!')
     } catch (error: any) {
       if (error?.response?.data?.message?.includes?.('salto atípico')) {
         setInlineFeedback({ status: 'error', message: 'Outlier detectado. Marque a confirmação para salvar.' })
+        setShowOutlierConfirm(true)
       } else {
         setInlineFeedback({ status: 'error', message: 'Erro ao atualizar odômetro.' })
       }
@@ -879,6 +977,8 @@ export function Vehicles() {
         fuelOdometer: odometer,
         fuelLiters: liters,
         fuelPricePerLiter: pricePerLiter,
+        fuelFillType: quickFuelFillType,
+        fuelFirstPumpClick: quickFuelFirstPumpClick,
       })
 
       setIsQuickFuelModalOpen(false)
@@ -1146,6 +1246,26 @@ export function Vehicles() {
           <Input type="number" step="0.01" name="quickFuelLiters" placeholder="Litros" value={quickFuelLiters} onChange={(e) => setQuickFuelLiters(e.target.value)} />
           <Input type="number" step="0.01" name="quickFuelPricePerLiter" placeholder="Preço por litro" value={quickFuelPricePerLiter} onChange={(e) => setQuickFuelPricePerLiter(e.target.value)} />
           <Input type="number" step="0.1" name="quickFuelOdometer" placeholder="Odômetro" value={quickFuelOdometer} onChange={(e) => setQuickFuelOdometer(e.target.value)} />
+
+          <Select
+            placeholder="Tipo de abastecimento"
+            value={quickFuelFillType}
+            onChange={(value) => setQuickFuelFillType(value as 'FULL' | 'PARTIAL')}
+            options={[
+              { value: 'PARTIAL', label: 'Parcial' },
+              { value: 'FULL', label: 'Tanque cheio' },
+            ]}
+          />
+
+          <label className="flex items-center gap-2 text-xs text-gray-700 rounded-lg border border-gray-200 px-3 py-2">
+            <input
+              type="checkbox"
+              checked={quickFuelFirstPumpClick}
+              onChange={(e) => setQuickFuelFirstPumpClick(e.target.checked)}
+            />
+            Primeiro clique da bomba
+          </label>
+
           <Input type="date" name="quickFuelDate" value={quickFuelDate} onChange={(e) => setQuickFuelDate(e.target.value)} />
 
           <Button type="submit" className="w-full" isLoading={isCreatingQuickAction}>Salvar abastecimento</Button>
@@ -1553,61 +1673,105 @@ export function Vehicles() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
-                      <strong className="text-sm text-gray-800 block">Calibração manual</strong>
+                  <div className="rounded-xl border border-gray-200 bg-white p-2 sm:p-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setOdometerStep('CURRENT')}
+                        className={`rounded-lg px-3 py-2 text-xs font-medium border transition-colors ${
+                          odometerStep === 'CURRENT'
+                            ? 'border-teal-700 bg-teal-50 text-teal-800'
+                            : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        1) Quilometragem atual
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOdometerStep('AUTO')}
+                        className={`rounded-lg px-3 py-2 text-xs font-medium border transition-colors ${
+                          odometerStep === 'AUTO'
+                            ? 'border-teal-700 bg-teal-50 text-teal-800'
+                            : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        2) Automação diária
+                      </button>
+                    </div>
+                  </div>
 
-                      <label className="text-xs text-gray-600 block">Odômetro atual consolidado</label>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        name="currentOdometerInput"
-                        placeholder="Ex.: 52340.5"
-                        value={currentOdometerInput}
-                        onChange={(e) => setCurrentOdometerInput(e.target.value)}
-                      />
+                  {odometerStep === 'CURRENT' && (
+                    <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
+                      <strong className="text-sm text-gray-900 block">Quilometragem atual</strong>
+
+                      <div className="space-y-2">
+                        <label className="text-xs text-gray-600 block">Valor atual do painel</label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          name="currentOdometerInput"
+                          placeholder="Ex.: 52340.5"
+                          value={currentOdometerInput}
+                          onChange={(e) => {
+                            setCurrentOdometerInput(e.target.value)
+                            setShowOutlierConfirm(false)
+                            setConfirmOdometerOutlier(false)
+                          }}
+                        />
+                      </div>
 
                       {selectedVehicle.effectiveCurrentOdometer !== null && selectedVehicle.effectiveCurrentOdometer !== undefined && (
-                        <span className="text-xs text-teal-700 block">
-                          Estimativa atual: {selectedVehicle.effectiveCurrentOdometer.toFixed(1)} km
-                        </span>
+                        <div className="space-y-1">
+                          <span className="text-xs text-teal-700 block">
+                            Estimativa atual: {selectedVehicle.effectiveCurrentOdometer.toFixed(1)} km
+                          </span>
+                          {deltaLabel && (
+                            <span className={`text-xs block font-medium ${deltaLabel.className}`}>
+                              {deltaLabel.text}
+                            </span>
+                          )}
+                        </div>
                       )}
 
-                      <label className="flex items-center gap-2 text-[11px] text-gray-600">
-                        <input
-                          type="checkbox"
-                          checked={confirmOdometerOutlier}
-                          onChange={(event) => setConfirmOdometerOutlier(event.target.checked)}
-                        />
-                        Confirmar se for outlier (salto atípico)
-                      </label>
-
                       <p className="text-[11px] text-gray-500">
-                        Ajuste quando quiser para manter a precisão da referência.
+                        Use o valor real do painel para recalibrar.
                       </p>
 
-                      <div className="flex flex-wrap gap-2">
+                      {showOutlierConfirm && (
+                        <label className="flex items-center gap-2 text-[11px] text-amber-700 rounded-lg border border-amber-200 bg-amber-50 px-2 py-2">
+                          <input
+                            type="checkbox"
+                            checked={confirmOdometerOutlier}
+                            onChange={(event) => setConfirmOdometerOutlier(event.target.checked)}
+                          />
+                          Confirmar outlier (salto atípico) para salvar
+                        </label>
+                      )}
+
+                      <div className="space-y-2">
                         <Button
                           type="button"
                           className="h-9 px-3 rounded-lg w-full sm:w-auto text-sm"
                           isLoading={isUpdatingVehicle}
                           onClick={handleUpdateCurrentOdometer}
                         >
-                          Salvar odômetro
+                          Salvar quilometragem
                         </Button>
 
-                        <Button
+                        <button
                           type="button"
-                          className="h-9 px-3 rounded-lg w-full sm:w-auto text-sm"
-                          isLoading={isRecalibratingNow}
+                          className="text-xs text-teal-700 hover:text-teal-800 underline"
                           onClick={handleRecalibrateNow}
+                          disabled={isRecalibratingNow}
                         >
-                          Atualizar agora
-                        </Button>
+                          {isRecalibratingNow ? 'Atualizando...' : 'Atualizar agora (ação rápida)'}
+                        </button>
                       </div>
                     </div>
+                  )}
 
-                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
+                  {odometerStep === 'AUTO' && (
+                    <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
                       <div className="flex items-center gap-2">
                         <input
                           id="auto-odometer"
@@ -1616,36 +1780,53 @@ export function Vehicles() {
                           onChange={(event) => setAutoOdometerEnabledInput(event.target.checked)}
                           className="w-4 h-4 rounded border-gray-300"
                         />
-                        <label htmlFor="auto-odometer" className="text-sm text-gray-700 font-medium">
-                          Modo automático
+                        <label htmlFor="auto-odometer" className="text-sm text-gray-800 font-medium">
+                          Estimativa automática de km/dia
                         </label>
                       </div>
 
-                      <label className="text-xs text-gray-600 block">Média de km por dia</label>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        name="averageDailyKmInput"
-                        placeholder="Ex.: 38.5"
-                        value={averageDailyKmInput}
-                        onChange={(e) => setAverageDailyKmInput(e.target.value)}
-                      />
+                      <div className="space-y-2">
+                        <label className="text-xs text-gray-600 block">Média de km por dia</label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          name="averageDailyKmInput"
+                          placeholder="Ex.: 38.5"
+                          value={averageDailyKmInput}
+                          onChange={(e) => setAverageDailyKmInput(e.target.value)}
+                        />
+                      </div>
 
                       <p className="text-[11px] text-gray-500">
-                        O sistema estima automaticamente com base na última calibração.
+                        Use a média diária para prever km e próximas necessidades.
                       </p>
 
-                      <div className="rounded-lg border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 space-y-1">
-                        <span className="block">Aprendizado automático: {selectedVehicle.odometerLearning?.learnedAverageDailyKm?.toFixed(1) ?? '—'} km/dia</span>
-                        <span className="block">Dia útil: {selectedVehicle.odometerLearning?.learnedWeekdayKm?.toFixed(1) ?? '—'} km/dia</span>
-                        <span className="block">Fim de semana: {selectedVehicle.odometerLearning?.learnedWeekendKm?.toFixed(1) ?? '—'} km/dia</span>
-                        <span className="block">Projeção semanal: {selectedVehicle.odometerLearning?.weeklyProjectionKm?.toFixed(1) ?? '—'} km</span>
-                        <span className="block">Outliers detectados: {selectedVehicle.odometerLearning?.outlierCount ?? 0}</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-2">
+                          <span className="text-[10px] text-gray-500 block">Aprendizado</span>
+                          <strong className="text-xs text-gray-800">{selectedVehicle.odometerLearning?.learnedAverageDailyKm?.toFixed(1) ?? '—'} km/dia</strong>
+                        </div>
+                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-2">
+                          <span className="text-[10px] text-gray-500 block">Dia útil</span>
+                          <strong className="text-xs text-gray-800">{selectedVehicle.odometerLearning?.learnedWeekdayKm?.toFixed(1) ?? '—'} km/dia</strong>
+                        </div>
+                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-2">
+                          <span className="text-[10px] text-gray-500 block">Fim de semana</span>
+                          <strong className="text-xs text-gray-800">{selectedVehicle.odometerLearning?.learnedWeekendKm?.toFixed(1) ?? '—'} km/dia</strong>
+                        </div>
+                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-2">
+                          <span className="text-[10px] text-gray-500 block">Projeção semanal</span>
+                          <strong className="text-xs text-gray-800">{selectedVehicle.odometerLearning?.weeklyProjectionKm?.toFixed(1) ?? '—'} km</strong>
+                        </div>
+                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-2">
+                          <span className="text-[10px] text-gray-500 block">Outliers</span>
+                          <strong className="text-xs text-gray-800">{selectedVehicle.odometerLearning?.outlierCount ?? 0}</strong>
+                        </div>
                       </div>
 
                       {selectedVehicle.recalibrationSuggested && (
                         <span className="text-[11px] text-amber-700 block">
-                          Sugestão: recalibrar agora (divergência {selectedVehicle.divergencePercent?.toFixed(1)}%).
+                          Atenção: divergência de {selectedVehicle.divergencePercent?.toFixed(1)}%. Recalibre para melhorar a precisão.
                         </span>
                       )}
 
@@ -1664,7 +1845,7 @@ export function Vehicles() {
                         Salvar automação
                       </Button>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 <button

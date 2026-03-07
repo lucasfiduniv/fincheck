@@ -5,6 +5,8 @@ import { BankAccountsRepository } from 'src/shared/database/repositories/bank-ac
 import { CategoriesRepository } from 'src/shared/database/repositories/categories.repository'
 import { CreditCardPurchasesRepository } from 'src/shared/database/repositories/credit-card-purchases.repository'
 import { FuelRecordsRepository } from 'src/shared/database/repositories/fuel-records.repository'
+import { FuelStatsSnapshotsRepository } from 'src/shared/database/repositories/fuel-stats-snapshots.repository'
+import { FuelTripSegmentsRepository } from 'src/shared/database/repositories/fuel-trip-segments.repository'
 import { TransactionsRepository } from 'src/shared/database/repositories/transactions.repository'
 import { VehiclePartsRepository } from 'src/shared/database/repositories/vehicle-parts.repository'
 import { VehiclesRepository } from 'src/shared/database/repositories/vehicles.repository'
@@ -19,12 +21,40 @@ type OdometerEvent = {
   source: 'FUEL' | 'MAINTENANCE' | 'PART'
 }
 
+type FuelAnalyticsRecord = {
+  id: string
+  date: Date
+  odometer: number
+  liters: number
+  totalCost: number
+  fillType: 'FULL' | 'PARTIAL'
+  firstPumpClick: boolean
+  source: 'ACCOUNT' | 'CARD'
+}
+
+type ComputedFuelSegment = {
+  startFuelRecordId: string
+  endFuelRecordId: string
+  startDate: Date
+  endDate: Date
+  startOdometer: number
+  endOdometer: number
+  distanceKm: number
+  litersConsumed: number
+  totalCost: number
+  consumptionKmPerLiter: number
+  costPerKm: number
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW'
+}
+
 @Injectable()
 export class VehiclesService {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly vehiclesRepo: VehiclesRepository,
     private readonly fuelRecordsRepo: FuelRecordsRepository,
+    private readonly fuelTripSegmentsRepo: FuelTripSegmentsRepository,
+    private readonly fuelStatsSnapshotsRepo: FuelStatsSnapshotsRepository,
     private readonly creditCardPurchasesRepo: CreditCardPurchasesRepository,
     private readonly transactionsRepo: TransactionsRepository,
     private readonly vehiclePartsRepo: VehiclePartsRepository,
@@ -108,6 +138,8 @@ export class VehiclesService {
         fuelOdometer: true,
         fuelLiters: true,
         fuelPricePerLiter: true,
+        fuelFillType: true,
+        fuelFirstPumpClick: true,
         amount: true,
         purchaseDate: true,
       },
@@ -133,27 +165,45 @@ export class VehiclesService {
     const normalizedCardFuelRecords = cardFuelPurchases
       .filter((purchase) => purchase.fuelVehicleId)
       .map((purchase) => ({
+        id: purchase.id,
         vehicleId: purchase.fuelVehicleId!,
         odometer: purchase.fuelOdometer!,
         liters: purchase.fuelLiters!,
         pricePerLiter: purchase.fuelPricePerLiter!,
+        fillType: purchase.fuelFillType,
+        firstPumpClick: purchase.fuelFirstPumpClick,
         totalCost: purchase.amount,
         date: purchase.purchaseDate,
       }))
 
-    return vehicles.map((vehicle) => {
+    return Promise.all(vehicles.map(async (vehicle) => {
       const transactionFuelRecords = records
         .filter((record) => record.vehicleId === vehicle.id)
         .map((record) => ({
+        id: record.id,
         odometer: record.odometer,
         liters: record.liters,
         pricePerLiter: record.pricePerLiter,
         totalCost: record.totalCost,
         date: record.createdAt,
+        fillType: record.fillType,
+        firstPumpClick: record.firstPumpClick,
+        source: 'ACCOUNT' as const,
       }))
-      const allVehicleRecords = [
+      const allVehicleRecords: FuelAnalyticsRecord[] = [
         ...transactionFuelRecords,
-        ...normalizedCardFuelRecords.filter((record) => record.vehicleId === vehicle.id),
+        ...normalizedCardFuelRecords
+          .filter((record) => record.vehicleId === vehicle.id)
+          .map((record) => ({
+            id: `ccp-${record.id}`,
+            odometer: record.odometer,
+            liters: record.liters,
+            totalCost: record.totalCost,
+            date: record.date,
+            fillType: record.fillType,
+            firstPumpClick: record.firstPumpClick,
+            source: 'CARD' as const,
+          })),
       ].sort((a, b) => a.date.getTime() - b.date.getTime())
 
       const maintenanceByTransaction = maintenanceTransactions
@@ -180,18 +230,30 @@ export class VehiclesService {
       const totalLiters = allVehicleRecords.reduce((acc, record) => acc + record.liters, 0)
       const averagePricePerLiter = totalLiters > 0 ? totalCost / totalLiters : 0
 
-      let averageConsumptionKmPerLiter: number | null = null
-      let costPerKm: number | null = null
+      const referenceDailyKm = vehicle.averageDailyKm ?? null
+      const fuelAnalytics = this.calculateFuelAnalytics(allVehicleRecords, referenceDailyKm)
 
-      if (allVehicleRecords.length >= 2) {
-        const first = allVehicleRecords[0]
-        const last = allVehicleRecords[allVehicleRecords.length - 1]
-        const distance = last.odometer - first.odometer
-
-        if (distance > 0 && totalLiters > 0) {
-          averageConsumptionKmPerLiter = Number((distance / totalLiters).toFixed(2))
-          costPerKm = Number((totalCost / distance).toFixed(2))
-        }
+      const now = new Date()
+      try {
+        await this.persistFuelAnalyticsSnapshot({
+          userId,
+          vehicleId: vehicle.id,
+          year: now.getUTCFullYear(),
+          month: now.getUTCMonth() + 1,
+          segments: fuelAnalytics.segments,
+          stats: {
+            officialConsumptionKmPerLiter: fuelAnalytics.officialConsumptionKmPerLiter,
+            officialCostPerKm: fuelAnalytics.officialCostPerKm,
+            officialDistanceKm: fuelAnalytics.officialDistanceKm,
+            officialLiters: fuelAnalytics.officialLiters,
+            currentMonthCost: fuelAnalytics.currentMonthCost,
+            projectedMonthCost: fuelAnalytics.projectedMonthCost,
+            nextRefuelInDays: fuelAnalytics.nextRefuelInDays,
+            nextRefuelAtKm: fuelAnalytics.nextRefuelAtKm,
+            lastFuelRecordId: allVehicleRecords.at(-1)?.source === 'ACCOUNT' ? allVehicleRecords.at(-1)?.id : null,
+          },
+        })
+      } catch {
       }
 
       const odometerEvents: OdometerEvent[] = [
@@ -240,9 +302,14 @@ export class VehiclesService {
           totalCost: Number(totalCost.toFixed(2)),
           totalLiters: Number(totalLiters.toFixed(2)),
           averagePricePerLiter: Number(averagePricePerLiter.toFixed(2)),
-          averageConsumptionKmPerLiter,
-          costPerKm,
-          costPer1000Km: costPerKm !== null ? Number((costPerKm * 1000).toFixed(2)) : null,
+          averageConsumptionKmPerLiter: fuelAnalytics.officialConsumptionKmPerLiter,
+          costPerKm: fuelAnalytics.officialCostPerKm,
+          costPer1000Km: fuelAnalytics.officialCostPerKm !== null ? Number((fuelAnalytics.officialCostPerKm * 1000).toFixed(2)) : null,
+          officialDistanceKm: fuelAnalytics.officialDistanceKm,
+          officialLiters: fuelAnalytics.officialLiters,
+          projectedMonthCost: fuelAnalytics.projectedMonthCost,
+          nextRefuelInDays: fuelAnalytics.nextRefuelInDays,
+          nextRefuelAtKm: fuelAnalytics.nextRefuelAtKm,
           lastOdometer: allVehicleRecords.at(-1)?.odometer ?? null,
         },
         maintenanceStats: {
@@ -257,7 +324,7 @@ export class VehiclesService {
         recalibrationSuggested,
         healthBadge,
       }
-    })
+    }))
   }
 
   async findOne(userId: string, vehicleId: string) {
@@ -305,6 +372,8 @@ export class VehiclesService {
         fuelOdometer: true,
         fuelLiters: true,
         fuelPricePerLiter: true,
+        fuelFillType: true,
+        fuelFirstPumpClick: true,
         amount: true,
         purchaseDate: true,
         description: true,
@@ -318,6 +387,8 @@ export class VehiclesService {
       transactionId: purchase.id,
       odometer: purchase.fuelOdometer!,
       liters: purchase.fuelLiters!,
+      fillType: purchase.fuelFillType,
+      firstPumpClick: purchase.fuelFirstPumpClick,
       pricePerLiter: purchase.fuelPricePerLiter!,
       totalCost: purchase.amount,
       createdAt: purchase.purchaseDate,
@@ -454,9 +525,65 @@ export class VehiclesService {
       daysSinceCalibration: odometerConfidence.daysSinceCalibration,
     })
 
+    const allVehicleRecords: FuelAnalyticsRecord[] = mergedRecords
+      .map((record) => ({
+        id: record.id,
+        date: record.createdAt,
+        odometer: record.odometer,
+        liters: record.liters,
+        totalCost: record.totalCost,
+        fillType: (record as any).fillType ?? 'PARTIAL',
+        firstPumpClick: !!(record as any).firstPumpClick,
+        source: String(record.id).startsWith('ccp-') ? ('CARD' as const) : ('ACCOUNT' as const),
+      }))
+      .sort((a, b) => a.date.getTime() - b.date.getTime())
+
+    const fuelTotalCost = allVehicleRecords.reduce((acc, item) => acc + item.totalCost, 0)
+    const fuelTotalLiters = allVehicleRecords.reduce((acc, item) => acc + item.liters, 0)
+    const fuelAveragePricePerLiter = fuelTotalLiters > 0 ? fuelTotalCost / fuelTotalLiters : 0
+    const fuelAnalytics = this.calculateFuelAnalytics(allVehicleRecords, vehicle.averageDailyKm)
+
+    const now = new Date()
+    try {
+      await this.persistFuelAnalyticsSnapshot({
+        userId,
+        vehicleId,
+        year: now.getUTCFullYear(),
+        month: now.getUTCMonth() + 1,
+        segments: fuelAnalytics.segments,
+        stats: {
+          officialConsumptionKmPerLiter: fuelAnalytics.officialConsumptionKmPerLiter,
+          officialCostPerKm: fuelAnalytics.officialCostPerKm,
+          officialDistanceKm: fuelAnalytics.officialDistanceKm,
+          officialLiters: fuelAnalytics.officialLiters,
+          currentMonthCost: fuelAnalytics.currentMonthCost,
+          projectedMonthCost: fuelAnalytics.projectedMonthCost,
+          nextRefuelInDays: fuelAnalytics.nextRefuelInDays,
+          nextRefuelAtKm: fuelAnalytics.nextRefuelAtKm,
+          lastFuelRecordId: allVehicleRecords.at(-1)?.source === 'ACCOUNT' ? allVehicleRecords.at(-1)?.id : null,
+        },
+      })
+    } catch {
+    }
+
     return {
       ...vehicle,
       effectiveCurrentOdometer,
+      fuelStats: {
+        recordsCount: allVehicleRecords.length,
+        totalCost: Number(fuelTotalCost.toFixed(2)),
+        totalLiters: Number(fuelTotalLiters.toFixed(2)),
+        averagePricePerLiter: Number(fuelAveragePricePerLiter.toFixed(2)),
+        averageConsumptionKmPerLiter: fuelAnalytics.officialConsumptionKmPerLiter,
+        costPerKm: fuelAnalytics.officialCostPerKm,
+        costPer1000Km: fuelAnalytics.officialCostPerKm !== null ? Number((fuelAnalytics.officialCostPerKm * 1000).toFixed(2)) : null,
+        officialDistanceKm: fuelAnalytics.officialDistanceKm,
+        officialLiters: fuelAnalytics.officialLiters,
+        projectedMonthCost: fuelAnalytics.projectedMonthCost,
+        nextRefuelInDays: fuelAnalytics.nextRefuelInDays,
+        nextRefuelAtKm: fuelAnalytics.nextRefuelAtKm,
+        lastOdometer: allVehicleRecords.at(-1)?.odometer ?? null,
+      },
       odometerConfidence,
       odometerLearning,
       latestRealOdometer,
@@ -467,6 +594,201 @@ export class VehiclesService {
       maintenances: maintenanceRecords,
       parts,
     }
+  }
+
+  private calculateFuelAnalytics(records: FuelAnalyticsRecord[], averageDailyKm?: number | null) {
+    const ordered = [...records].sort((a, b) => a.date.getTime() - b.date.getTime())
+    const segments: ComputedFuelSegment[] = []
+    let activeStart: FuelAnalyticsRecord | null = null
+    let litersSinceStart = 0
+    let costSinceStart = 0
+
+    ordered.forEach((record) => {
+      if (!activeStart) {
+        if (record.fillType === 'FULL') {
+          activeStart = record
+          litersSinceStart = 0
+          costSinceStart = 0
+        }
+        return
+      }
+
+      litersSinceStart += record.liters
+      costSinceStart += record.totalCost
+
+      if (record.fillType !== 'FULL') {
+        return
+      }
+
+      const distanceKm = Number((record.odometer - activeStart.odometer).toFixed(2))
+
+      if (distanceKm > 0 && litersSinceStart > 0) {
+        const consumptionKmPerLiter = Number((distanceKm / litersSinceStart).toFixed(2))
+        const costPerKm = Number((costSinceStart / distanceKm).toFixed(4))
+        const confidence = activeStart.firstPumpClick && record.firstPumpClick
+          ? 'HIGH'
+          : (activeStart.firstPumpClick || record.firstPumpClick)
+              ? 'MEDIUM'
+              : 'LOW'
+
+        segments.push({
+          startFuelRecordId: activeStart.id,
+          endFuelRecordId: record.id,
+          startDate: activeStart.date,
+          endDate: record.date,
+          startOdometer: activeStart.odometer,
+          endOdometer: record.odometer,
+          distanceKm,
+          litersConsumed: Number(litersSinceStart.toFixed(2)),
+          totalCost: Number(costSinceStart.toFixed(2)),
+          consumptionKmPerLiter,
+          costPerKm,
+          confidence,
+        })
+      }
+
+      activeStart = record
+      litersSinceStart = 0
+      costSinceStart = 0
+    })
+
+    const officialDistanceKm = Number(segments.reduce((acc, segment) => acc + segment.distanceKm, 0).toFixed(2))
+    const officialLiters = Number(segments.reduce((acc, segment) => acc + segment.litersConsumed, 0).toFixed(2))
+    const officialCost = Number(segments.reduce((acc, segment) => acc + segment.totalCost, 0).toFixed(2))
+    const officialConsumptionKmPerLiter = officialDistanceKm > 0 && officialLiters > 0
+      ? Number((officialDistanceKm / officialLiters).toFixed(2))
+      : null
+    const officialCostPerKm = officialDistanceKm > 0
+      ? Number((officialCost / officialDistanceKm).toFixed(4))
+      : null
+
+    const now = new Date()
+    const currentMonth = now.getUTCMonth()
+    const currentYear = now.getUTCFullYear()
+    const currentMonthCost = Number(
+      ordered
+        .filter((record) => record.date.getUTCMonth() === currentMonth && record.date.getUTCFullYear() === currentYear)
+        .reduce((acc, record) => acc + record.totalCost, 0)
+        .toFixed(2),
+    )
+
+    const currentDay = now.getUTCDate()
+    const daysInMonth = new Date(Date.UTC(currentYear, currentMonth + 1, 0)).getUTCDate()
+    const projectedMonthCost = currentDay > 0
+      ? Number(((currentMonthCost / currentDay) * daysInMonth).toFixed(2))
+      : null
+
+    const averageKmPerSegment = segments.length > 0
+      ? segments.reduce((acc, segment) => acc + segment.distanceKm, 0) / segments.length
+      : null
+    const nextRefuelInDays = averageKmPerSegment && averageDailyKm && averageDailyKm > 0
+      ? Number((averageKmPerSegment / averageDailyKm).toFixed(1))
+      : null
+
+    const lastFullRecord = [...ordered].reverse().find((record) => record.fillType === 'FULL')
+    const nextRefuelAtKm = averageKmPerSegment && lastFullRecord
+      ? Number((lastFullRecord.odometer + averageKmPerSegment).toFixed(1))
+      : null
+
+    return {
+      segments,
+      officialConsumptionKmPerLiter,
+      officialCostPerKm,
+      officialDistanceKm,
+      officialLiters,
+      currentMonthCost,
+      projectedMonthCost,
+      nextRefuelInDays,
+      nextRefuelAtKm,
+    }
+  }
+
+  private async persistFuelAnalyticsSnapshot(params: {
+    userId: string
+    vehicleId: string
+    year: number
+    month: number
+    segments: ComputedFuelSegment[]
+    stats: {
+      officialConsumptionKmPerLiter: number | null
+      officialCostPerKm: number | null
+      officialDistanceKm: number
+      officialLiters: number
+      currentMonthCost: number
+      projectedMonthCost: number | null
+      nextRefuelInDays: number | null
+      nextRefuelAtKm: number | null
+      lastFuelRecordId?: string | null
+    }
+  }) {
+    await this.fuelTripSegmentsRepo.deleteMany({
+      where: {
+        userId: params.userId,
+        vehicleId: params.vehicleId,
+      },
+    })
+
+    const accountSegments = params.segments.filter(
+      (segment) => !segment.startFuelRecordId.startsWith('ccp-') && !segment.endFuelRecordId.startsWith('ccp-'),
+    )
+
+    if (accountSegments.length > 0) {
+      await this.fuelTripSegmentsRepo.createMany({
+        data: accountSegments.map((segment) => ({
+          userId: params.userId,
+          vehicleId: params.vehicleId,
+          startFuelRecordId: segment.startFuelRecordId,
+          endFuelRecordId: segment.endFuelRecordId,
+          startDate: segment.startDate,
+          endDate: segment.endDate,
+          startOdometer: segment.startOdometer,
+          endOdometer: segment.endOdometer,
+          distanceKm: segment.distanceKm,
+          litersConsumed: segment.litersConsumed,
+          totalCost: segment.totalCost,
+          consumptionKmPerLiter: segment.consumptionKmPerLiter,
+          costPerKm: segment.costPerKm,
+          confidence: segment.confidence,
+        })),
+      })
+    }
+
+    await this.fuelStatsSnapshotsRepo.upsert({
+      where: {
+        userId_vehicleId_year_month: {
+          userId: params.userId,
+          vehicleId: params.vehicleId,
+          year: params.year,
+          month: params.month,
+        },
+      },
+      create: {
+        userId: params.userId,
+        vehicleId: params.vehicleId,
+        year: params.year,
+        month: params.month,
+        officialConsumptionKmPerLiter: params.stats.officialConsumptionKmPerLiter,
+        officialCostPerKm: params.stats.officialCostPerKm,
+        officialDistanceKm: params.stats.officialDistanceKm,
+        officialLiters: params.stats.officialLiters,
+        currentMonthCost: params.stats.currentMonthCost,
+        projectedMonthCost: params.stats.projectedMonthCost,
+        nextRefuelInDays: params.stats.nextRefuelInDays,
+        nextRefuelAtKm: params.stats.nextRefuelAtKm,
+        lastFuelRecordId: params.stats.lastFuelRecordId ?? null,
+      },
+      update: {
+        officialConsumptionKmPerLiter: params.stats.officialConsumptionKmPerLiter,
+        officialCostPerKm: params.stats.officialCostPerKm,
+        officialDistanceKm: params.stats.officialDistanceKm,
+        officialLiters: params.stats.officialLiters,
+        currentMonthCost: params.stats.currentMonthCost,
+        projectedMonthCost: params.stats.projectedMonthCost,
+        nextRefuelInDays: params.stats.nextRefuelInDays,
+        nextRefuelAtKm: params.stats.nextRefuelAtKm,
+        lastFuelRecordId: params.stats.lastFuelRecordId ?? null,
+      },
+    })
   }
 
   async update(userId: string, vehicleId: string, updateVehicleDto: UpdateVehicleDto) {

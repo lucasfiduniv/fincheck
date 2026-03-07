@@ -17,6 +17,8 @@ import { SavingsBoxCollaboratorsRepository } from './repositories/savings-box-co
 import { VehiclesRepository } from './repositories/vehicles.repository'
 import { FuelRecordsRepository } from './repositories/fuel-records.repository'
 import { VehiclePartsRepository } from './repositories/vehicle-parts.repository'
+import { FuelTripSegmentsRepository } from './repositories/fuel-trip-segments.repository'
+import { FuelStatsSnapshotsRepository } from './repositories/fuel-stats-snapshots.repository'
 
 @Global()
 @Module({
@@ -39,6 +41,8 @@ import { VehiclePartsRepository } from './repositories/vehicle-parts.repository'
     VehiclesRepository,
     FuelRecordsRepository,
     VehiclePartsRepository,
+    FuelTripSegmentsRepository,
+    FuelStatsSnapshotsRepository,
   ],
   exports: [
     PrismaService,
@@ -59,6 +63,8 @@ import { VehiclePartsRepository } from './repositories/vehicle-parts.repository'
     VehiclesRepository,
     FuelRecordsRepository,
     VehiclePartsRepository,
+    FuelTripSegmentsRepository,
+    FuelStatsSnapshotsRepository,
   ],
 })
 export class DatabaseModule {}
