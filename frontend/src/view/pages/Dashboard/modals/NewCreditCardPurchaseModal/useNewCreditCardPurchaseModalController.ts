@@ -52,6 +52,8 @@ const schema = z.object({
     .union([z.coerce.number(), z.literal(''), z.undefined()])
     .optional()
     .transform((value) => value === '' || value === undefined ? undefined : value),
+  fuelFillType: z.enum(['FULL', 'PARTIAL']).optional(),
+  fuelFirstPumpClick: z.boolean().optional(),
   maintenanceVehicleId: z.string().optional(),
   maintenanceOdometer: z
     .union([z.coerce.number(), z.literal(''), z.undefined()])
@@ -88,6 +90,8 @@ export function useNewCreditCardPurchaseModalController() {
       categoryId: 'NONE',
       amount: '',
       fuelVehicleId: '',
+      fuelFillType: 'PARTIAL',
+      fuelFirstPumpClick: false,
     },
   })
 
@@ -201,6 +205,8 @@ export function useNewCreditCardPurchaseModalController() {
         fuelOdometer: showFuelFields ? data.fuelOdometer : undefined,
         fuelLiters: showFuelFields ? data.fuelLiters : undefined,
         fuelPricePerLiter: showFuelFields ? data.fuelPricePerLiter : undefined,
+        fuelFillType: showFuelFields ? data.fuelFillType : undefined,
+        fuelFirstPumpClick: showFuelFields ? data.fuelFirstPumpClick : undefined,
         maintenanceVehicleId: showMaintenanceFields ? data.maintenanceVehicleId : undefined,
         maintenanceOdometer: showMaintenanceFields ? data.maintenanceOdometer : undefined,
       })

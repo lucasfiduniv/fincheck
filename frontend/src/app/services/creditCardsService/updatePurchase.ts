@@ -11,6 +11,8 @@ export interface UpdateCreditCardPurchaseParams {
   fuelOdometer?: number | null
   fuelLiters?: number | null
   fuelPricePerLiter?: number | null
+  fuelFillType?: 'FULL' | 'PARTIAL'
+  fuelFirstPumpClick?: boolean | null
   maintenanceVehicleId?: string | null
   maintenanceOdometer?: number | null
 }

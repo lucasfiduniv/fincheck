@@ -69,9 +69,10 @@ export function NewTransactionModal() {
       title={isExpense ? 'Nova Despesa' : 'Nova Receita'}
       open={isNewTransactionModalOpen}
       onClose={closeNewTransactionModal}
+      contentClassName="max-h-[90vh] overflow-hidden"
     >
-      <form onSubmit={handleSubmit}>
-        <div>
+      <form onSubmit={handleSubmit} className="flex h-full max-h-[calc(90vh-180px)] flex-col">
+        <div className="flex-1 overflow-y-auto pr-1 space-y-4">
           <span className="text-gray-600 tracking-[-0.5px] text-xs">
             Valor da {isExpense ? 'despesa' : 'receita'}
           </span>
@@ -90,9 +91,8 @@ export function NewTransactionModal() {
               )}
             />
           </div>
-        </div>
 
-        <div className="mt-10 flex flex-col gap-4">
+          <div className="flex flex-col gap-4">
           <span className="text-xs text-gray-600">Essencial</span>
 
           <Input
@@ -224,6 +224,31 @@ export function NewTransactionModal() {
                     error={errors.fuelPricePerLiter?.message}
                     {...register('fuelPricePerLiter')}
                   />
+
+                  <Controller
+                    control={control}
+                    name="fuelFillType"
+                    defaultValue="PARTIAL"
+                    render={({ field: { onChange, value } }) => (
+                      <Select
+                        placeholder="Tipo de abastecimento"
+                        onChange={onChange}
+                        value={value ?? 'PARTIAL'}
+                        options={[
+                          { value: 'PARTIAL', label: 'Parcial' },
+                          { value: 'FULL', label: 'Tanque cheio' },
+                        ]}
+                      />
+                    )}
+                  />
+
+                  <label className="flex items-center gap-2 text-xs text-gray-700 rounded-lg border border-gray-200 px-3 py-2">
+                    <input
+                      type="checkbox"
+                      {...register('fuelFirstPumpClick')}
+                    />
+                    Primeiro clique da bomba
+                  </label>
                 </>
               )}
 
@@ -316,13 +341,14 @@ export function NewTransactionModal() {
               )}
             </div>
           </div>
+        </div>
+      </div>
 
-          <div className="pt-2 border-t border-gray-100 flex gap-2">
-            <Button type="button" variant="ghost" className="flex-1" onClick={closeNewTransactionModal}>
-              Cancelar
-            </Button>
-            <Button type="submit" isLoading={isLoading} className="flex-1">Criar</Button>
-          </div>
+        <div className="pt-2 mt-3 border-t border-gray-100 flex gap-2">
+          <Button type="button" variant="ghost" className="flex-1" onClick={closeNewTransactionModal}>
+            Cancelar
+          </Button>
+          <Button type="submit" isLoading={isLoading} className="flex-1">Criar</Button>
         </div>
       </form>
     </Modal>

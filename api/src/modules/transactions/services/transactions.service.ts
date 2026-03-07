@@ -62,6 +62,8 @@ export class TransactionsService {
       fuelOdometer,
       fuelLiters,
       fuelPricePerLiter,
+      fuelFillType,
+      fuelFirstPumpClick,
       maintenanceVehicleId,
       maintenanceOdometer,
     } =
@@ -214,6 +216,8 @@ export class TransactionsService {
           transactionId: createdTransaction.id,
           odometer: fuelOdometer,
           liters: fuelLiters,
+          fillType: fuelFillType ?? 'PARTIAL',
+          firstPumpClick: !!fuelFirstPumpClick,
           pricePerLiter: fuelPricePerLiter,
           totalCost: Number((fuelLiters * fuelPricePerLiter).toFixed(2)),
         },

@@ -1,4 +1,4 @@
-import { IsDateString, IsInt, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, IsUUID, Max, Min } from 'class-validator'
+import { IsBoolean, IsDateString, IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, IsUUID, Max, Min } from 'class-validator'
 
 export class CreateCreditCardPurchaseDto {
   @IsString()
@@ -39,6 +39,15 @@ export class CreateCreditCardPurchaseDto {
   @IsNumber()
   @Min(0.01)
     fuelPricePerLiter?: number
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['FULL', 'PARTIAL'])
+    fuelFillType?: 'FULL' | 'PARTIAL'
+
+  @IsOptional()
+  @IsBoolean()
+    fuelFirstPumpClick?: boolean
 
   @IsOptional()
   @IsUUID()

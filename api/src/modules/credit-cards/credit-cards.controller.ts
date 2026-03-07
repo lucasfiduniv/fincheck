@@ -19,6 +19,7 @@ import { UpdateCreditCardDto } from './dto/update-credit-card.dto'
 import { CreateCreditCardPurchaseDto } from './dto/create-credit-card-purchase.dto'
 import { PayCreditCardStatementDto } from './dto/pay-credit-card-statement.dto'
 import { UpdateCreditCardPurchaseDto } from './dto/update-credit-card-purchase.dto'
+import { ImportCreditCardStatementDto } from './dto/import-credit-card-statement.dto'
 
 @Controller('credit-cards')
 export class CreditCardsController {
@@ -91,6 +92,32 @@ export class CreditCardsController {
     @Query('year', ParseIntPipe) year: number,
   ) {
     return this.creditCardsService.findStatementByMonth(userId, creditCardId, {
+      month,
+      year,
+    })
+  }
+
+  @Post(':creditCardId/statements/import')
+  importStatement(
+    @ActiveUserId() userId: string,
+    @Param('creditCardId', ParseUUIDPipe) creditCardId: string,
+    @Body() importCreditCardStatementDto: ImportCreditCardStatementDto,
+  ) {
+    return this.creditCardsService.importStatement(
+      userId,
+      creditCardId,
+      importCreditCardStatementDto,
+    )
+  }
+
+  @Get(':creditCardId/statements/export')
+  exportStatement(
+    @ActiveUserId() userId: string,
+    @Param('creditCardId', ParseUUIDPipe) creditCardId: string,
+    @Query('month', ParseIntPipe) month: number,
+    @Query('year', ParseIntPipe) year: number,
+  ) {
+    return this.creditCardsService.exportStatement(userId, creditCardId, {
       month,
       year,
     })

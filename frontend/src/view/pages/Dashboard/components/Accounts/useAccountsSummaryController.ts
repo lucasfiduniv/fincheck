@@ -20,6 +20,8 @@ interface PurchaseBeingEdited {
   fuelOdometer?: number | null
   fuelLiters?: number | null
   fuelPricePerLiter?: number | null
+  fuelFillType?: 'FULL' | 'PARTIAL' | null
+  fuelFirstPumpClick?: boolean | null
   maintenanceVehicleId?: string | null
   maintenanceOdometer?: number | null
 }
@@ -74,6 +76,8 @@ export function useAccountsSummaryController() {
       fuelOdometer: purchase.fuelOdometer,
       fuelLiters: purchase.fuelLiters,
       fuelPricePerLiter: purchase.fuelPricePerLiter,
+      fuelFillType: purchase.fuelFillType,
+      fuelFirstPumpClick: purchase.fuelFirstPumpClick,
       maintenanceVehicleId: purchase.maintenanceVehicleId,
       maintenanceOdometer: purchase.maintenanceOdometer,
     })

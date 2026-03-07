@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsInt,
   IsIn,
   IsDateString,
@@ -83,6 +84,15 @@ export class CreateTransactionDto {
   @IsNumber()
   @Min(0.01)
     fuelPricePerLiter?: number
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['FULL', 'PARTIAL'])
+    fuelFillType?: 'FULL' | 'PARTIAL'
+
+  @IsOptional()
+  @IsBoolean()
+    fuelFirstPumpClick?: boolean
 
   @IsOptional()
   @IsUUID()

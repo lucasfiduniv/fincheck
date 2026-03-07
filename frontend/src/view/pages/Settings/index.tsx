@@ -14,11 +14,16 @@ import { NotificationHistoryPanel } from './components/NotificationHistoryPanel'
 import { SettingsHero } from './components/SettingsHero'
 import { SettingsMenu, SettingsMenuItem } from './components/SettingsMenu'
 import { useBankAccounts } from '../../../app/hooks/useBankAccounts'
+import { useCreditCards } from '../../../app/hooks/useCreditCards'
 import {
   ImportStatementResponse,
   SupportedStatementBank,
 } from '../../../app/services/transactionsService/importStatement'
 import { transactionsService } from '../../../app/services/transactionsService'
+import {
+  ImportCreditCardStatementResponse,
+} from '../../../app/services/creditCardsService/importStatement'
+import { creditCardsService } from '../../../app/services/creditCardsService'
 
 function toLocalDigits(value: string) {
   const digits = value.replace(/\D/g, '')
@@ -132,7 +137,12 @@ export function Settings() {
   const [statementFileName, setStatementFileName] = useState('')
   const [statementCsvContent, setStatementCsvContent] = useState('')
   const [importResult, setImportResult] = useState<ImportStatementResponse | null>(null)
+  const [creditCardStatementCardId, setCreditCardStatementCardId] = useState('')
+  const [creditCardStatementFileName, setCreditCardStatementFileName] = useState('')
+  const [creditCardStatementContent, setCreditCardStatementContent] = useState('')
+  const [creditCardImportResult, setCreditCardImportResult] = useState<ImportCreditCardStatementResponse | null>(null)
   const [activeMenuKey, setActiveMenuKey] = useState('notifications')
+  const { creditCards } = useCreditCards()
 
   const { data } = useQuery({
     queryKey: ['notifications', 'settings'],
@@ -162,6 +172,14 @@ export function Settings() {
     setStatementBankAccountId(accounts[0].id)
   }, [accounts, statementBankAccountId])
 
+  useEffect(() => {
+    if (!creditCards.length || creditCardStatementCardId) {
+      return
+    }
+
+    setCreditCardStatementCardId(creditCards[0].id)
+  }, [creditCards, creditCardStatementCardId])
+
   const { mutateAsync: updateSettings, isLoading: isSaving } = useMutation(
     notificationsService.updateSettings,
   )
@@ -172,6 +190,10 @@ export function Settings() {
 
   const { mutateAsync: importStatement, isLoading: isImportingStatement } = useMutation(
     transactionsService.importStatement,
+  )
+
+  const { mutateAsync: importCreditCardStatement, isLoading: isImportingCreditCardStatement } = useMutation(
+    creditCardsService.importStatement,
   )
 
   const canSave = useMemo(() => {
@@ -286,6 +308,60 @@ export function Settings() {
       setStatementFileName(file.name)
       setStatementCsvContent(content)
       setImportResult(null)
+    } catch {
+      toast.error('Falha ao ler o arquivo. Tente novamente.')
+    }
+  }
+
+  async function handleImportCreditCardStatement() {
+    if (!creditCardStatementCardId || !creditCardStatementContent) {
+      return
+    }
+
+    try {
+      const response = await importCreditCardStatement({
+        creditCardId: creditCardStatementCardId,
+        bank: 'NUBANK',
+        csvContent: creditCardStatementContent,
+      })
+
+      setCreditCardImportResult(response)
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['creditCards'] }),
+        queryClient.invalidateQueries({ queryKey: ['creditCardStatement'] }),
+      ])
+
+      toast.success(`Fatura importada! ${response.importedCount} compra(s) criada(s).`)
+    } catch {
+      toast.error('Não foi possível importar a fatura do cartão. Confira o arquivo CSV/OFX e tente novamente.')
+    }
+  }
+
+  async function handleCreditCardStatementFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+
+    if (!file) {
+      setCreditCardStatementFileName('')
+      setCreditCardStatementContent('')
+      return
+    }
+
+    const lowerCaseName = file.name.toLowerCase()
+    const isCsvOrOfx = lowerCaseName.endsWith('.csv') || lowerCaseName.endsWith('.ofx')
+
+    if (!isCsvOrOfx) {
+      toast.error('Selecione um arquivo CSV ou OFX válido.')
+      event.target.value = ''
+      return
+    }
+
+    try {
+      const content = await file.text()
+
+      setCreditCardStatementFileName(file.name)
+      setCreditCardStatementContent(content)
+      setCreditCardImportResult(null)
     } catch {
       toast.error('Falha ao ler o arquivo. Tente novamente.')
     }
@@ -514,6 +590,57 @@ export function Settings() {
                         {typeof importResult.cardBillPaymentDetectedCount === 'number' && (
                           <p>Pagamentos de fatura detectados: <strong>{importResult.cardBillPaymentDetectedCount}</strong></p>
                         )}
+                      </div>
+                    )}
+                  </div>
+                </SettingsSection>
+
+                <SettingsSection
+                  title="Importar fatura de cartão"
+                  description="Importe CSV ou OFX do Nubank para criar compras no cartão selecionado."
+                >
+                  <div className="space-y-3">
+                    <Select
+                      placeholder="Cartão"
+                      value={creditCardStatementCardId}
+                      onChange={setCreditCardStatementCardId}
+                      options={creditCards.map((card) => ({
+                        value: card.id,
+                        label: card.name,
+                      }))}
+                    />
+
+                    <label className="flex flex-col gap-2">
+                      <span className="text-sm text-gray-700">Arquivo da fatura (.csv ou .ofx)</span>
+                      <input
+                        type="file"
+                        accept=".csv,.ofx,text/csv,application/x-ofx"
+                        onChange={handleCreditCardStatementFileChange}
+                        className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-gray-800 hover:file:bg-gray-200"
+                      />
+                    </label>
+
+                    {creditCardStatementFileName && (
+                      <p className="text-xs text-gray-600">Arquivo selecionado: {creditCardStatementFileName}</p>
+                    )}
+
+                    <Button
+                      type="button"
+                      onClick={handleImportCreditCardStatement}
+                      isLoading={isImportingCreditCardStatement}
+                      disabled={!creditCardStatementCardId || !creditCardStatementContent}
+                      className="w-full lg:w-auto"
+                    >
+                      Importar fatura do cartão
+                    </Button>
+
+                    {creditCardImportResult && (
+                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                        <p>Total de linhas: <strong>{creditCardImportResult.totalRows}</strong></p>
+                        <p>Linhas únicas: <strong>{creditCardImportResult.uniqueRows}</strong></p>
+                        <p>Importadas: <strong>{creditCardImportResult.importedCount}</strong></p>
+                        <p>Ignoradas (duplicadas): <strong>{creditCardImportResult.skippedCount}</strong></p>
+                        <p>Falharam: <strong>{creditCardImportResult.failedCount}</strong></p>
                       </div>
                     )}
                   </div>

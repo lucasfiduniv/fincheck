@@ -3,13 +3,16 @@ import {
   CreditCardStatement,
   CreditCardStatementInstallment,
 } from '../../../../../../app/entities/CreditCard'
-import { Pencil2Icon } from '@radix-ui/react-icons'
-import { useMemo } from 'react'
+import { Pencil2Icon, UploadIcon } from '@radix-ui/react-icons'
+import { useMemo, useRef } from 'react'
 import { formatCurrency } from '../../../../../../app/utils/formatCurrency'
 import { formatDate } from '../../../../../../app/utils/formatDate'
 import { formatStatusLabel } from '../../../../../../app/utils/formatStatusLabel'
 import { cn } from '../../../../../../app/utils/cn'
 import { Button } from '../../../../../components/Button'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { creditCardsService } from '../../../../../../app/services/creditCardsService'
+import toast from 'react-hot-toast'
 
 interface CreditCardSummaryContentProps {
   creditCard: CreditCard
@@ -48,6 +51,8 @@ export function CreditCardSummaryContent({
   onEditCreditCardPurchase,
   isDeactivatingCreditCard,
 }: CreditCardSummaryContentProps) {
+  const queryClient = useQueryClient()
+  const importInputRef = useRef<HTMLInputElement | null>(null)
   const creditLimitUsagePercentage = getCreditLimitUsagePercentage(creditCard)
   const now = new Date()
   const currentStatement = useMemo(
@@ -64,10 +69,60 @@ export function CreditCardSummaryContent({
     ? Math.min(100, Math.round((currentStatementPending / currentStatementTotal) * 100))
     : 0
 
+  const { mutateAsync: importStatementMutation, isLoading: isImportingStatement } = useMutation(
+    creditCardsService.importStatement,
+  )
+
+  async function handleImportStatementFile(file?: File) {
+    if (!file) {
+      return
+    }
+
+    try {
+      const content = await file.text()
+
+      const response = await importStatementMutation({
+        creditCardId: creditCard.id,
+        bank: 'NUBANK',
+        csvContent: content,
+      })
+
+      queryClient.invalidateQueries({ queryKey: ['creditCards'] })
+      queryClient.invalidateQueries({ queryKey: ['creditCardStatement'] })
+
+      toast.success(
+        `Importação concluída: ${response.importedCount} importado(s), ${response.skippedCount} ignorado(s).`,
+      )
+    } catch {
+      toast.error('Não foi possível importar a fatura do cartão.')
+    }
+  }
+
   return (
     <div className="max-h-[72vh] overflow-y-auto pr-1">
       <div className="space-y-4">
-        <section className="rounded-2xl border border-gray-100 p-4 lg:p-5 space-y-4">
+        <section className="relative rounded-2xl border border-gray-100 p-4 lg:p-5 space-y-4">
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".csv,.ofx,text/csv,application/vnd.ms-excel"
+            className="hidden"
+            onChange={(event) => {
+              void handleImportStatementFile(event.target.files?.[0])
+              event.target.value = ''
+            }}
+          />
+
+          <button
+            type="button"
+            title="Importar fatura Nubank"
+            onClick={() => importInputRef.current?.click()}
+            disabled={isImportingStatement}
+            className="absolute top-4 right-4 h-8 w-8 rounded-lg border border-gray-200 text-gray-500 hover:text-gray-700 hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center"
+          >
+            <UploadIcon className="w-4 h-4" />
+          </button>
+
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <strong className="text-gray-800 block text-xl tracking-[-0.5px]">{creditCard.name}</strong>
