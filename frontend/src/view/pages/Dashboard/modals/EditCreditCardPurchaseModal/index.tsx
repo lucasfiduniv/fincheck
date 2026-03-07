@@ -47,6 +47,8 @@ interface PurchaseBeingEdited {
   fuelOdometer?: number | null
   fuelLiters?: number | null
   fuelPricePerLiter?: number | null
+  fuelFillType?: 'FULL' | 'PARTIAL' | null
+  fuelFirstPumpClick?: boolean | null
   maintenanceVehicleId?: string | null
   maintenanceOdometer?: number | null
 }
@@ -75,6 +77,8 @@ const schema = z.object({
     .union([z.coerce.number(), z.literal(''), z.undefined()])
     .optional()
     .transform((value) => value === '' || value === undefined ? undefined : value),
+  fuelFillType: z.enum(['FULL', 'PARTIAL']).optional(),
+  fuelFirstPumpClick: z.boolean().optional(),
   maintenanceVehicleId: z.string().optional(),
   maintenanceOdometer: z
     .union([z.coerce.number(), z.literal(''), z.undefined()])
@@ -126,6 +130,8 @@ export function EditCreditCardPurchaseModal({
       fuelOdometer: purchase.fuelOdometer ?? undefined,
       fuelLiters: purchase.fuelLiters ?? undefined,
       fuelPricePerLiter: purchase.fuelPricePerLiter ?? undefined,
+      fuelFillType: purchase.fuelFillType ?? 'PARTIAL',
+      fuelFirstPumpClick: purchase.fuelFirstPumpClick ?? false,
       maintenanceVehicleId: purchase.maintenanceVehicleId ?? '',
       maintenanceOdometer: purchase.maintenanceOdometer ?? undefined,
     })
@@ -235,6 +241,8 @@ export function EditCreditCardPurchaseModal({
         fuelOdometer: showFuelFields ? data.fuelOdometer ?? null : null,
         fuelLiters: showFuelFields ? data.fuelLiters ?? null : null,
         fuelPricePerLiter: showFuelFields ? data.fuelPricePerLiter ?? null : null,
+        fuelFillType: showFuelFields ? data.fuelFillType : 'PARTIAL',
+        fuelFirstPumpClick: showFuelFields ? data.fuelFirstPumpClick ?? false : false,
         maintenanceVehicleId: showMaintenanceFields ? data.maintenanceVehicleId || null : null,
         maintenanceOdometer: showMaintenanceFields ? data.maintenanceOdometer ?? null : null,
       })
@@ -249,8 +257,9 @@ export function EditCreditCardPurchaseModal({
   })
 
   return (
-    <Modal title="Editar compra" open={open} onClose={onClose}>
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+    <Modal title="Editar compra" open={open} onClose={onClose} contentClassName="max-h-[90vh] overflow-hidden">
+      <form onSubmit={handleSubmit} className="flex h-full max-h-[calc(90vh-180px)] flex-col">
+        <div className="flex flex-col gap-4 overflow-y-auto pr-1">
         <Input
           type="text"
           placeholder="Descrição da compra"
@@ -358,6 +367,31 @@ export function EditCreditCardPurchaseModal({
               error={errors.fuelPricePerLiter?.message}
               {...register('fuelPricePerLiter')}
             />
+
+            <Controller
+              control={control}
+              name="fuelFillType"
+              defaultValue="PARTIAL"
+              render={({ field: { onChange, value } }) => (
+                <Select
+                  placeholder="Tipo de abastecimento"
+                  onChange={onChange}
+                  value={value ?? 'PARTIAL'}
+                  options={[
+                    { value: 'PARTIAL', label: 'Parcial' },
+                    { value: 'FULL', label: 'Tanque cheio' },
+                  ]}
+                />
+              )}
+            />
+
+            <label className="flex items-center gap-2 text-xs text-gray-700 rounded-lg border border-gray-200 px-3 py-2">
+              <input
+                type="checkbox"
+                {...register('fuelFirstPumpClick')}
+              />
+              Primeiro clique da bomba
+            </label>
           </>
         )}
 
@@ -391,7 +425,11 @@ export function EditCreditCardPurchaseModal({
           </>
         )}
 
-        <Button type="submit" isLoading={isLoading}>Salvar compra</Button>
+        </div>
+
+        <div className="pt-2 mt-3 border-t border-gray-100">
+          <Button type="submit" isLoading={isLoading} className="w-full">Salvar compra</Button>
+        </div>
       </form>
     </Modal>
   )

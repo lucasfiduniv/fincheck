@@ -23,6 +23,8 @@ export interface CreditCardStatementInstallment {
   fuelOdometer?: number | null
   fuelLiters?: number | null
   fuelPricePerLiter?: number | null
+  fuelFillType?: 'FULL' | 'PARTIAL'
+  fuelFirstPumpClick?: boolean
   maintenanceVehicleId?: string | null
   maintenanceOdometer?: number | null
   status: 'PENDING' | 'PAID' | 'CANCELED'

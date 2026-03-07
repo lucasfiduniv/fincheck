@@ -24,9 +24,9 @@ export function NewCreditCardPurchaseModal() {
   } = useNewCreditCardPurchaseModalController()
 
   return (
-    <Modal title="Compra no Cartão" open={isOpen} onClose={onClose}>
-      <form onSubmit={handleSubmit}>
-        <div className="flex flex-col gap-4">
+    <Modal title="Compra no Cartão" open={isOpen} onClose={onClose} contentClassName="max-h-[90vh] overflow-hidden">
+      <form onSubmit={handleSubmit} className="flex h-full max-h-[calc(90vh-180px)] flex-col">
+        <div className="flex flex-col gap-4 overflow-y-auto pr-1">
           <Controller
             control={control}
             name="creditCardId"
@@ -150,6 +150,31 @@ export function NewCreditCardPurchaseModal() {
                 error={errors.fuelPricePerLiter?.message}
                 {...register('fuelPricePerLiter')}
               />
+
+              <Controller
+                control={control}
+                name="fuelFillType"
+                defaultValue="PARTIAL"
+                render={({ field: { onChange, value } }) => (
+                  <Select
+                    placeholder="Tipo de abastecimento"
+                    onChange={onChange}
+                    value={value ?? 'PARTIAL'}
+                    options={[
+                      { value: 'PARTIAL', label: 'Parcial' },
+                      { value: 'FULL', label: 'Tanque cheio' },
+                    ]}
+                  />
+                )}
+              />
+
+              <label className="flex items-center gap-2 text-xs text-gray-700 rounded-lg border border-gray-200 px-3 py-2">
+                <input
+                  type="checkbox"
+                  {...register('fuelFirstPumpClick')}
+                />
+                Primeiro clique da bomba
+              </label>
             </>
           )}
 
@@ -192,7 +217,10 @@ export function NewCreditCardPurchaseModal() {
             {...register('installmentCount')}
           />
 
-          <Button type="submit" isLoading={isLoading}>Lançar compra</Button>
+        </div>
+
+        <div className="pt-2 mt-3 border-t border-gray-100">
+          <Button type="submit" isLoading={isLoading} className="w-full">Lançar compra</Button>
         </div>
       </form>
     </Modal>

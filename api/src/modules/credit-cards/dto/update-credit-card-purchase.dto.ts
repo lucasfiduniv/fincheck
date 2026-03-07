@@ -1,5 +1,7 @@
 import {
+  IsBoolean,
   IsDateString,
+  IsIn,
   IsNumber,
   IsOptional,
   IsPositive,
@@ -43,6 +45,14 @@ export class UpdateCreditCardPurchaseDto {
   @IsNumber()
   @IsPositive()
     fuelPricePerLiter?: number | null
+
+  @IsOptional()
+  @IsIn(['FULL', 'PARTIAL'])
+    fuelFillType?: 'FULL' | 'PARTIAL'
+
+  @IsOptional()
+  @IsBoolean()
+    fuelFirstPumpClick?: boolean | null
 
   @IsOptional()
   @IsUUID()
