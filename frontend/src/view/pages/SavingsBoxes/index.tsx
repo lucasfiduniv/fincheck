@@ -3,10 +3,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Logo } from '../../components/Logo'
 import { Button } from '../../components/Button'
-import { Input } from '../../components/Input'
-import { Select } from '../../components/Select'
-import { Modal } from '../../components/Modal'
-import { InputCurrency } from '../../components/InputCurrency'
+import { CreateSavingsBoxModal } from './components/CreateSavingsBoxModal'
+import { SavingsBoxEntryModal } from './components/SavingsBoxEntryModal'
+import { SavingsBoxConfigModals } from './components/SavingsBoxConfigModals'
+import { SavingsBoxFriendsModal } from './components/SavingsBoxFriendsModal'
+import { SavingsBoxHistoryAlertsSection } from './components/SavingsBoxHistoryAlertsSection'
+import { SavingsBoxAnnualPlanningSection } from './components/SavingsBoxAnnualPlanningSection'
 import { formatCurrency } from '../../../app/utils/formatCurrency'
 import { savingsBoxesService } from '../../../app/services/savingsBoxesService'
 import { friendshipsService } from '../../../app/services/friendshipsService'
@@ -493,445 +495,95 @@ export function SavingsBoxes() {
 
   return (
     <div className="w-full h-full p-4 lg:px-8 lg:pt-6 lg:pb-8 overflow-y-auto">
-      <Modal
-        title="Nova Caixinha"
-        open={isCreateModalOpen}
-        onClose={() => {
-          setCreateStep(1)
-          setIsCreateModalOpen(false)
-        }}
-      >
-        <form
-          onSubmit={(event) => {
-            event.preventDefault()
-            if (createStep === 1) {
-              setCreateStep(2)
-              return
-            }
+      <CreateSavingsBoxModal
+        isOpen={isCreateModalOpen}
+        setIsOpen={setIsCreateModalOpen}
+        createStep={createStep}
+        setCreateStep={setCreateStep}
+        createName={createName}
+        setCreateName={setCreateName}
+        createDescription={createDescription}
+        setCreateDescription={setCreateDescription}
+        createInitialBalance={createInitialBalance}
+        setCreateInitialBalance={setCreateInitialBalance}
+        createTargetAmount={createTargetAmount}
+        setCreateTargetAmount={setCreateTargetAmount}
+        createTargetDate={createTargetDate}
+        setCreateTargetDate={setCreateTargetDate}
+        isCreating={isCreating}
+        handleCreateSavingsBox={handleCreateSavingsBox}
+      />
 
-            handleCreateSavingsBox()
-          }}
-        >
-          {createStep === 1 && (
-            <div className="space-y-4">
-              <Input
-                name="createName"
-                placeholder="Nome da caixinha"
-                value={createName}
-                onChange={(e) => setCreateName(e.target.value)}
-              />
+      <SavingsBoxEntryModal
+        isOpen={isEntryModalOpen}
+        setIsOpen={setIsEntryModalOpen}
+        entryType={entryType}
+        entryAmount={entryAmount}
+        setEntryAmount={setEntryAmount}
+        entryDescription={entryDescription}
+        setEntryDescription={setEntryDescription}
+        entryDate={entryDate}
+        setEntryDate={setEntryDate}
+        isCreatingEntry={isCreatingEntry}
+        handleCreateEntry={handleCreateEntry}
+      />
 
-              <div>
-                <span className="text-gray-600 tracking-[-0.5px] text-xs">Saldo inicial</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-600 tracking-[-0.5px] text-lg">R$</span>
-                  <InputCurrency
-                    value={createInitialBalance}
-                    onChange={(value) => setCreateInitialBalance(value ?? '')}
-                    className="text-teal-900"
-                  />
-                </div>
-              </div>
+      <SavingsBoxConfigModals
+        isGoalModalOpen={isGoalModalOpen}
+        setIsGoalModalOpen={setIsGoalModalOpen}
+        isRecurrenceModalOpen={isRecurrenceModalOpen}
+        setIsRecurrenceModalOpen={setIsRecurrenceModalOpen}
+        isYieldModalOpen={isYieldModalOpen}
+        setIsYieldModalOpen={setIsYieldModalOpen}
+        goalAmount={goalAmount}
+        setGoalAmount={setGoalAmount}
+        goalDate={goalDate}
+        setGoalDate={setGoalDate}
+        goalAlertsEnabled={goalAlertsEnabled}
+        setGoalAlertsEnabled={setGoalAlertsEnabled}
+        recurrenceEnabled={recurrenceEnabled}
+        setRecurrenceEnabled={setRecurrenceEnabled}
+        recurrenceDay={recurrenceDay}
+        setRecurrenceDay={setRecurrenceDay}
+        recurrenceAmount={recurrenceAmount}
+        setRecurrenceAmount={setRecurrenceAmount}
+        yieldMode={yieldMode}
+        setYieldMode={setYieldMode}
+        yieldRate={yieldRate}
+        setYieldRate={setYieldRate}
+        yieldRunYear={yieldRunYear}
+        setYieldRunYear={setYieldRunYear}
+        yieldRunMonth={yieldRunMonth}
+        setYieldRunMonth={setYieldRunMonth}
+        isSavingGoal={isSavingGoal}
+        isSavingRecurrence={isSavingRecurrence}
+        isRunningRecurrence={isRunningRecurrence}
+        isSavingYield={isSavingYield}
+        isRunningMonthlyYield={isRunningMonthlyYield}
+        handleSaveGoal={handleSaveGoal}
+        handleSaveRecurrence={handleSaveRecurrence}
+        handleRunRecurrenceNow={handleRunRecurrenceNow}
+        handleSaveYield={handleSaveYield}
+        handleRunMonthlyYield={handleRunMonthlyYield}
+      />
 
-              <div className="pt-2 border-t border-gray-100 flex gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="flex-1"
-                  onClick={() => {
-                    setCreateStep(1)
-                    setIsCreateModalOpen(false)
-                  }}
-                >
-                  Cancelar
-                </Button>
-
-                <Button type="submit" className="flex-1">
-                  Continuar
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {createStep === 2 && (
-            <div className="space-y-4">
-              <div>
-                <span className="text-gray-600 tracking-[-0.5px] text-xs">Descrição (opcional)</span>
-                <Input
-                  name="createDescription"
-                  placeholder="Ex.: Viagem, reserva, reforma"
-                  value={createDescription}
-                  onChange={(e) => setCreateDescription(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <span className="text-gray-600 tracking-[-0.5px] text-xs">Meta (opcional)</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-600 tracking-[-0.5px] text-lg">R$</span>
-                  <InputCurrency
-                    value={createTargetAmount}
-                    onChange={(value) => setCreateTargetAmount(value ?? '')}
-                    className="text-teal-900"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <span className="text-gray-600 tracking-[-0.5px] text-xs">Data alvo (opcional)</span>
-                <Input
-                  name="createTargetDate"
-                  type="date"
-                  value={createTargetDate}
-                  onChange={(e) => setCreateTargetDate(e.target.value)}
-                />
-              </div>
-
-              <div className="pt-2 border-t border-gray-100 flex gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="flex-1"
-                  onClick={() => setCreateStep(1)}
-                >
-                  Voltar
-                </Button>
-
-                <Button type="submit" className="flex-1" isLoading={isCreating}>
-                  Salvar caixinha
-                </Button>
-              </div>
-            </div>
-          )}
-        </form>
-      </Modal>
-
-      <Modal
-        title={entryType === 'DEPOSIT' ? 'Novo Aporte' : 'Novo Resgate'}
-        open={isEntryModalOpen}
-        onClose={() => setIsEntryModalOpen(false)}
-      >
-        <form
-          className="space-y-4"
-          onSubmit={(event) => {
-            event.preventDefault()
-            handleCreateEntry()
-          }}
-        >
-          <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-700">
-            Tipo: {entryType === 'DEPOSIT' ? 'Aporte' : 'Resgate'}
-          </div>
-
-          <div>
-            <span className="text-gray-600 tracking-[-0.5px] text-xs">Valor</span>
-            <div className="flex items-center gap-2">
-              <span className="text-gray-600 tracking-[-0.5px] text-lg">R$</span>
-              <InputCurrency
-                value={entryAmount}
-                onChange={(value) => setEntryAmount(value ?? '')}
-                className="text-teal-900"
-              />
-            </div>
-          </div>
-
-          <Input
-            name="entryDate"
-            type="date"
-            placeholder="Data"
-            value={entryDate}
-            onChange={(e) => setEntryDate(e.target.value)}
-          />
-
-          <div>
-            <span className="text-gray-600 tracking-[-0.5px] text-xs">Descrição (opcional)</span>
-            <Input
-              name="entryDescription"
-              placeholder="Detalhe da movimentação"
-              value={entryDescription}
-              onChange={(e) => setEntryDescription(e.target.value)}
-            />
-          </div>
-
-          <Button type="submit" className="w-full" isLoading={isCreatingEntry}>
-            {entryType === 'DEPOSIT' ? 'Salvar aporte' : 'Salvar resgate'}
-          </Button>
-        </form>
-      </Modal>
-
-      <Modal
-        title="Meta da Caixinha"
-        open={isGoalModalOpen}
-        onClose={() => setIsGoalModalOpen(false)}
-      >
-        <form
-          className="space-y-4"
-          onSubmit={(event) => {
-            event.preventDefault()
-            handleSaveGoal()
-          }}
-        >
-          <div>
-            <span className="text-gray-600 tracking-[-0.5px] text-xs">Valor da meta</span>
-            <div className="flex items-center gap-2">
-              <span className="text-gray-600 tracking-[-0.5px] text-lg">R$</span>
-              <InputCurrency
-                value={goalAmount}
-                onChange={(value) => setGoalAmount(value ?? '')}
-                className="text-teal-900"
-              />
-            </div>
-          </div>
-
-          <Input
-            name="goalDate"
-            type="date"
-            placeholder="Data alvo"
-            value={goalDate}
-            onChange={(e) => setGoalDate(e.target.value)}
-          />
-
-          <label className="flex items-center justify-between rounded-xl border border-gray-200 px-3 py-3">
-            <span className="text-sm text-gray-700">Alertas da meta</span>
-            <input
-              type="checkbox"
-              checked={goalAlertsEnabled}
-              onChange={(e) => setGoalAlertsEnabled(e.target.checked)}
-              className="w-4 h-4 accent-teal-900"
-            />
-          </label>
-
-          <Button type="submit" className="w-full" isLoading={isSavingGoal}>
-            Salvar meta
-          </Button>
-        </form>
-      </Modal>
-
-      <Modal
-        title="Recorrência"
-        open={isRecurrenceModalOpen}
-        onClose={() => setIsRecurrenceModalOpen(false)}
-      >
-        <form
-          className="space-y-4"
-          onSubmit={(event) => {
-            event.preventDefault()
-            handleSaveRecurrence()
-          }}
-        >
-          <label className="flex items-center justify-between rounded-xl border border-gray-200 px-3 py-3">
-            <span className="text-sm text-gray-700">Recorrência ativa</span>
-            <input
-              type="checkbox"
-              checked={recurrenceEnabled}
-              onChange={(e) => setRecurrenceEnabled(e.target.checked)}
-              className="w-4 h-4 accent-teal-900"
-            />
-          </label>
-
-          <Input
-            name="recurrenceDay"
-            type="number"
-            min={1}
-            max={31}
-            placeholder="Dia do aporte"
-            value={recurrenceDay}
-            onChange={(e) => setRecurrenceDay(e.target.value)}
-          />
-
-          <div>
-            <span className="text-gray-600 tracking-[-0.5px] text-xs">Valor recorrente</span>
-            <div className="flex items-center gap-2">
-              <span className="text-gray-600 tracking-[-0.5px] text-lg">R$</span>
-              <InputCurrency
-                value={recurrenceAmount}
-                onChange={(value) => setRecurrenceAmount(value ?? '')}
-                className="text-teal-900"
-              />
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            <Button type="submit" className="flex-1" isLoading={isSavingRecurrence}>
-              Salvar
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              className="flex-1"
-              isLoading={isRunningRecurrence}
-              onClick={handleRunRecurrenceNow}
-            >
-              Aplicar agora
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
-      <Modal
-        title="Rendimento"
-        open={isYieldModalOpen}
-        onClose={() => setIsYieldModalOpen(false)}
-      >
-        <form
-          className="space-y-4"
-          onSubmit={(event) => {
-            event.preventDefault()
-            handleSaveYield()
-          }}
-        >
-          <Select
-            options={[
-              { value: 'PERCENT', label: 'Percentual (%)' },
-              { value: 'FIXED', label: 'Valor fixo (R$)' },
-            ]}
-            value={yieldMode}
-            onChange={(value) => setYieldMode(value as SavingsBoxYieldMode)}
-            placeholder="Modo de rendimento"
-          />
-
-          <div>
-            <span className="text-gray-600 tracking-[-0.5px] text-xs">
-              {yieldMode === 'PERCENT' ? 'Rendimento mensal (%)' : 'Rendimento mensal'}
-            </span>
-            <div className="flex items-center gap-2">
-              <span className="text-gray-600 tracking-[-0.5px] text-lg">
-                {yieldMode === 'PERCENT' ? '%' : 'R$'}
-              </span>
-              <InputCurrency
-                value={yieldRate}
-                onChange={(value) => setYieldRate(value ?? '')}
-                className="text-teal-900"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <Input
-              name="yieldRunYear"
-              type="number"
-              placeholder="Ano"
-              value={String(yieldRunYear)}
-              onChange={(e) => setYieldRunYear(Number(e.target.value) || new Date().getFullYear())}
-            />
-            <Input
-              name="yieldRunMonth"
-              type="number"
-              min={1}
-              max={12}
-              placeholder="Mês"
-              value={String(yieldRunMonth)}
-              onChange={(e) => setYieldRunMonth(Number(e.target.value) || 1)}
-            />
-          </div>
-
-          <div className="flex gap-2">
-            <Button type="submit" className="flex-1" isLoading={isSavingYield}>
-              Salvar
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              className="flex-1"
-              isLoading={isRunningMonthlyYield}
-              onClick={handleRunMonthlyYield}
-            >
-              Aplicar mês
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
-      <Modal
-        title="Compartilhar e Amigos"
+      <SavingsBoxFriendsModal
         open={isFriendsModalOpen}
         onClose={() => setIsFriendsModalOpen(false)}
-      >
-        <div className="space-y-4">
-          <div>
-            <span className="text-gray-600 tracking-[-0.5px] text-xs">Convidar amigo por e-mail</span>
-            <div className="mt-1 flex flex-col sm:flex-row gap-2">
-              <Input
-                name="friendEmail"
-                type="email"
-                placeholder="E-mail do amigo"
-                value={friendEmail}
-                onChange={(e) => setFriendEmail(e.target.value)}
-              />
-              <Button
-                type="button"
-                className="h-[52px] px-4 rounded-lg w-full sm:w-auto"
-                isLoading={isSendingFriendRequest}
-                onClick={handleSendFriendRequest}
-              >
-                Enviar
-              </Button>
-            </div>
-          </div>
-
-          {receivedRequests.length > 0 && (
-            <div className="space-y-2">
-              <span className="text-xs text-gray-600 uppercase tracking-[0.08em]">Pedidos recebidos</span>
-
-              {receivedRequests.map((request) => (
-                <div key={request.id} className="rounded-xl border border-gray-200 p-3 flex items-center justify-between gap-2">
-                  <div>
-                    <p className="text-sm text-gray-800 font-medium">{request.requester.name}</p>
-                    <p className="text-xs text-gray-500">{request.requester.email}</p>
-                  </div>
-                  <Button
-                    type="button"
-                    className="h-9 px-3 rounded-lg text-xs"
-                    isLoading={isAcceptingFriendRequest}
-                    onClick={() => handleAcceptRequest(request.id)}
-                  >
-                    Aceitar
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <span className="text-xs text-gray-600 uppercase tracking-[0.08em]">Meus amigos</span>
-
-            {friends.length === 0 && (
-              <p className="text-sm text-gray-500">Você ainda não tem amigos adicionados.</p>
-            )}
-
-            {friends.map((friend) => (
-              <div key={friend.friendshipId} className="rounded-xl bg-gray-50 border border-gray-200 p-3">
-                <p className="text-sm text-gray-800 font-medium">{friend.name}</p>
-                <p className="text-xs text-gray-500">{friend.email}</p>
-              </div>
-            ))}
-          </div>
-
-          {selectedBox?.isOwner && (
-            <form
-              className="pt-2 border-t border-gray-100 space-y-3"
-              onSubmit={(event) => {
-                event.preventDefault()
-                handleShareWithFriend()
-              }}
-            >
-              <span className="text-gray-600 tracking-[-0.5px] text-xs block">Compartilhar caixinha atual</span>
-              <Select
-                placeholder="Escolha um amigo"
-                value={selectedFriendUserId}
-                onChange={setSelectedFriendUserId}
-                options={friends.map((friend) => ({
-                  value: friend.userId,
-                  label: `${friend.name} (${friend.email})`,
-                }))}
-              />
-
-              <Button type="submit" className="w-full" isLoading={isSharingWithFriend}>
-                Compartilhar caixinha
-              </Button>
-            </form>
-          )}
-        </div>
-      </Modal>
+        friendEmail={friendEmail}
+        setFriendEmail={setFriendEmail}
+        isSendingFriendRequest={isSendingFriendRequest}
+        onSendFriendRequest={handleSendFriendRequest}
+        receivedRequests={receivedRequests}
+        isAcceptingFriendRequest={isAcceptingFriendRequest}
+        onAcceptRequest={handleAcceptRequest}
+        friends={friends}
+        selectedBox={selectedBox}
+        selectedFriendUserId={selectedFriendUserId}
+        setSelectedFriendUserId={setSelectedFriendUserId}
+        isSharingWithFriend={isSharingWithFriend}
+        onShareWithFriend={handleShareWithFriend}
+      />
 
       <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
@@ -1145,159 +797,28 @@ export function SavingsBoxes() {
                 </div>
               )}
 
-              <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <strong className="text-gray-900">Histórico e alertas</strong>
-                  {isLoadingDetails && <span className="text-xs text-gray-500">Atualizando...</span>}
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <div>
-                    <span className="text-sm text-gray-700 block mb-2">Movimentações</span>
-                    <div className="flex flex-wrap gap-2 mb-2">
-                      {[
-                        { value: 'ALL', label: 'Todos' },
-                        { value: 'DEPOSIT', label: 'Aportes' },
-                        { value: 'WITHDRAW', label: 'Resgates' },
-                        { value: 'YIELD', label: 'Rendimentos' },
-                      ].map((option) => (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => setHistoryTypeFilter(option.value as 'ALL' | 'DEPOSIT' | 'WITHDRAW' | 'YIELD')}
-                          className={`px-2.5 py-1 rounded-lg text-xs border transition-colors ${
-                            historyTypeFilter === option.value
-                              ? 'border-teal-300 bg-teal-50 text-teal-900'
-                              : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                          }`}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
-                      {filteredTransactions.length === 0 && (
-                        <p className="text-xs text-gray-500">Sem movimentações recentes.</p>
-                      )}
-
-                      {visibleTransactions.map((transaction) => (
-                        <div key={transaction.id} className="rounded-xl border border-gray-200 p-3 text-sm">
-                          <p className="font-medium text-gray-800">{transaction.type === 'DEPOSIT' ? 'Aporte' : transaction.type === 'WITHDRAW' ? 'Resgate' : transaction.type === 'YIELD' ? 'Rendimento' : 'Ajuste'}</p>
-                          <p className="text-gray-700">{formatCurrency(transaction.amount)}</p>
-                          <p className="text-gray-500">{formatDate(transaction.date)}</p>
-                          {transaction.description && <p className="text-gray-600">{transaction.description}</p>}
-                        </div>
-                      ))}
-
-                      {filteredTransactions.length > 5 && (
-                        <button
-                          type="button"
-                          className="text-xs text-teal-700 hover:text-teal-800 underline"
-                          onClick={() => setShowAllTransactions((state) => !state)}
-                        >
-                          {showAllTransactions ? 'Ver menos' : 'Ver mais'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  <div>
-                    <span className="text-sm text-gray-700 block mb-2">Alertas</span>
-                    <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
-                      {details?.alerts.length === 0 && (
-                        <p className="text-xs text-gray-500">Sem alertas recentes.</p>
-                      )}
-
-                      {details?.alerts.map((alert) => (
-                        <div key={alert.id} className="rounded-xl border border-gray-200 p-3 text-sm">
-                          <p className="font-medium text-gray-800">{alert.type === 'GOAL_COMPLETED' ? 'Meta concluída' : alert.type === 'GOAL_NEAR_DUE' ? 'Meta próxima do vencimento' : alert.type === 'LOW_PROGRESS' ? 'Baixo progresso' : 'Recorrência executada'}</p>
-                          <p className="text-gray-700">{alert.message}</p>
-                          <p className="text-gray-500">{formatDate(alert.createdAt)} · {alert.status === 'PENDING' ? 'Pendente' : alert.status === 'SENT' ? 'Enviado' : 'Falhou'}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <SavingsBoxHistoryAlertsSection
+                isLoadingDetails={isLoadingDetails}
+                historyTypeFilter={historyTypeFilter}
+                setHistoryTypeFilter={setHistoryTypeFilter}
+                filteredTransactions={filteredTransactions}
+                visibleTransactions={visibleTransactions}
+                showAllTransactions={showAllTransactions}
+                setShowAllTransactions={setShowAllTransactions}
+                alerts={details?.alerts}
+              />
             </>
           )}
 
-          <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <strong className="text-gray-900">Planejamento anual</strong>
-
-              <div className="flex gap-2">
-                <Input
-                  name="planningYear"
-                  type="number"
-                  placeholder="Ano"
-                  value={String(planningYear)}
-                  onChange={(e) => setPlanningYear(Number(e.target.value) || new Date().getFullYear())}
-                  className="w-full sm:max-w-[140px]"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="h-[52px] px-3 rounded-lg"
-                  onClick={() => setIsPlanningExpanded((state) => !state)}
-                >
-                  {isPlanningExpanded ? 'Ocultar' : 'Ver planejamento'}
-                </Button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <div className="rounded-xl bg-gray-50 p-3">
-                <span className="text-xs text-gray-600 block">Aporte previsto no ano</span>
-                <strong className="text-sm text-gray-900">{formatCurrency(planningSummary.totalPlannedContribution)}</strong>
-              </div>
-              <div className="rounded-xl bg-gray-50 p-3">
-                <span className="text-xs text-gray-600 block">Rendimento previsto</span>
-                <strong className="text-sm text-gray-900">{formatCurrency(planningSummary.totalPlannedYield)}</strong>
-              </div>
-              <div className="rounded-xl bg-gray-50 p-3">
-                <span className="text-xs text-gray-600 block">Saldo fim de ano</span>
-                <strong className="text-sm text-gray-900">{formatCurrency(planningSummary.totalProjectedEndOfYear)}</strong>
-              </div>
-            </div>
-
-            {!isPlanningExpanded && (
-              <p className="text-sm text-gray-600">
-                Abra o planejamento para ver a grade mensal completa.
-              </p>
-            )}
-
-            {isPlanningExpanded && (
-              <>
-                {isLoadingPlanning && <p className="text-sm text-gray-600">Carregando planejamento...</p>}
-
-                {!isLoadingPlanning && annualPlanning?.planning.length === 0 && (
-                  <p className="text-sm text-gray-600">Sem caixinhas para planejar neste ano.</p>
-                )}
-
-                {!isLoadingPlanning && annualPlanning?.planning.map((plan) => (
-                  <div key={plan.savingsBoxId} className="rounded-xl border border-gray-200 p-3 space-y-2">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                      <strong className="text-gray-800">{plan.name}</strong>
-                      <span className="text-sm text-gray-600">Fim do ano: {formatCurrency(plan.projectedEndOfYearBalance)}</span>
-                    </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                      {plan.months.map((month) => (
-                        <div key={`${plan.savingsBoxId}-${month.month}`} className="rounded-lg bg-gray-50 p-2 text-xs">
-                          <p className="text-gray-600">Mês {month.month + 1}</p>
-                          <p className="text-gray-700">+{formatCurrency(month.plannedContribution)}</p>
-                          <p className="text-gray-700">R {formatCurrency(month.plannedYield)}</p>
-                          <p className="font-medium text-gray-800">{formatCurrency(month.projectedBalance)}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </>
-            )}
-          </div>
+          <SavingsBoxAnnualPlanningSection
+            planningYear={planningYear}
+            setPlanningYear={setPlanningYear}
+            isPlanningExpanded={isPlanningExpanded}
+            setIsPlanningExpanded={setIsPlanningExpanded}
+            planningSummary={planningSummary}
+            isLoadingPlanning={isLoadingPlanning}
+            annualPlanning={annualPlanning}
+          />
         </section>
       </main>
     </div>
