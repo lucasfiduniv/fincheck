@@ -15,6 +15,8 @@ model User {
   name     String
   email    String @unique
   password String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
   phoneNumber String? @map("phone_number")
   notificationsEnabled Boolean @default(false) @map("notifications_enabled")
   notifyDueReminders Boolean @default(true) @map("notify_due_reminders")
@@ -261,6 +263,8 @@ model BankAccount {
   initialBalance Float           @map("initial_balance")
   type           BankAccountType
   color          String
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
 
   transactions Transaction[]
   creditCards CreditCard[]
@@ -394,6 +398,8 @@ model Category {
   name   String
   icon   String
   type   TransactionType
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
 
   transactions Transaction[]
   creditCardPurchases CreditCardPurchase[]
@@ -422,6 +428,8 @@ model Transaction {
   installmentCount  Int?        @map("installment_count")
   dueDay            Int?        @map("due_day")
   alertDaysBefore   Int?        @map("alert_days_before")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
   fuelRecord FuelRecord?
 
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -636,6 +644,8 @@ model CategoryBudget {
   year       Int
   limit      Float
   carryOverEnabled Boolean @default(false) @map("carry_over_enabled")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
