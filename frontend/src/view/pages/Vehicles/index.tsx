@@ -3,9 +3,6 @@ import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Logo } from '../../components/Logo'
 import { Button } from '../../components/Button'
-import { Input } from '../../components/Input'
-import { Select } from '../../components/Select'
-import { Modal } from '../../components/Modal'
 import { Spinner } from '../../components/Spinner'
 import { vehiclesService } from '../../../app/services/vehiclesService'
 import { formatCurrency } from '../../../app/utils/formatCurrency'
@@ -16,6 +13,10 @@ import { useVehicleMutations } from './hooks/useVehicleMutations'
 import { useVehicleTimeline } from './hooks/useVehicleTimeline'
 import { VehicleTimelineSection } from './components/VehicleTimelineSection'
 import { VehicleQuickActionModals } from './components/VehicleQuickActionModals'
+import { VehicleCreateModals } from './components/VehicleCreateModals'
+import { VehicleSummarySection } from './components/VehicleSummarySection'
+import { VehicleOdometerSection } from './components/VehicleOdometerSection'
+import { VehicleMetricsSection } from './components/VehicleMetricsSection'
 import { InlineFeedbackState } from './types'
 
 const fuelTypeOptions = [
@@ -29,10 +30,6 @@ const fuelTypeOptions = [
 
 const compactModeStoragePrefix = 'fincheck:vehicles:compact-mode:'
 const odometerDraftStoragePrefix = 'fincheck:vehicles:odometer-draft:'
-
-function formatDate(value: string) {
-  return new Date(value).toLocaleDateString('pt-BR')
-}
 
 function getHealthBadgeLabel(status?: 'OK' | 'ATTENTION' | 'URGENT') {
   if (status === 'ATTENTION') {
@@ -906,161 +903,58 @@ export function Vehicles() {
 
   return (
     <div className="w-full h-full p-4 lg:px-8 lg:pt-6 lg:pb-8 overflow-y-auto">
-      <Modal
-        title="Novo Veículo"
-        open={isCreateModalOpen}
-        onClose={() => {
-          if (name || model || plate) {
-            trackVehicleEvent('create_vehicle_abandoned', { hasName: !!name, hasModel: !!model, hasPlate: !!plate })
-          }
-          setIsCreateModalOpen(false)
-        }}
-      >
-        <form
-          className="space-y-4"
-          onSubmit={(event) => {
-            event.preventDefault()
-            handleCreateVehicle()
-          }}
-        >
-          <Input name="name" placeholder="Nome" value={name} onChange={(e) => setName(e.target.value)} />
-
-          <button
-            type="button"
-            className="text-xs text-teal-700 hover:text-teal-800 underline"
-            onClick={() => setShowCreateVehicleOptionalFields((state) => !state)}
-          >
-            {showCreateVehicleOptionalFields ? 'Ocultar campos opcionais' : 'Mostrar campos opcionais'}
-          </button>
-
-          {showCreateVehicleOptionalFields && (
-            <div className="space-y-3 rounded-xl border border-gray-200 p-3 bg-gray-50">
-              <Input name="model" placeholder="Modelo (opcional)" value={model} onChange={(e) => setModel(e.target.value)} />
-              <Input name="plate" placeholder="Placa (opcional)" value={plate} onChange={(e) => setPlate(e.target.value.toUpperCase())} />
-              <Input
-                type="number"
-                step="0.1"
-                name="currentOdometer"
-                placeholder="Odômetro atual (opcional)"
-                value={currentOdometer}
-                onChange={(e) => setCurrentOdometer(e.target.value)}
-              />
-
-              <div className="space-y-2">
-                <label className="text-xs text-gray-600 block">Foto do veículo</label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0]
-
-                    if (!file) {
-                      return
-                    }
-
-                    const reader = new FileReader()
-                    reader.onload = () => {
-                      if (typeof reader.result === 'string') {
-                        setPhotoUrl(reader.result)
-                      }
-                    }
-                    reader.readAsDataURL(file)
-                  }}
-                  className="block w-full text-sm text-gray-600 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border file:border-gray-200 file:bg-white file:text-gray-700"
-                />
-                {photoUrl && (
-                  <img src={photoUrl} alt="Pré-visualização" className="w-full h-32 object-cover rounded-xl border border-gray-200" />
-                )}
-              </div>
-
-              <Select
-                placeholder="Combustível"
-                value={fuelType}
-                onChange={setFuelType}
-                options={fuelTypeOptions}
-              />
-            </div>
-          )}
-
-          <Button type="submit" className="w-full" isLoading={isCreatingVehicle}>Cadastrar veículo</Button>
-        </form>
-      </Modal>
-
-      <Modal
-        title="Nova peça / troca"
-        open={isCreatePartModalOpen}
-        contentClassName="max-h-[90vh] overflow-hidden"
-        onClose={() => {
-          if (partName || partTotalCost) {
-            trackVehicleEvent('create_part_abandoned', { hasName: !!partName, hasCost: !!partTotalCost })
-          }
-          setIsCreatePartModalOpen(false)
-        }}
-      >
-        <form
-          className="flex h-full max-h-[calc(90vh-180px)] flex-col"
-          onSubmit={(event) => {
-            event.preventDefault()
-            handleCreatePart()
-          }}
-        >
-          <div className="space-y-3 overflow-y-auto pr-1">
-            {accounts.length === 0 && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                Você precisa vincular uma conta antes de cadastrar a peça no financeiro.{' '}
-                <Link to="/" className="underline">Vincular conta</Link>
-              </div>
-            )}
-
-            <Select
-              placeholder="Conta para lançar o custo"
-              value={partBankAccountId}
-              onChange={setPartBankAccountId}
-              options={accounts.map((account) => ({
-                value: account.id,
-                label: account.name,
-              }))}
-            />
-
-            <Input name="partName" placeholder="Nome da peça" value={partName} onChange={(e) => setPartName(e.target.value)} />
-            <Input type="number" step="0.01" name="partTotalCost" placeholder="Custo total" value={partTotalCost} onChange={(e) => setPartTotalCost(e.target.value)} />
-            <Input type="date" name="partInstalledAt" value={partInstalledAt} onChange={(e) => setPartInstalledAt(e.target.value)} />
-
-            <button
-              type="button"
-              className="text-xs text-teal-700 hover:text-teal-800 underline"
-              onClick={() => setShowCreatePartOptionalFields((state) => !state)}
-            >
-              {showCreatePartOptionalFields ? 'Ocultar detalhes opcionais' : 'Mostrar detalhes opcionais'}
-            </button>
-
-            {showCreatePartOptionalFields && (
-              <div className="space-y-3 rounded-xl border border-gray-200 p-3 bg-gray-50">
-                <Select
-                  placeholder="Categoria de despesa"
-                  value={partCategoryId}
-                  onChange={setPartCategoryId}
-                  options={expenseCategories.map((category) => ({
-                    value: category.id,
-                    label: category.name,
-                  }))}
-                />
-
-                <Input name="partBrand" placeholder="Marca (opcional)" value={partBrand} onChange={(e) => setPartBrand(e.target.value)} />
-                <Input type="number" step="0.01" name="partQuantity" placeholder="Quantidade" value={partQuantity} onChange={(e) => setPartQuantity(e.target.value)} />
-                <Input type="number" step="0.1" name="partInstalledOdometer" placeholder="Km da instalação (opcional)" value={partInstalledOdometer} onChange={(e) => setPartInstalledOdometer(e.target.value)} />
-                <Input type="number" step="1" name="partLifetimeKm" placeholder="Vida útil esperada em km (opcional)" value={partLifetimeKm} onChange={(e) => setPartLifetimeKm(e.target.value)} />
-                <Input type="number" step="1" name="partNextReplacementOdometer" placeholder="Próxima troca em km (opcional)" value={partNextReplacementOdometer} onChange={(e) => setPartNextReplacementOdometer(e.target.value)} />
-                <Input name="partNotes" placeholder="Observações (opcional)" value={partNotes} onChange={(e) => setPartNotes(e.target.value)} />
-              </div>
-            )}
-          </div>
-
-          <div className="pt-3 mt-3 border-t border-gray-100">
-            <Button type="submit" className="w-full" isLoading={isCreatingPart}>Salvar peça</Button>
-          </div>
-        </form>
-      </Modal>
+      <VehicleCreateModals
+        isCreateModalOpen={isCreateModalOpen}
+        setIsCreateModalOpen={setIsCreateModalOpen}
+        name={name}
+        model={model}
+        plate={plate}
+        setName={setName}
+        setModel={setModel}
+        setPlate={setPlate}
+        showCreateVehicleOptionalFields={showCreateVehicleOptionalFields}
+        setShowCreateVehicleOptionalFields={setShowCreateVehicleOptionalFields}
+        currentOdometer={currentOdometer}
+        setCurrentOdometer={setCurrentOdometer}
+        photoUrl={photoUrl}
+        setPhotoUrl={setPhotoUrl}
+        fuelType={fuelType}
+        setFuelType={setFuelType}
+        fuelTypeOptions={fuelTypeOptions}
+        isCreatingVehicle={isCreatingVehicle}
+        onCreateVehicle={handleCreateVehicle}
+        onTrackVehicleEvent={trackVehicleEvent}
+        isCreatePartModalOpen={isCreatePartModalOpen}
+        setIsCreatePartModalOpen={setIsCreatePartModalOpen}
+        partName={partName}
+        partTotalCost={partTotalCost}
+        setPartName={setPartName}
+        setPartTotalCost={setPartTotalCost}
+        partBankAccountId={partBankAccountId}
+        setPartBankAccountId={setPartBankAccountId}
+        partInstalledAt={partInstalledAt}
+        setPartInstalledAt={setPartInstalledAt}
+        showCreatePartOptionalFields={showCreatePartOptionalFields}
+        setShowCreatePartOptionalFields={setShowCreatePartOptionalFields}
+        partCategoryId={partCategoryId}
+        setPartCategoryId={setPartCategoryId}
+        partBrand={partBrand}
+        setPartBrand={setPartBrand}
+        partQuantity={partQuantity}
+        setPartQuantity={setPartQuantity}
+        partInstalledOdometer={partInstalledOdometer}
+        setPartInstalledOdometer={setPartInstalledOdometer}
+        partLifetimeKm={partLifetimeKm}
+        setPartLifetimeKm={setPartLifetimeKm}
+        partNextReplacementOdometer={partNextReplacementOdometer}
+        setPartNextReplacementOdometer={setPartNextReplacementOdometer}
+        partNotes={partNotes}
+        setPartNotes={setPartNotes}
+        accounts={accounts}
+        expenseCategories={expenseCategories}
+        isCreatingPart={isCreatingPart}
+        onCreatePart={handleCreatePart}
+      />
 
       <VehicleQuickActionModals
         isQuickFuelModalOpen={isQuickFuelModalOpen}
@@ -1316,385 +1210,51 @@ export function Vehicles() {
               </div>
 
               <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
-                <button
-                  type="button"
-                  className="lg:hidden w-full flex items-center justify-between text-left"
-                  onClick={() => setMobileOpenSection((state) => (state === 'SUMMARY' ? 'ODOMETER' : 'SUMMARY'))}
-                >
-                  <strong className="text-gray-900">Resumo</strong>
-                  <span className="text-xs text-gray-500">
-                    {mobileOpenSection === 'SUMMARY' ? 'Ocultar' : 'Mostrar'}
-                  </span>
-                </button>
+                <VehicleSummarySection
+                  mobileOpenSection={mobileOpenSection}
+                  setMobileOpenSection={setMobileOpenSection}
+                  selectedVehicle={selectedVehicle}
+                  photoInputRef={photoInputRef}
+                  handleSelectVehiclePhoto={handleSelectVehiclePhoto}
+                  inlineFeedback={inlineFeedback}
+                  isLoadingVehicle={isLoadingVehicle}
+                  latestFuelRecord={latestFuelRecord}
+                  latestMaintenance={latestMaintenance}
+                  nextReplacementStatus={nextReplacementStatus}
+                />
 
-                <div className={`${mobileOpenSection === 'SUMMARY' ? 'block' : 'hidden'} lg:block space-y-4`}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-3">
-                      <button
-                        type="button"
-                        onClick={() => photoInputRef.current?.click()}
-                        className="group relative w-14 h-14 rounded-xl overflow-hidden border border-gray-200 bg-gray-100 shrink-0"
-                        title="Editar foto"
-                      >
-                        {selectedVehicle.photoUrl ? (
-                          <img src={selectedVehicle.photoUrl} alt={selectedVehicle.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <span className="w-full h-full flex items-center justify-center text-lg">🚗</span>
-                        )}
+                <VehicleOdometerSection
+                  mobileOpenSection={mobileOpenSection}
+                  setMobileOpenSection={setMobileOpenSection}
+                  selectedVehicle={selectedVehicle}
+                  selectedConfidenceLevel={selectedConfidenceLevel}
+                  odometerStep={odometerStep}
+                  setOdometerStep={setOdometerStep}
+                  currentOdometerInput={currentOdometerInput}
+                  setCurrentOdometerInput={setCurrentOdometerInput}
+                  setShowOutlierConfirm={setShowOutlierConfirm}
+                  confirmOdometerOutlier={confirmOdometerOutlier}
+                  setConfirmOdometerOutlier={setConfirmOdometerOutlier}
+                  showOutlierConfirm={showOutlierConfirm}
+                  isUpdatingVehicle={isUpdatingVehicle}
+                  handleUpdateCurrentOdometer={handleUpdateCurrentOdometer}
+                  handleRecalibrateNow={handleRecalibrateNow}
+                  isRecalibratingNow={isRecalibratingNow}
+                  autoOdometerEnabledInput={autoOdometerEnabledInput}
+                  setAutoOdometerEnabledInput={setAutoOdometerEnabledInput}
+                  averageDailyKmInput={averageDailyKmInput}
+                  setAverageDailyKmInput={setAverageDailyKmInput}
+                  handleUpdateAutoOdometerSettings={handleUpdateAutoOdometerSettings}
+                  deltaLabel={deltaLabel}
+                />
 
-                        <span className="absolute inset-0 bg-black/45 text-white text-[10px] font-medium opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          Editar
-                        </span>
-                      </button>
-
-                      <div>
-                        <strong className="text-xl text-gray-900 block">{selectedVehicle.name}</strong>
-                        <p className="text-sm text-gray-600">
-                          {selectedVehicle.model || 'Modelo não informado'} {selectedVehicle.plate ? `• ${selectedVehicle.plate}` : ''}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="w-full sm:w-auto" />
-                  </div>
-
-                  <input
-                    ref={photoInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleSelectVehiclePhoto}
-                  />
-
-                  {inlineFeedback && (
-                    <div className={`rounded-xl px-3 py-2 text-xs border ${
-                      inlineFeedback.status === 'saving'
-                        ? 'border-blue-200 bg-blue-50 text-blue-800'
-                        : inlineFeedback.status === 'synced'
-                          ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                          : inlineFeedback.status === 'stale'
-                            ? 'border-amber-200 bg-amber-50 text-amber-800'
-                            : 'border-rose-200 bg-rose-50 text-rose-800'
-                    }`}>
-                      {inlineFeedback.status === 'saving' && 'Salvando • '}
-                      {inlineFeedback.status === 'synced' && 'Sincronizado • '}
-                      {inlineFeedback.status === 'stale' && 'Desatualizado • '}
-                      {inlineFeedback.status === 'error' && 'Erro • '}
-                      {inlineFeedback.message}
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {isLoadingVehicle ? (
-                      Array.from({ length: 3 }).map((_, index) => (
-                        <div key={`overview-skeleton-${index}`} className="rounded-xl bg-gray-50 p-3 animate-pulse space-y-2">
-                          <div className="h-3 w-24 rounded bg-gray-200" />
-                          <div className="h-4 w-28 rounded bg-gray-200" />
-                          <div className="h-3 w-36 rounded bg-gray-200" />
-                        </div>
-                      ))
-                    ) : (
-                      <>
-                        <div className="rounded-xl bg-gray-50 p-3">
-                          <span className="text-xs text-gray-600 block">Último abastecimento</span>
-                          <strong className="text-gray-900 block mt-1">
-                            {latestFuelRecord ? formatDate(latestFuelRecord.transaction.date) : 'Sem registro'}
-                          </strong>
-                          {latestFuelRecord && (
-                            <span className="text-xs text-gray-600 block mt-1">
-                              {latestFuelRecord.liters.toFixed(2)} L • {formatCurrency(latestFuelRecord.totalCost)}
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="rounded-xl bg-gray-50 p-3">
-                          <span className="text-xs text-gray-600 block">Última manutenção</span>
-                          <strong className="text-gray-900 block mt-1">
-                            {latestMaintenance ? formatDate(latestMaintenance.date) : 'Sem registro'}
-                          </strong>
-                          {latestMaintenance && (
-                            <span className="text-xs text-gray-600 block mt-1 truncate">{latestMaintenance.title}</span>
-                          )}
-                        </div>
-
-                        <div className="rounded-xl bg-gray-50 p-3">
-                          <span className="text-xs text-gray-600 block">Status próxima troca</span>
-                          <strong className="text-gray-900 block mt-1">{nextReplacementStatus}</strong>
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                </div>
-
-                <button
-                  type="button"
-                  className="lg:hidden w-full flex items-center justify-between text-left"
-                  onClick={() => setMobileOpenSection((state) => (state === 'ODOMETER' ? 'METRICS' : 'ODOMETER'))}
-                >
-                  <strong className="text-gray-900">Odômetro</strong>
-                  <span className="text-xs text-gray-500">
-                    {mobileOpenSection === 'ODOMETER' ? 'Ocultar' : 'Mostrar'}
-                  </span>
-                </button>
-
-                <div className={`${mobileOpenSection === 'ODOMETER' ? 'block' : 'hidden'} lg:block space-y-4`}>
-                  <div className="rounded-xl border border-teal-200 bg-teal-50 p-4">
-                    <span className="text-xs text-teal-700 block">Odômetro consolidado</span>
-                    <strong className="text-3xl text-teal-900 tracking-[-1px] block mt-1">
-                      {selectedVehicle.effectiveCurrentOdometer !== null && selectedVehicle.effectiveCurrentOdometer !== undefined
-                        ? `${selectedVehicle.effectiveCurrentOdometer.toFixed(1)} km`
-                        : 'Sem referência'}
-                    </strong>
-                    <div className="flex flex-wrap items-center gap-2 mt-2">
-                      <span className={`text-[11px] px-2 py-1 rounded-full ${
-                        selectedConfidenceLevel === 'HIGH'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : selectedConfidenceLevel === 'MEDIUM'
-                            ? 'bg-amber-100 text-amber-800'
-                            : 'bg-rose-100 text-rose-800'
-                      }`}>
-                        Nível de confiança: {selectedConfidenceLevel === 'HIGH' ? 'alto' : selectedConfidenceLevel === 'MEDIUM' ? 'médio' : 'baixo'}
-                      </span>
-
-                      {selectedVehicle.odometerConfidence?.daysSinceCalibration !== null
-                        && selectedVehicle.odometerConfidence?.daysSinceCalibration !== undefined && (
-                          <span className="text-[11px] text-teal-800">
-                            Última calibração há {selectedVehicle.odometerConfidence.daysSinceCalibration} dias
-                          </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-gray-200 bg-white p-2 sm:p-3">
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setOdometerStep('CURRENT')}
-                        className={`rounded-lg px-3 py-2 text-xs font-medium border transition-colors ${
-                          odometerStep === 'CURRENT'
-                            ? 'border-teal-700 bg-teal-50 text-teal-800'
-                            : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-                        }`}
-                      >
-                        1) Quilometragem atual
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setOdometerStep('AUTO')}
-                        className={`rounded-lg px-3 py-2 text-xs font-medium border transition-colors ${
-                          odometerStep === 'AUTO'
-                            ? 'border-teal-700 bg-teal-50 text-teal-800'
-                            : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-                        }`}
-                      >
-                        2) Automação diária
-                      </button>
-                    </div>
-                  </div>
-
-                  {odometerStep === 'CURRENT' && (
-                    <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
-                      <strong className="text-sm text-gray-900 block">Quilometragem atual</strong>
-
-                      <div className="space-y-2">
-                        <label className="text-xs text-gray-600 block">Valor atual do painel</label>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          name="currentOdometerInput"
-                          placeholder="Ex.: 52340.5"
-                          value={currentOdometerInput}
-                          onChange={(e) => {
-                            setCurrentOdometerInput(e.target.value)
-                            setShowOutlierConfirm(false)
-                            setConfirmOdometerOutlier(false)
-                          }}
-                        />
-                      </div>
-
-                      {selectedVehicle.effectiveCurrentOdometer !== null && selectedVehicle.effectiveCurrentOdometer !== undefined && (
-                        <div className="space-y-1">
-                          <span className="text-xs text-teal-700 block">
-                            Estimativa atual: {selectedVehicle.effectiveCurrentOdometer.toFixed(1)} km
-                          </span>
-                          {deltaLabel && (
-                            <span className={`text-xs block font-medium ${deltaLabel.className}`}>
-                              {deltaLabel.text}
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      <p className="text-[11px] text-gray-500">
-                        Use o valor real do painel para recalibrar.
-                      </p>
-
-                      {showOutlierConfirm && (
-                        <label className="flex items-center gap-2 text-[11px] text-amber-700 rounded-lg border border-amber-200 bg-amber-50 px-2 py-2">
-                          <input
-                            type="checkbox"
-                            checked={confirmOdometerOutlier}
-                            onChange={(event) => setConfirmOdometerOutlier(event.target.checked)}
-                          />
-                          Confirmar outlier (salto atípico) para salvar
-                        </label>
-                      )}
-
-                      <div className="space-y-2">
-                        <Button
-                          type="button"
-                          className="h-9 px-3 rounded-lg w-full sm:w-auto text-sm"
-                          isLoading={isUpdatingVehicle}
-                          onClick={handleUpdateCurrentOdometer}
-                        >
-                          Salvar quilometragem
-                        </Button>
-
-                        <button
-                          type="button"
-                          className="text-xs text-teal-700 hover:text-teal-800 underline"
-                          onClick={handleRecalibrateNow}
-                          disabled={isRecalibratingNow}
-                        >
-                          {isRecalibratingNow ? 'Atualizando...' : 'Atualizar agora (ação rápida)'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {odometerStep === 'AUTO' && (
-                    <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
-                      <div className="flex items-center gap-2">
-                        <input
-                          id="auto-odometer"
-                          type="checkbox"
-                          checked={autoOdometerEnabledInput}
-                          onChange={(event) => setAutoOdometerEnabledInput(event.target.checked)}
-                          className="w-4 h-4 rounded border-gray-300"
-                        />
-                        <label htmlFor="auto-odometer" className="text-sm text-gray-800 font-medium">
-                          Estimativa automática de km/dia
-                        </label>
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-xs text-gray-600 block">Média de km por dia</label>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          name="averageDailyKmInput"
-                          placeholder="Ex.: 38.5"
-                          value={averageDailyKmInput}
-                          onChange={(e) => setAverageDailyKmInput(e.target.value)}
-                        />
-                      </div>
-
-                      <p className="text-[11px] text-gray-500">
-                        Use a média diária para prever km e próximas necessidades.
-                      </p>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-2">
-                          <span className="text-[10px] text-gray-500 block">Aprendizado</span>
-                          <strong className="text-xs text-gray-800">{selectedVehicle.odometerLearning?.learnedAverageDailyKm?.toFixed(1) ?? '—'} km/dia</strong>
-                        </div>
-                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-2">
-                          <span className="text-[10px] text-gray-500 block">Dia útil</span>
-                          <strong className="text-xs text-gray-800">{selectedVehicle.odometerLearning?.learnedWeekdayKm?.toFixed(1) ?? '—'} km/dia</strong>
-                        </div>
-                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-2">
-                          <span className="text-[10px] text-gray-500 block">Fim de semana</span>
-                          <strong className="text-xs text-gray-800">{selectedVehicle.odometerLearning?.learnedWeekendKm?.toFixed(1) ?? '—'} km/dia</strong>
-                        </div>
-                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-2">
-                          <span className="text-[10px] text-gray-500 block">Projeção semanal</span>
-                          <strong className="text-xs text-gray-800">{selectedVehicle.odometerLearning?.weeklyProjectionKm?.toFixed(1) ?? '—'} km</strong>
-                        </div>
-                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-2">
-                          <span className="text-[10px] text-gray-500 block">Outliers</span>
-                          <strong className="text-xs text-gray-800">{selectedVehicle.odometerLearning?.outlierCount ?? 0}</strong>
-                        </div>
-                      </div>
-
-                      {selectedVehicle.recalibrationSuggested && (
-                        <span className="text-[11px] text-amber-700 block">
-                          Atenção: divergência de {selectedVehicle.divergencePercent?.toFixed(1)}%. Recalibre para melhorar a precisão.
-                        </span>
-                      )}
-
-                      {selectedVehicle.odometerBaseDate && (
-                        <span className="text-[11px] text-gray-500 block">
-                          Base: {formatDate(selectedVehicle.odometerBaseDate)}
-                        </span>
-                      )}
-
-                      <Button
-                        type="button"
-                        className="h-9 px-3 rounded-lg w-full sm:w-auto text-sm"
-                        isLoading={isUpdatingVehicle}
-                        onClick={handleUpdateAutoOdometerSettings}
-                      >
-                        Salvar automação
-                      </Button>
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  className="lg:hidden w-full flex items-center justify-between text-left"
-                  onClick={() => setMobileOpenSection((state) => (state === 'METRICS' ? 'TIMELINE' : 'METRICS'))}
-                >
-                  <strong className="text-gray-900">Métricas</strong>
-                  <span className="text-xs text-gray-500">
-                    {mobileOpenSection === 'METRICS' ? 'Ocultar' : 'Mostrar'}
-                  </span>
-                </button>
-
-                <div className={`${mobileOpenSection === 'METRICS' ? 'block' : 'hidden'} lg:block space-y-2`}>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                    {isLoadingVehicle ? (
-                      Array.from({ length: 5 }).map((_, index) => (
-                        <div key={`metrics-skeleton-${index}`} className="rounded-xl bg-gray-50 p-3 animate-pulse space-y-2">
-                          <div className="h-3 w-16 rounded bg-gray-200" />
-                          <div className="h-4 w-20 rounded bg-gray-200" />
-                        </div>
-                      ))
-                    ) : (
-                      <>
-                        <div className="rounded-xl bg-gray-50 p-3" title="Média de quilômetros por litro dos abastecimentos registrados.">
-                          <span className="text-[11px] text-gray-500 block">Consumo médio</span>
-                          <strong className="text-gray-900 text-lg leading-none mt-1 block">
-                            {selectedVehicle.fuelStats?.averageConsumptionKmPerLiter
-                              ? `${selectedVehicle.fuelStats.averageConsumptionKmPerLiter.toFixed(2)} km/L`
-                              : '-'}
-                          </strong>
-                        </div>
-                        <div className="rounded-xl bg-gray-50 p-3" title="Valor médio gasto por quilômetro rodado.">
-                          <span className="text-[11px] text-gray-500 block">Custo por km</span>
-                          <strong className="text-rose-700 text-lg leading-none mt-1 block font-semibold">
-                            {selectedVehicle.fuelStats?.costPerKm ? formatCurrency(selectedVehicle.fuelStats.costPerKm) : '-'}
-                          </strong>
-                        </div>
-                        <div className="rounded-xl bg-gray-50 p-3" title="Projeção de gasto para cada 1.000 km.">
-                          <span className="text-[11px] text-gray-500 block">Custo / 1.000 km</span>
-                          <strong className="text-rose-700 text-lg leading-none mt-1 block font-semibold">
-                            {selectedVehicle.fuelStats?.costPer1000Km ? formatCurrency(selectedVehicle.fuelStats.costPer1000Km) : '-'}
-                          </strong>
-                        </div>
-                        <div className="rounded-xl bg-gray-50 p-3" title="Somatório de combustível e manutenção no mês atual.">
-                          <span className="text-[11px] text-gray-500 block">Gasto no mês</span>
-                          <strong className="text-rose-700 text-lg leading-none mt-1 block font-semibold">{formatCurrency(selectedVehicleMonthlySpent)}</strong>
-                        </div>
-                        <div className="rounded-xl bg-gray-50 p-3">
-                          <span className="text-[11px] text-gray-500 block">Peças cadastradas</span>
-                          <strong className="text-gray-900 text-lg leading-none mt-1 block">{selectedVehicle.parts.length}</strong>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
+                <VehicleMetricsSection
+                  mobileOpenSection={mobileOpenSection}
+                  setMobileOpenSection={setMobileOpenSection}
+                  isLoadingVehicle={isLoadingVehicle}
+                  selectedVehicle={selectedVehicle}
+                  selectedVehicleMonthlySpent={selectedVehicleMonthlySpent}
+                />
               </div>
 
               <VehicleTimelineSection
