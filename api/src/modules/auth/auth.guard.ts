@@ -10,13 +10,14 @@ import { Request } from 'express'
 import { env } from 'src/shared/config/env'
 import { IS_PUBLIC_KEY } from 'src/shared/decorators/IsPublic'
 import { IS_RESET_PASSWORD } from 'src/shared/decorators/IsResetPassword'
+import { RequestWithContext } from 'src/shared/http/request-context'
 
 @Injectable()
 export class AuthGuard implements CanActivate {
   constructor(private jwtService: JwtService, private reflector: Reflector) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest<Request>()
+    const request = context.switchToHttp().getRequest<RequestWithContext>()
 
     if (request.method === 'OPTIONS') {
       return true
@@ -45,7 +46,7 @@ export class AuthGuard implements CanActivate {
         secret: isResetPassword ? env.resetPasswordJwtSecret : env.jwtSecret,
       })
 
-      request['userId'] = payload.sub
+      request.userId = payload.sub
     } catch {
       throw new UnauthorizedException()
     }
