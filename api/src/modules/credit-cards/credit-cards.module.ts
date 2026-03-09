@@ -9,6 +9,12 @@ import { ImportCreditCardStatementUseCase } from './use-cases/import-credit-card
 import { ExportCreditCardStatementUseCase } from './use-cases/export-credit-card-statement.use-case'
 import { AiModule } from '../ai/ai.module'
 import { TransactionsModule } from '../transactions/transactions.module'
+import { CreditCardPurchaseMetadataService } from './services/credit-card-purchase-metadata.service'
+import { CreditCardStatementScheduleService } from './services/credit-card-statement-schedule.service'
+import { CreditCardStatementParserService } from './services/credit-card-statement-parser.service'
+import { CreditCardStatementPaymentImportService } from './services/credit-card-statement-payment-import.service'
+import { CreditCardStatementPurchaseImportService } from './services/credit-card-statement-purchase-import.service'
+import { CreditCardPurchasesWriteService } from './services/credit-card-purchases-write.service'
 
 @Module({
   imports: [BankAccountsModule, CategoriesModule, AiModule, TransactionsModule],
@@ -19,6 +25,12 @@ import { TransactionsModule } from '../transactions/transactions.module'
     FindCreditCardStatementByMonthUseCase,
     ImportCreditCardStatementUseCase,
     ExportCreditCardStatementUseCase,
+    CreditCardPurchaseMetadataService,
+    CreditCardStatementScheduleService,
+    CreditCardStatementParserService,
+    CreditCardStatementPaymentImportService,
+    CreditCardStatementPurchaseImportService,
+    CreditCardPurchasesWriteService,
   ],
 })
 export class CreditCardsModule {}
