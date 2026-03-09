@@ -6,14 +6,11 @@ import {
 } from '@nestjs/common'
 import {
   FriendshipStatus,
-  SavingsBoxAlertStatus,
   SavingsBoxAlertType,
   SavingsBoxStatus,
   SavingsBoxTransactionType,
-  SavingsBoxYieldMode,
 } from '@prisma/client'
 import { randomUUID } from 'crypto'
-import { NotificationsService } from 'src/modules/notifications/notifications.service'
 import { FriendshipsRepository } from 'src/shared/database/repositories/friendships.repository'
 import { SavingsBoxAlertsRepository } from 'src/shared/database/repositories/savings-box-alerts.repository'
 import { SavingsBoxCollaboratorsRepository } from 'src/shared/database/repositories/savings-box-collaborators.repository'
@@ -26,6 +23,8 @@ import { SetSavingsBoxGoalDto } from '../dto/set-savings-box-goal.dto'
 import { SetSavingsBoxRecurrenceDto } from '../dto/set-savings-box-recurrence.dto'
 import { SetSavingsBoxYieldDto } from '../dto/set-savings-box-yield.dto'
 import { UpdateSavingsBoxDto } from '../dto/update-savings-box.dto'
+import { SavingsBoxesMathService } from './savings-boxes-math.service'
+import { SavingsBoxesAlertsService } from './savings-boxes-alerts.service'
 
 @Injectable()
 export class SavingsBoxesService {
@@ -36,7 +35,8 @@ export class SavingsBoxesService {
     private readonly savingsBoxCollaboratorsRepo: SavingsBoxCollaboratorsRepository,
     private readonly friendshipsRepo: FriendshipsRepository,
     private readonly usersRepo: UsersRepository,
-    private readonly notificationsService: NotificationsService,
+    private readonly savingsBoxesMathService: SavingsBoxesMathService,
+    private readonly savingsBoxesAlertsService: SavingsBoxesAlertsService,
   ) {}
 
   async create(userId: string, createSavingsBoxDto: CreateSavingsBoxDto) {
@@ -138,8 +138,8 @@ export class SavingsBoxesService {
         },
         take: 10,
       }),
-      this.computeProgress(savingsBox),
-      this.computeProjection(savingsBox),
+      this.savingsBoxesMathService.computeProgress(savingsBox),
+      this.savingsBoxesMathService.computeProjection(savingsBox),
     ])
 
     return {
@@ -178,7 +178,7 @@ export class SavingsBoxesService {
       },
     })
 
-    await this.evaluateGoalAlerts(updatedBox)
+    await this.savingsBoxesAlertsService.evaluateGoalAlerts(updatedBox)
 
     return updatedBox
   }
@@ -201,7 +201,7 @@ export class SavingsBoxesService {
       },
     })
 
-    await this.evaluateGoalAlerts(updatedBox)
+    await this.savingsBoxesAlertsService.evaluateGoalAlerts(updatedBox)
 
     return updatedBox
   }
@@ -209,7 +209,7 @@ export class SavingsBoxesService {
   async getProgress(userId: string, savingsBoxId: string) {
     const savingsBox = await this.getAccessibleSavingsBox(userId, savingsBoxId)
 
-    return this.computeProgress(savingsBox)
+    return this.savingsBoxesMathService.computeProgress(savingsBox)
   }
 
   async setRecurrence(
@@ -271,7 +271,7 @@ export class SavingsBoxesService {
       },
     })
 
-    await this.createAlert({
+    await this.savingsBoxesAlertsService.createAlert({
       userId,
       savingsBoxId: savingsBox.id,
       type: SavingsBoxAlertType.RECURRING_EXECUTED,
@@ -347,7 +347,7 @@ export class SavingsBoxesService {
         continue
       }
 
-      const yieldAmount = this.computeYieldAmount(savingsBox)
+      const yieldAmount = this.savingsBoxesMathService.computeYieldAmount(savingsBox)
 
       if (yieldAmount <= 0) {
         results.push({
@@ -396,7 +396,7 @@ export class SavingsBoxesService {
   async getProjection(userId: string, savingsBoxId: string) {
     const savingsBox = await this.getAccessibleSavingsBox(userId, savingsBoxId)
 
-    return this.computeProjection(savingsBox)
+    return this.savingsBoxesMathService.computeProjection(savingsBox)
   }
 
   async getAnnualPlanning(userId: string, year: number) {
@@ -419,7 +419,7 @@ export class SavingsBoxesService {
 
         projectedBalance += plannedContribution
 
-        const plannedYield = this.computeProjectedMonthlyYield(
+        const plannedYield = this.savingsBoxesMathService.computeProjectedMonthlyYield(
           savingsBox.yieldMode,
           savingsBox.monthlyYieldRate,
           projectedBalance,
@@ -471,7 +471,7 @@ export class SavingsBoxesService {
     })
 
     const refreshedBox = await this.getAccessibleSavingsBox(userId, savingsBoxId)
-    await this.evaluateGoalAlerts(refreshedBox)
+    await this.savingsBoxesAlertsService.evaluateGoalAlerts(refreshedBox)
 
     return transaction
   }
@@ -690,253 +690,4 @@ export class SavingsBoxesService {
     return transaction
   }
 
-  private async computeProgress(savingsBox: {
-    currentBalance: number;
-    targetAmount: number | null;
-    targetDate: Date | null;
-  }) {
-    const targetAmount = savingsBox.targetAmount ?? 0
-    const percentage =
-      targetAmount > 0
-        ? Number(((savingsBox.currentBalance / targetAmount) * 100).toFixed(2))
-        : 0
-
-    const remaining =
-      targetAmount > 0
-        ? Number((targetAmount - savingsBox.currentBalance).toFixed(2))
-        : null
-
-    const now = new Date()
-    const daysToTarget = savingsBox.targetDate
-      ? Math.ceil((savingsBox.targetDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-      : null
-
-    const monthlyRequired =
-      remaining !== null && remaining > 0 && daysToTarget !== null && daysToTarget > 0
-        ? Number((remaining / Math.max(1, daysToTarget / 30)).toFixed(2))
-        : null
-
-    return {
-      targetAmount: savingsBox.targetAmount,
-      targetDate: savingsBox.targetDate,
-      currentBalance: savingsBox.currentBalance,
-      percentage,
-      remaining,
-      daysToTarget,
-      monthlyRequired,
-      isCompleted: targetAmount > 0 && savingsBox.currentBalance >= targetAmount,
-    }
-  }
-
-  private async computeProjection(savingsBox: {
-    currentBalance: number;
-    targetAmount: number | null;
-    recurrenceEnabled: boolean;
-    recurrenceAmount: number | null;
-    monthlyYieldRate: number | null;
-    yieldMode: SavingsBoxYieldMode | null;
-  }) {
-    const monthlyContribution = savingsBox.recurrenceEnabled
-      ? (savingsBox.recurrenceAmount ?? 0)
-      : 0
-
-    let projectedBalance = savingsBox.currentBalance
-    let estimatedMonthsToGoal: number | null = null
-
-    if (savingsBox.targetAmount && savingsBox.targetAmount > projectedBalance) {
-      let monthCounter = 0
-      while (projectedBalance < savingsBox.targetAmount && monthCounter < 600) {
-        projectedBalance += monthlyContribution
-        projectedBalance += this.computeProjectedMonthlyYield(
-          savingsBox.yieldMode,
-          savingsBox.monthlyYieldRate,
-          projectedBalance,
-        )
-
-        monthCounter += 1
-      }
-
-      estimatedMonthsToGoal = monthCounter < 600 ? monthCounter : null
-    }
-
-    const projectedBalanceIn12Months = this.projectBalanceInMonths(
-      savingsBox.currentBalance,
-      monthlyContribution,
-      savingsBox.yieldMode,
-      savingsBox.monthlyYieldRate,
-      12,
-    )
-
-    return {
-      monthlyContribution,
-      projectedBalanceIn12Months,
-      estimatedMonthsToGoal,
-      estimatedGoalDate: estimatedMonthsToGoal !== null
-        ? this.addMonths(new Date(), estimatedMonthsToGoal).toISOString()
-        : null,
-    }
-  }
-
-  private projectBalanceInMonths(
-    currentBalance: number,
-    monthlyContribution: number,
-    yieldMode: SavingsBoxYieldMode | null,
-    monthlyYieldRate: number | null,
-    months: number,
-  ) {
-    let balance = currentBalance
-
-    for (let index = 0; index < months; index += 1) {
-      balance += monthlyContribution
-      balance += this.computeProjectedMonthlyYield(yieldMode, monthlyYieldRate, balance)
-    }
-
-    return Number(balance.toFixed(2))
-  }
-
-  private computeProjectedMonthlyYield(
-    yieldMode: SavingsBoxYieldMode | null,
-    monthlyYieldRate: number | null,
-    currentBalance: number,
-  ) {
-    if (!yieldMode || !monthlyYieldRate || monthlyYieldRate <= 0) {
-      return 0
-    }
-
-    if (yieldMode === SavingsBoxYieldMode.FIXED) {
-      return Number(monthlyYieldRate.toFixed(2))
-    }
-
-    return Number(((currentBalance * monthlyYieldRate) / 100).toFixed(2))
-  }
-
-  private computeYieldAmount(savingsBox: {
-    currentBalance: number;
-    monthlyYieldRate: number | null;
-    yieldMode: SavingsBoxYieldMode | null;
-  }) {
-    if (!savingsBox.monthlyYieldRate || !savingsBox.yieldMode) {
-      return 0
-    }
-
-    if (savingsBox.yieldMode === SavingsBoxYieldMode.FIXED) {
-      return Number(savingsBox.monthlyYieldRate.toFixed(2))
-    }
-
-    return Number(((savingsBox.currentBalance * savingsBox.monthlyYieldRate) / 100).toFixed(2))
-  }
-
-  private addMonths(date: Date, months: number) {
-    const clonedDate = new Date(date)
-
-    clonedDate.setMonth(clonedDate.getMonth() + months)
-
-    return clonedDate
-  }
-
-  private async evaluateGoalAlerts(savingsBox: {
-    id: string;
-    userId: string;
-    name: string;
-    currentBalance: number;
-    targetAmount: number | null;
-    targetDate: Date | null;
-    alertEnabled: boolean;
-  }) {
-    if (!savingsBox.alertEnabled || !savingsBox.targetAmount) {
-      return
-    }
-
-    if (savingsBox.currentBalance >= savingsBox.targetAmount) {
-      const monthKey = new Date().toISOString().slice(0, 7)
-      await this.createAlert({
-        userId: savingsBox.userId,
-        savingsBoxId: savingsBox.id,
-        type: SavingsBoxAlertType.GOAL_COMPLETED,
-        message: `🎯 Parabéns! Você concluiu a meta da caixinha ${savingsBox.name}.`,
-        idempotencyKey: `savings-box-alert:goal-completed:${savingsBox.id}:${monthKey}`,
-      })
-      return
-    }
-
-    if (!savingsBox.targetDate) {
-      return
-    }
-
-    const now = new Date()
-    const daysToTarget = Math.ceil(
-      (savingsBox.targetDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
-    )
-
-    const progress = (savingsBox.currentBalance / savingsBox.targetAmount) * 100
-
-    if (daysToTarget <= 15 && progress < 80) {
-      await this.createAlert({
-        userId: savingsBox.userId,
-        savingsBoxId: savingsBox.id,
-        type: SavingsBoxAlertType.GOAL_NEAR_DUE,
-        message: `⚠️ A meta da caixinha ${savingsBox.name} vence em ${daysToTarget} dia(s) e está em ${progress.toFixed(0)}%.`,
-        idempotencyKey: `savings-box-alert:goal-near-due:${savingsBox.id}:${savingsBox.targetDate.toISOString().slice(0, 10)}`,
-      })
-    }
-  }
-
-  private async createAlert(params: {
-    userId: string;
-    savingsBoxId: string;
-    type: SavingsBoxAlertType;
-    message: string;
-    idempotencyKey: string;
-  }) {
-    const existingAlert = await this.savingsBoxAlertsRepo.findUnique({
-      where: {
-        idempotencyKey: params.idempotencyKey,
-      },
-    })
-
-    if (existingAlert) {
-      return existingAlert
-    }
-
-    const alert = await this.savingsBoxAlertsRepo.create({
-      data: {
-        userId: params.userId,
-        savingsBoxId: params.savingsBoxId,
-        type: params.type,
-        message: params.message,
-        idempotencyKey: params.idempotencyKey,
-      },
-    })
-
-    try {
-      await this.notificationsService.notifyUser(
-        params.userId,
-        params.message,
-        'GENERAL',
-        {
-          idempotencyKey: `notification-event:${params.idempotencyKey}`,
-        },
-      )
-
-      return this.savingsBoxAlertsRepo.update({
-        where: { id: alert.id },
-        data: {
-          status: SavingsBoxAlertStatus.SENT,
-          sentAt: new Date(),
-        },
-      })
-    } catch (error) {
-      const errorMessage = error instanceof Error
-        ? error.message
-        : 'Falha ao enviar alerta da caixinha.'
-
-      return this.savingsBoxAlertsRepo.update({
-        where: { id: alert.id },
-        data: {
-          status: SavingsBoxAlertStatus.FAILED,
-          errorMessage,
-        },
-      })
-    }
-  }
 }
