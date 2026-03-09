@@ -3,11 +3,11 @@
 ## Frontend
 
 ### Alta prioridade
-- [ ] `frontend/src/view/pages/Vehicles/index.tsx`: extrair modais restantes (`Novo Veiculo`, `Nova peca / troca`) e blocos de resumo/odometro/metricas em subcomponentes.
+- [x] `frontend/src/view/pages/Vehicles/index.tsx`: modais e blocos de resumo/odometro/metricas extraidos em subcomponentes.
 - [x] `frontend/src/view/pages/SavingsBoxes/index.tsx`: extrair modais de configuracao (`meta`, `recorrencia`, `rendimento`, `amigos`).
 - [x] `frontend/src/view/pages/SavingsBoxes/index.tsx`: extrair seccoes de historico/planejamento em componentes menores.
 - [x] `frontend/src/view/pages/Settings/index.tsx`: separar painel de preferencias e notificacoes em componentes de secao.
-- [ ] `frontend/src/view/pages/Dashboard/components/Transactions/index.tsx`: separar tabela/lista, filtros e acoes realtime em componentes/hooks.
+- [x] `frontend/src/view/pages/Dashboard/components/Transactions/index.tsx`: lista, realtime e bloco de filtros/cabecalho extraidos em componentes/hooks.
 
 ### Media prioridade
 - [ ] `frontend/src/view/pages/Dashboard/modals/EditCreditCardPurchaseModal/index.tsx`: quebrar formularios por aba e hook de validacao.
@@ -19,8 +19,8 @@
 ### Alta prioridade
 - [x] `api/src/modules/savings-boxes/services/savings-boxes.service.ts`: extrair calculos/projecoes para service utilitario.
 - [x] `api/src/modules/savings-boxes/services/savings-boxes.service.ts`: extrair fluxo de alertas/notificacao para service dedicado.
-- [ ] `api/src/modules/credit-cards/services/credit-cards.service.ts`: separar fluxos em read/write/import use-cases.
-- [ ] `api/src/modules/credit-cards/use-cases/import-credit-card-statement.use-case.ts`: mover parser matching/dedupe para helper service.
+- [ ] `api/src/modules/credit-cards/services/credit-cards.service.ts`: decomposicao avancou com colaboradores de metadados, calendario/parcelas e escrita de compras (`CreditCardPurchaseMetadataService`, `CreditCardStatementScheduleService`, `CreditCardPurchasesWriteService`); continuar split de leitura/import.
+- [ ] `api/src/modules/credit-cards/use-cases/import-credit-card-statement.use-case.ts`: parser/dedupe, pagamento importado e criacao de compras extraidos para colaboradores (`CreditCardStatementParserService`, `CreditCardStatementPaymentImportService`, `CreditCardStatementPurchaseImportService`); manter fatiamento da orquestracao/progresso.
 - [ ] `api/src/modules/transactions/services/transactions-import.use-case.service.ts`: continuar fatiamento em colaborador de deduplicacao e colaborador de classificacao.
 
 ### Media prioridade
