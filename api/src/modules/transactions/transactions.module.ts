@@ -11,6 +11,10 @@ import { BancoDoBrasilOfxStatementParser } from './services/statement-import/par
 import { SicoobPdfStatementParser } from './services/statement-import/parsers/sicoob-pdf-statement.parser'
 import { AiModule } from '../ai/ai.module'
 import { TransactionsGateway } from './transactions.gateway'
+import { TransactionsCreateUseCaseService } from './services/transactions-create.use-case.service'
+import { TransactionsImportUseCaseService } from './services/transactions-import.use-case.service'
+import { TransactionsRecurrenceUseCaseService } from './services/transactions-recurrence.use-case.service'
+import { TransactionsReportsInputUseCaseService } from './services/transactions-reports-input.use-case.service'
 
 @Module({
   imports: [BankAccountsModule, CategoriesModule, AiModule],
@@ -24,6 +28,10 @@ import { TransactionsGateway } from './transactions.gateway'
     BancoDoBrasilOfxStatementParser,
     SicoobPdfStatementParser,
     TransactionsGateway,
+    TransactionsCreateUseCaseService,
+    TransactionsImportUseCaseService,
+    TransactionsRecurrenceUseCaseService,
+    TransactionsReportsInputUseCaseService,
   ],
   exports: [TransactionsGateway],
 })
