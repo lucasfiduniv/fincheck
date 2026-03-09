@@ -2,17 +2,13 @@ import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Logo } from '../../components/Logo'
-import { Input } from '../../components/Input'
-import { Button } from '../../components/Button'
-import { Select } from '../../components/Select'
 import { notificationsService } from '../../../app/services/notificationsService'
 import { toast } from 'react-hot-toast'
 import { NotificationPreferences } from '../../../app/entities/NotificationSettings'
-import { SettingsSection } from './components/SettingsSection'
-import { SettingsToggleItem } from './components/SettingsToggleItem'
-import { NotificationHistoryPanel } from './components/NotificationHistoryPanel'
 import { SettingsHero } from './components/SettingsHero'
 import { SettingsMenu, SettingsMenuItem } from './components/SettingsMenu'
+import { NotificationsSettingsPanel } from './components/NotificationsSettingsPanel'
+import { ImportsSettingsPanel } from './components/ImportsSettingsPanel'
 import { useBankAccounts } from '../../../app/hooks/useBankAccounts'
 import { useCreditCards } from '../../../app/hooks/useCreditCards'
 import {
@@ -559,298 +555,58 @@ export function Settings() {
             />
 
             {activeMenuKey === 'notifications' && (
-              <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_0.85fr] gap-4 items-start">
-                <div className="space-y-4">
-                  <SettingsSection
-                    title="1. Ativar notificações"
-                    description="Defina seu WhatsApp e ative o envio automático de alertas."
-                  >
-                    <div className="space-y-3">
-                      <Input
-                        name="phoneNumber"
-                        placeholder="Telefone (WhatsApp)"
-                        value={formatPhoneMask(phoneNumber)}
-                        onChange={(event) => setPhoneNumber(toStoragePhone(event.target.value))}
-                      />
-
-                      <p className="text-xs text-gray-600">Use número com DDD.</p>
-
-                      {phoneValidationError && (
-                        <p className="text-xs text-red-800">{phoneValidationError}</p>
-                      )}
-
-                      <SettingsToggleItem
-                        title="Habilitar notificações"
-                        description="Ativa envio de alertas automáticos para seu WhatsApp."
-                        checked={notificationsEnabled}
-                        onChange={setNotificationsEnabled}
-                      />
-                    </div>
-                  </SettingsSection>
-
-                  <SettingsSection
-                    title="2. Quais alertas receber"
-                    description="Ajuste os alertas essenciais e opcionais do seu dia a dia."
-                  >
-                    <div className="space-y-3">
-                      <div>
-                        <span className="text-xs text-gray-500 uppercase tracking-[0.08em]">Essenciais</span>
-                        <div className="mt-2 space-y-2">
-                          {essentialPreferences.map((preference) => (
-                            <SettingsToggleItem
-                              key={preference.key}
-                              title={preference.title}
-                              description={preference.description}
-                              checked={preferences[preference.key]}
-                              disabled={!notificationsEnabled}
-                              onChange={(checked) => {
-                                setPreferences((prevState) => ({
-                                  ...prevState,
-                                  [preference.key]: checked,
-                                }))
-                              }}
-                            />
-                          ))}
-                        </div>
-                      </div>
-
-                      <div>
-                        <span className="text-xs text-gray-500 uppercase tracking-[0.08em]">Opcionais</span>
-                        <div className="mt-2 space-y-2">
-                          {optionalPreferences.map((preference) => (
-                            <SettingsToggleItem
-                              key={preference.key}
-                              title={preference.title}
-                              description={preference.description}
-                              checked={preferences[preference.key]}
-                              disabled={!notificationsEnabled}
-                              onChange={(checked) => {
-                                setPreferences((prevState) => ({
-                                  ...prevState,
-                                  [preference.key]: checked,
-                                }))
-                              }}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </SettingsSection>
-
-                  <div className="sticky bottom-0 z-20 bg-white/95 backdrop-blur border border-gray-200 rounded-2xl p-4">
-                    <div className="flex flex-col lg:flex-row gap-3 lg:justify-end">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={handleSendTest}
-                        isLoading={isSendingTest}
-                        disabled={!phoneNumber || !!phoneValidationError || !data?.hasEvolutionConfigured}
-                        className="w-full lg:w-auto"
-                      >
-                        Enviar teste
-                      </Button>
-
-                      <Button
-                        type="button"
-                        onClick={handleSave}
-                        isLoading={isSaving}
-                        disabled={!canSave || !!phoneValidationError}
-                        className="w-full lg:w-auto"
-                      >
-                        Salvar configurações
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-4 xl:sticky xl:top-0">
-                  <SettingsSection title="Histórico">
-                    <NotificationHistoryPanel
-                      history={history}
-                      isLoading={isLoadingHistory}
-                    />
-                  </SettingsSection>
-                </div>
-              </div>
+              <NotificationsSettingsPanel
+                notificationsEnabled={notificationsEnabled}
+                phoneNumber={phoneNumber}
+                setPhoneNumber={setPhoneNumber}
+                phoneValidationError={phoneValidationError}
+                setNotificationsEnabled={setNotificationsEnabled}
+                essentialPreferences={essentialPreferences}
+                optionalPreferences={optionalPreferences}
+                preferences={preferences}
+                setPreferences={setPreferences}
+                handleSendTest={handleSendTest}
+                isSendingTest={isSendingTest}
+                hasEvolutionConfigured={data?.hasEvolutionConfigured}
+                handleSave={handleSave}
+                isSaving={isSaving}
+                canSave={canSave}
+                history={history}
+                isLoadingHistory={isLoadingHistory}
+                formatPhoneMask={formatPhoneMask}
+                toStoragePhone={toStoragePhone}
+              />
             )}
 
             {activeMenuKey === 'imports' && (
-              <div className="space-y-4">
-                <SettingsSection
-                  title="Importar extrato do banco"
-                  description="Importe CSV/OFX do Nubank, OFX do Banco do Brasil ou PDF do Sicoob e crie lançamentos automaticamente com classificação inteligente."
-                >
-                  <div className="rounded-xl border border-teal-100 bg-teal-50 p-4 space-y-2">
-                    <strong className="text-sm text-teal-900 block">O que acontece ao importar</strong>
-                    <ul className="text-sm text-teal-900 space-y-1 list-disc pl-5">
-                      <li>lê o arquivo CSV/OFX/PDF e transforma em lançamentos válidos</li>
-                      <li>remove duplicados já importados para evitar repetição</li>
-                      <li>identifica transferências (incluindo Pix entre suas contas)</li>
-                      <li>detecta pagamentos de fatura de cartão</li>
-                      <li>usa IA + suas categorias para melhorar descrição e categoria</li>
-                    </ul>
-                    <p className="text-xs text-teal-800">
-                      Se a IA não tiver confiança suficiente, o sistema usa fallback seguro e mantém o lançamento com categoria padrão.
-                    </p>
-                  </div>
-
-                  <div className="space-y-3">
-                    <Select
-                      placeholder="Banco"
-                      value={statementBank}
-                      onChange={(value) => setStatementBank(value as SupportedStatementBank)}
-                      options={[
-                        { value: 'NUBANK', label: 'Nubank (CSV/OFX)' },
-                        { value: 'BANCO_DO_BRASIL', label: 'Banco do Brasil (OFX)' },
-                        { value: 'SICOOB', label: 'Sicoob (PDF)' },
-                      ]}
-                    />
-
-                    <Select
-                      placeholder="Conta de destino"
-                      value={statementBankAccountId}
-                      onChange={setStatementBankAccountId}
-                      options={accounts.map((account) => ({
-                        value: account.id,
-                        label: account.name,
-                      }))}
-                    />
-
-                    <label className="flex flex-col gap-2">
-                      <span className="text-sm text-gray-700">Arquivo (.csv, .ofx ou .pdf)</span>
-                      <input
-                        type="file"
-                        accept=".csv,.ofx,.pdf,text/csv,application/x-ofx,application/pdf"
-                        onChange={handleStatementFileChange}
-                        className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-gray-800 hover:file:bg-gray-200"
-                      />
-                    </label>
-
-                    {statementFileName && (
-                      <p className="text-xs text-gray-600">Arquivo selecionado: {statementFileName}</p>
-                    )}
-
-                    <Button
-                      type="button"
-                      onClick={handleImportStatement}
-                      isLoading={isImportingStatement}
-                      disabled={!statementBankAccountId || !statementCsvContent}
-                      className="w-full lg:w-auto"
-                    >
-                      Importar extrato
-                    </Button>
-
-                    {(isImportingStatement || statementImportStatus) && (
-                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
-                        <div className="flex items-center justify-between text-xs text-gray-700">
-                          <span>{statementImportStatus || 'Importando extrato...'}</span>
-                          <strong>{statementImportProgress}%</strong>
-                        </div>
-                        {!!statementImportTimingLabel && (
-                          <div className="text-[11px] text-gray-500">{statementImportTimingLabel}</div>
-                        )}
-                        <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-teal-800 transition-all"
-                            style={{ width: `${statementImportProgress}%` }}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {importResult && (
-                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
-                        <p>Total de linhas: <strong>{importResult.totalRows}</strong></p>
-                        <p>Linhas únicas: <strong>{importResult.uniqueRows}</strong></p>
-                        <p>Importadas: <strong>{importResult.importedCount}</strong></p>
-                        <p>Ignoradas (duplicadas): <strong>{importResult.skippedCount}</strong></p>
-                        <p>Falharam: <strong>{importResult.failedCount}</strong></p>
-                        {typeof importResult.aiEnhancedCount === 'number' && (
-                          <p>Enriquecidas por IA: <strong>{importResult.aiEnhancedCount}</strong></p>
-                        )}
-                        {typeof importResult.transferDetectedCount === 'number' && (
-                          <p>Transferências detectadas: <strong>{importResult.transferDetectedCount}</strong></p>
-                        )}
-                        {typeof importResult.cardBillPaymentDetectedCount === 'number' && (
-                          <p>Pagamentos de fatura detectados: <strong>{importResult.cardBillPaymentDetectedCount}</strong></p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </SettingsSection>
-
-                <SettingsSection
-                  title="Importar fatura de cartão"
-                  description="Importe CSV ou OFX do Nubank para criar compras no cartão selecionado."
-                >
-                  <div className="space-y-3">
-                    <Select
-                      placeholder="Cartão"
-                      value={creditCardStatementCardId}
-                      onChange={setCreditCardStatementCardId}
-                      options={creditCards.map((card) => ({
-                        value: card.id,
-                        label: card.name,
-                      }))}
-                    />
-
-                    <label className="flex flex-col gap-2">
-                      <span className="text-sm text-gray-700">Arquivo da fatura (.csv ou .ofx)</span>
-                      <input
-                        type="file"
-                        accept=".csv,.ofx,text/csv,application/x-ofx"
-                        onChange={handleCreditCardStatementFileChange}
-                        className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-gray-800 hover:file:bg-gray-200"
-                      />
-                    </label>
-
-                    {creditCardStatementFileName && (
-                      <p className="text-xs text-gray-600">Arquivo selecionado: {creditCardStatementFileName}</p>
-                    )}
-
-                    <Button
-                      type="button"
-                      onClick={handleImportCreditCardStatement}
-                      isLoading={isImportingCreditCardStatement}
-                      disabled={!creditCardStatementCardId || !creditCardStatementContent}
-                      className="w-full lg:w-auto"
-                    >
-                      Importar fatura do cartão
-                    </Button>
-
-                    {(isImportingCreditCardStatement || creditCardImportStatus) && (
-                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
-                        <div className="flex items-center justify-between text-xs text-gray-700">
-                          <span>{creditCardImportStatus || 'Importando fatura...'}</span>
-                          <strong>{creditCardImportProgress}%</strong>
-                        </div>
-                        {!!creditCardImportTimingLabel && (
-                          <div className="text-[11px] text-gray-500">{creditCardImportTimingLabel}</div>
-                        )}
-                        <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-teal-800 transition-all"
-                            style={{ width: `${creditCardImportProgress}%` }}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {creditCardImportResult && (
-                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
-                        <p>Total de linhas: <strong>{creditCardImportResult.totalRows}</strong></p>
-                        <p>Linhas únicas: <strong>{creditCardImportResult.uniqueRows}</strong></p>
-                        <p>Importadas: <strong>{creditCardImportResult.importedCount}</strong></p>
-                        {typeof creditCardImportResult.importedPaymentsCount === 'number' && (
-                          <p>Pagamentos aplicados: <strong>{creditCardImportResult.importedPaymentsCount}</strong></p>
-                        )}
-                        <p>Ignoradas (duplicadas): <strong>{creditCardImportResult.skippedCount}</strong></p>
-                        <p>Falharam: <strong>{creditCardImportResult.failedCount}</strong></p>
-                      </div>
-                    )}
-                  </div>
-                </SettingsSection>
-              </div>
+              <ImportsSettingsPanel
+                statementBank={statementBank}
+                setStatementBank={setStatementBank}
+                statementBankAccountId={statementBankAccountId}
+                setStatementBankAccountId={setStatementBankAccountId}
+                accounts={accounts}
+                handleStatementFileChange={handleStatementFileChange}
+                statementFileName={statementFileName}
+                handleImportStatement={handleImportStatement}
+                isImportingStatement={isImportingStatement}
+                statementCsvContent={statementCsvContent}
+                statementImportStatus={statementImportStatus}
+                statementImportProgress={statementImportProgress}
+                statementImportTimingLabel={statementImportTimingLabel}
+                importResult={importResult}
+                creditCardStatementCardId={creditCardStatementCardId}
+                setCreditCardStatementCardId={setCreditCardStatementCardId}
+                creditCards={creditCards}
+                handleCreditCardStatementFileChange={handleCreditCardStatementFileChange}
+                creditCardStatementFileName={creditCardStatementFileName}
+                handleImportCreditCardStatement={handleImportCreditCardStatement}
+                isImportingCreditCardStatement={isImportingCreditCardStatement}
+                creditCardStatementContent={creditCardStatementContent}
+                creditCardImportStatus={creditCardImportStatus}
+                creditCardImportProgress={creditCardImportProgress}
+                creditCardImportTimingLabel={creditCardImportTimingLabel}
+                creditCardImportResult={creditCardImportResult}
+              />
             )}
           </div>
         </div>
