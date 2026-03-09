@@ -26,7 +26,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     queryKey: ['users', 'me'],
     queryFn: async () => usersService.me(),
     enabled: signedIn,
-    staleTime: Infinity
+    staleTime: Infinity,
+    meta: {
+      skipGlobalErrorToast: true,
+    },
   })
 
   const queryClient = useQueryClient()

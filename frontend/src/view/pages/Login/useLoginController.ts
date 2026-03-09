@@ -3,7 +3,6 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useMutation } from '@tanstack/react-query'
 import { authService } from '../../../app/services/authService'
-import { toast } from 'react-hot-toast'
 import { SigninParams } from '../../../app/services/authService/signin'
 import { useAuth } from '../../../app/hooks/useAuth'
 
@@ -37,13 +36,9 @@ export function useLoginController() {
   const { signin } = useAuth()
 
   const handleSubmit = hookFormSubmit(async (data) => {
-    try {
-      const { acessToken } = await mutateAsync(data)
+    const { acessToken } = await mutateAsync(data)
 
-      signin(acessToken)
-    } catch {
-      toast.error('Credenciais inválidas!')
-    }
+    signin(acessToken)
   })
 
   return { register, handleSubmit, errors, isLoading }
