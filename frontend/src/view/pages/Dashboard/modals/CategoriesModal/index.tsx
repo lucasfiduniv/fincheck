@@ -12,6 +12,8 @@ import { cn } from '../../../../../app/utils/cn'
 
 export function CategoriesModal() {
   const [showManualIconSelection, setShowManualIconSelection] = useState(false)
+  const [draggedCategoryId, setDraggedCategoryId] = useState<string | null>(null)
+  const [dragOverCategoryId, setDragOverCategoryId] = useState<string | null>(null)
 
   const {
     isCategoriesModalOpen,
@@ -38,6 +40,8 @@ export function CategoriesModal() {
     handleCloseDeleteModal,
     handleDeleteCategory,
     isLoadingDelete,
+    isLoadingReorder,
+    handleReorderCategories,
   } = useCategoriesModalController()
 
   if (isDeleteModalOpen && categoryBeingDeleted) {
@@ -97,6 +101,10 @@ export function CategoriesModal() {
               </button>
             </div>
 
+            <p className="text-xs text-gray-500">
+              Arraste e solte para definir a ordem das categorias mais usadas.
+            </p>
+
             <div className="space-y-2 max-h-56 overflow-y-auto">
               {categories.length === 0 && (
                 <div className="h-16 rounded-lg bg-gray-50 text-sm text-gray-700 flex items-center justify-center">
@@ -107,9 +115,39 @@ export function CategoriesModal() {
               {categories.map((category) => (
                 <div
                   key={category.id}
-                  className="h-12 px-3 rounded-lg border border-gray-300 flex items-center justify-between gap-3"
+                  draggable={!isLoadingReorder}
+                  onDragStart={() => {
+                    setDraggedCategoryId(category.id)
+                    setDragOverCategoryId(category.id)
+                  }}
+                  onDragEnter={() => setDragOverCategoryId(category.id)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDragEnd={() => {
+                    setDraggedCategoryId(null)
+                    setDragOverCategoryId(null)
+                  }}
+                  onDrop={async (event) => {
+                    event.preventDefault()
+
+                    if (!draggedCategoryId) {
+                      return
+                    }
+
+                    await handleReorderCategories(draggedCategoryId, category.id)
+                    setDraggedCategoryId(null)
+                    setDragOverCategoryId(null)
+                  }}
+                  className={cn(
+                    'h-12 px-3 rounded-lg border border-gray-300 flex items-center justify-between gap-3 bg-white',
+                    dragOverCategoryId === category.id && draggedCategoryId !== category.id && 'border-teal-500 ring-2 ring-teal-100',
+                    draggedCategoryId === category.id && 'opacity-60',
+                    isLoadingReorder && 'cursor-wait opacity-80',
+                  )}
                 >
                   <div className="flex items-center gap-2">
+                    <span className="text-gray-400 text-sm" aria-hidden>
+                      ::
+                    </span>
                     <CategoryIcon type={category.type} category={category.icon} />
                     <span className="text-sm text-gray-800">{category.name}</span>
                   </div>

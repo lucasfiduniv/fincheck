@@ -66,6 +66,7 @@ export function useCategoriesModalController() {
 
   const { isLoading: isLoadingCreate, mutateAsync: createCategory } = useMutation(categoriesService.create)
   const { isLoading: isLoadingUpdate, mutateAsync: updateCategory } = useMutation(categoriesService.update)
+  const { isLoading: isLoadingReorder, mutateAsync: reorderCategories } = useMutation(categoriesService.reorder)
   const { isLoading: isLoadingDelete, mutateAsync: removeCategory } = useMutation(categoriesService.remove)
 
   const selectedIcon = watch('icon')
@@ -158,6 +159,63 @@ export function useCategoriesModalController() {
     }
   }
 
+  async function handleReorderCategories(draggedCategoryId: string, targetCategoryId: string) {
+    if (draggedCategoryId === targetCategoryId) {
+      return
+    }
+
+    const draggedIndex = filteredCategories.findIndex((category) => category.id === draggedCategoryId)
+    const targetIndex = filteredCategories.findIndex((category) => category.id === targetCategoryId)
+
+    if (draggedIndex < 0 || targetIndex < 0) {
+      return
+    }
+
+    const reorderedCategories = [...filteredCategories]
+    const [draggedItem] = reorderedCategories.splice(draggedIndex, 1)
+    reorderedCategories.splice(targetIndex, 0, draggedItem)
+
+    const orderedCategoryIds = reorderedCategories.map((category) => category.id)
+
+    queryClient.setQueryData<Category[]>(['categories'], (currentCategories = []) => {
+      const orderMap = new Map(orderedCategoryIds.map((id, index) => [id, index]))
+
+      return currentCategories
+        .map((category) => {
+          if (category.type !== activeType) {
+            return category
+          }
+
+          const nextSortOrder = orderMap.get(category.id)
+
+          return {
+            ...category,
+            sortOrder: nextSortOrder ?? category.sortOrder,
+          }
+        })
+        .sort((a, b) => {
+          if (a.type !== b.type) {
+            return a.type.localeCompare(b.type)
+          }
+
+          return (a.sortOrder ?? 0) - (b.sortOrder ?? 0)
+        })
+    })
+
+    try {
+      await reorderCategories({
+        type: activeType,
+        orderedCategoryIds,
+      })
+
+      await queryClient.invalidateQueries({ queryKey: ['categories'] })
+      toast.success('Ordem das categorias atualizada!')
+    } catch {
+      await queryClient.invalidateQueries({ queryKey: ['categories'] })
+      toast.error('Erro ao reordenar categorias!')
+    }
+  }
+
   const handleSubmit = hookFormSubmit(async (data) => {
     try {
       if (categoryBeingEdited) {
@@ -208,5 +266,7 @@ export function useCategoriesModalController() {
     handleCloseDeleteModal,
     handleDeleteCategory,
     isLoadingDelete,
+    isLoadingReorder,
+    handleReorderCategories,
   }
 }

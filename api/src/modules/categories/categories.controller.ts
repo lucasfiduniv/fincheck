@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common'
 import { CreateCategoryDto } from './dto/create-category.dto'
 import { UpdateCategoryDto } from './dto/update-category.dto'
+import { ReorderCategoriesDto } from './dto/reorder-categories.dto'
 import { CategoriesService } from './services/categories.service'
 import { ActiveUserId } from 'src/shared/decorators/ActiveUserId'
 
@@ -30,6 +31,14 @@ export class CategoriesController {
   @Get()
   findAll(@ActiveUserId() userId: string) {
     return this.categoriesService.findAllByUserId(userId)
+  }
+
+  @Put('reorder')
+  reorder(
+    @ActiveUserId() userId: string,
+    @Body() reorderCategoriesDto: ReorderCategoriesDto,
+  ) {
+    return this.categoriesService.reorder(userId, reorderCategoriesDto)
   }
 
   @Put(':categoryId')

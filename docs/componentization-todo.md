@@ -21,7 +21,7 @@
 - [x] `api/src/modules/savings-boxes/services/savings-boxes.service.ts`: extrair fluxo de alertas/notificacao para service dedicado.
 - [ ] `api/src/modules/credit-cards/services/credit-cards.service.ts`: decomposicao avancou com colaboradores de metadados, calendario/parcelas e escrita de compras (`CreditCardPurchaseMetadataService`, `CreditCardStatementScheduleService`, `CreditCardPurchasesWriteService`); continuar split de leitura/import.
 - [ ] `api/src/modules/credit-cards/use-cases/import-credit-card-statement.use-case.ts`: parser/dedupe, pagamento importado e criacao de compras extraidos para colaboradores (`CreditCardStatementParserService`, `CreditCardStatementPaymentImportService`, `CreditCardStatementPurchaseImportService`); manter fatiamento da orquestracao/progresso.
-- [ ] `api/src/modules/transactions/services/transactions-import.use-case.service.ts`: continuar fatiamento em colaborador de deduplicacao e colaborador de classificacao.
+- [ ] `api/src/modules/transactions/services/transactions-import.use-case.service.ts`: deduplicacao e transferencia importada extraidas para colaboradores (`TransactionsImportDeduplicationService`, `TransactionsImportTransferService`); continuar split da classificacao/orquestracao.
 
 ### Media prioridade
 - [ ] `api/src/modules/vehicles/vehicles-read.use-case.service.ts`: separar agregacoes (fuel/maintenance/odometer) em query services.

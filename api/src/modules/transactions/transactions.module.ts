@@ -15,6 +15,8 @@ import { TransactionsCreateUseCaseService } from './services/transactions-create
 import { TransactionsImportUseCaseService } from './services/transactions-import.use-case.service'
 import { TransactionsRecurrenceUseCaseService } from './services/transactions-recurrence.use-case.service'
 import { TransactionsReportsInputUseCaseService } from './services/transactions-reports-input.use-case.service'
+import { TransactionsImportDeduplicationService } from './services/transactions-import-deduplication.service'
+import { TransactionsImportTransferService } from './services/transactions-import-transfer.service'
 
 @Module({
   imports: [BankAccountsModule, CategoriesModule, AiModule],
@@ -30,6 +32,8 @@ import { TransactionsReportsInputUseCaseService } from './services/transactions-
     TransactionsGateway,
     TransactionsCreateUseCaseService,
     TransactionsImportUseCaseService,
+    TransactionsImportDeduplicationService,
+    TransactionsImportTransferService,
     TransactionsRecurrenceUseCaseService,
     TransactionsReportsInputUseCaseService,
   ],

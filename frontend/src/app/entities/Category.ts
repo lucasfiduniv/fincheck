@@ -3,4 +3,5 @@ export interface Category {
   name: string
   icon: string
   type: 'INCOME' | 'EXPENSE'
+  sortOrder?: number
 }

@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { BankAccountsRepository } from 'src/shared/database/repositories/bank-accounts.repository'
 import { CategoriesRepository } from 'src/shared/database/repositories/categories.repository'
-import { TransactionsRepository } from 'src/shared/database/repositories/transactions.repository'
 import { UsersRepository } from 'src/shared/database/repositories/users.repository'
 import { ValidateBankAccountOwnershipService } from '../../bank-accounts/services/validate-bank-account-ownership.service'
 import { TransactionImportAiEnrichmentService } from '../../ai/services/transaction-import-ai-enrichment.service'
@@ -10,16 +9,16 @@ import { TransactionCreationType, TransactionStatus, TransactionType } from '../
 import { StatementImportService } from './statement-import/statement-import.service'
 import { TransactionsGateway } from '../transactions.gateway'
 import { TransactionsCreateUseCaseService } from './transactions-create.use-case.service'
+import { TransactionsImportDeduplicationService } from './transactions-import-deduplication.service'
+import { TransactionsImportTransferService } from './transactions-import-transfer.service'
 import {
   buildImportedTransactionName,
   findCardBillCategoryId,
-  isDuplicateNameEquivalent,
   isInternalBalanceMovementDescription,
   resolveImportedCategoryId,
   resolveImportedTransactionKind,
   resolveOwnTransferCounterpartBankAccountId,
   roundMoney,
-  toMoneyCents,
 } from './transactions-import.utils'
 
 @Injectable()
@@ -31,9 +30,10 @@ export class TransactionsImportUseCaseService {
     private readonly statementImportService: StatementImportService,
     private readonly categoriesRepo: CategoriesRepository,
     private readonly transactionImportAiEnrichmentService: TransactionImportAiEnrichmentService,
-    private readonly transactionsRepo: TransactionsRepository,
     private readonly transactionsGateway: TransactionsGateway,
     private readonly transactionsCreateUseCaseService: TransactionsCreateUseCaseService,
+    private readonly transactionsImportDeduplicationService: TransactionsImportDeduplicationService,
+    private readonly transactionsImportTransferService: TransactionsImportTransferService,
   ) {}
 
   async importBankStatement(userId: string, importDto: ImportBankStatementDto) {
@@ -189,7 +189,7 @@ export class TransactionsImportUseCaseService {
           }
 
           if (resolvedKind === 'TRANSFER') {
-            const alreadyImportedTransfer = await this.findPossibleDuplicateTransaction({
+            const alreadyImportedTransfer = await this.transactionsImportDeduplicationService.findPossibleDuplicateTransaction({
               userId,
               bankAccountId: importDto.bankAccountId,
               date: entry.date,
@@ -210,7 +210,7 @@ export class TransactionsImportUseCaseService {
               userBankAccounts,
             })
 
-            await this.createImportedTransferTransaction({
+            await this.transactionsImportTransferService.createImportedTransferTransaction({
               userId,
               bankAccountId: importDto.bankAccountId,
               date: entry.date,
@@ -244,7 +244,7 @@ export class TransactionsImportUseCaseService {
             fallbackCategories,
           })
 
-          const alreadyImported = await this.findPossibleDuplicateTransaction({
+          const alreadyImported = await this.transactionsImportDeduplicationService.findPossibleDuplicateTransaction({
             userId,
             bankAccountId: importDto.bankAccountId,
             date: entry.date,
@@ -354,175 +354,6 @@ export class TransactionsImportUseCaseService {
         id: true,
       },
     })
-  }
-
-  private async findPossibleDuplicateTransaction({
-    userId,
-    bankAccountId,
-    date,
-    value,
-    type,
-    name,
-    matchByName = true,
-  }: {
-    userId: string;
-    bankAccountId: string;
-    date: Date;
-    value: number;
-    type: TransactionType;
-    name: string;
-    matchByName?: boolean;
-  }) {
-    const dayStart = new Date(Date.UTC(
-      date.getUTCFullYear(),
-      date.getUTCMonth(),
-      date.getUTCDate(),
-    ))
-
-    const dayEnd = new Date(Date.UTC(
-      date.getUTCFullYear(),
-      date.getUTCMonth(),
-      date.getUTCDate() + 1,
-    ))
-
-    const candidates = await this.transactionsRepo.findMany({
-      where: {
-        userId,
-        bankAccountId,
-        type,
-        date: {
-          gte: dayStart,
-          lt: dayEnd,
-        },
-      },
-      select: {
-        id: true,
-        name: true,
-        value: true,
-      },
-    })
-
-    const targetValueInCents = toMoneyCents(value)
-
-    const duplicate = candidates.find((candidate) => {
-      const candidateValueInCents = toMoneyCents(Number(candidate.value))
-
-      if (candidateValueInCents !== targetValueInCents) {
-        return false
-      }
-
-      if (!matchByName) {
-        return true
-      }
-
-      return isDuplicateNameEquivalent(candidate.name, name)
-    })
-
-    if (!duplicate) {
-      return null
-    }
-
-    return {
-      id: duplicate.id,
-    }
-  }
-
-
-  private async createImportedTransferTransaction({
-    userId,
-    bankAccountId,
-    date,
-    name,
-    signedValue,
-    counterpartBankAccountId,
-    userBankAccounts,
-    suppressRealtime,
-  }: {
-    userId: string;
-    bankAccountId: string;
-    date: Date;
-    name: string;
-    signedValue: number;
-    counterpartBankAccountId?: string;
-    userBankAccounts: Array<{ id: string; name: string }>;
-    suppressRealtime?: boolean;
-  }) {
-    const createdTransaction = await this.transactionsRepo.create({
-      data: {
-        userId,
-        bankAccountId,
-        categoryId: null,
-        name,
-        value: signedValue,
-        date,
-        type: TransactionType.TRANSFER,
-        status: TransactionStatus.POSTED,
-        entryType: 'SINGLE',
-      },
-    })
-
-    if (!counterpartBankAccountId || counterpartBankAccountId === bankAccountId) {
-      if (!suppressRealtime) {
-        this.transactionsGateway.emitTransactionsChanged(userId, {
-          action: 'CREATED',
-          source: 'MANUAL',
-          count: 1,
-          transactionIds: [createdTransaction.id],
-        })
-      }
-
-      return createdTransaction
-    }
-
-    const mirroredValue = -signedValue
-    const currentAccountName = userBankAccounts.find((account) => account.id === bankAccountId)?.name
-
-    const counterpartDescription = mirroredValue >= 0
-      ? `Transferencia recebida de conta propria${currentAccountName ? ` (${currentAccountName})` : ''}`
-      : `Transferencia enviada para conta propria${currentAccountName ? ` (${currentAccountName})` : ''}`
-
-    const duplicateCounterpart = await this.findPossibleDuplicateTransaction({
-      userId,
-      bankAccountId: counterpartBankAccountId,
-      date,
-      value: mirroredValue,
-      type: TransactionType.TRANSFER,
-      name: counterpartDescription,
-      matchByName: false,
-    })
-
-    let mirroredTransactionId: string | undefined
-
-    if (!duplicateCounterpart) {
-      const mirroredTransaction = await this.transactionsRepo.create({
-        data: {
-          userId,
-          bankAccountId: counterpartBankAccountId,
-          categoryId: null,
-          name: counterpartDescription,
-          value: mirroredValue,
-          date,
-          type: TransactionType.TRANSFER,
-          status: TransactionStatus.POSTED,
-          entryType: 'SINGLE',
-        },
-      })
-
-      mirroredTransactionId = mirroredTransaction.id
-    }
-
-    if (!suppressRealtime) {
-      this.transactionsGateway.emitTransactionsChanged(userId, {
-        action: 'CREATED',
-        source: 'MANUAL',
-        count: mirroredTransactionId ? 2 : 1,
-        transactionIds: mirroredTransactionId
-          ? [createdTransaction.id, mirroredTransactionId]
-          : [createdTransaction.id],
-      })
-    }
-
-    return createdTransaction
   }
 
 }

@@ -398,6 +398,7 @@ model Category {
   name   String
   icon   String
   type   TransactionType
+  sortOrder Int          @default(0) @map("sort_order")
   createdAt DateTime     @default(now()) @map("created_at")
   updatedAt DateTime     @updatedAt @map("updated_at")
 
