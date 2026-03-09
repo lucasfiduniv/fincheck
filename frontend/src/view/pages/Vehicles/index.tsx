@@ -1,6 +1,6 @@
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Logo } from '../../components/Logo'
 import { Button } from '../../components/Button'
 import { Input } from '../../components/Input'
@@ -8,11 +8,15 @@ import { Select } from '../../components/Select'
 import { Modal } from '../../components/Modal'
 import { Spinner } from '../../components/Spinner'
 import { vehiclesService } from '../../../app/services/vehiclesService'
-import { transactionsService } from '../../../app/services/transactionsService'
 import { formatCurrency } from '../../../app/utils/formatCurrency'
 import { toast } from 'react-hot-toast'
 import { useBankAccounts } from '../../../app/hooks/useBankAccounts'
 import { useCategories } from '../../../app/hooks/useCategories'
+import { useVehicleMutations } from './hooks/useVehicleMutations'
+import { useVehicleTimeline } from './hooks/useVehicleTimeline'
+import { VehicleTimelineSection } from './components/VehicleTimelineSection'
+import { VehicleQuickActionModals } from './components/VehicleQuickActionModals'
+import { InlineFeedbackState } from './types'
 
 const fuelTypeOptions = [
   { value: 'GASOLINE', label: 'Gasolina' },
@@ -23,14 +27,8 @@ const fuelTypeOptions = [
   { value: 'HYBRID', label: 'Híbrido' },
 ]
 
-const timelineFilterStoragePrefix = 'fincheck:vehicles:timeline-filter:'
 const compactModeStoragePrefix = 'fincheck:vehicles:compact-mode:'
 const odometerDraftStoragePrefix = 'fincheck:vehicles:odometer-draft:'
-
-type InlineFeedbackState = {
-  status: 'saving' | 'synced' | 'error' | 'stale'
-  message: string
-}
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString('pt-BR')
@@ -154,11 +152,6 @@ export function Vehicles() {
   const [quickMaintenanceDate, setQuickMaintenanceDate] = useState(new Date().toISOString().slice(0, 10))
 
   const [inlineFeedback, setInlineFeedback] = useState<InlineFeedbackState | null>(null)
-  const [timelineFilter, setTimelineFilter] = useState<'ALL' | 'FUEL' | 'MAINTENANCE' | 'PART'>('ALL')
-  const [timelineVisibleCount, setTimelineVisibleCount] = useState(20)
-  const [expandedTimelineText, setExpandedTimelineText] = useState<Record<string, boolean>>({})
-  const [isTimelineCompactMode, setIsTimelineCompactMode] = useState(false)
-  const [expandedTimelineItems, setExpandedTimelineItems] = useState<Record<string, boolean>>({})
   const [mobileOpenSection, setMobileOpenSection] = useState<'SUMMARY' | 'ODOMETER' | 'METRICS' | 'TIMELINE'>('SUMMARY')
   const [odometerStep, setOdometerStep] = useState<'CURRENT' | 'AUTO'>('CURRENT')
   const [showOutlierConfirm, setShowOutlierConfirm] = useState(false)
@@ -176,62 +169,19 @@ export function Vehicles() {
 
   const { accounts } = useBankAccounts()
   const { categories } = useCategories()
-
-  const { mutateAsync: createVehicle, isLoading: isCreatingVehicle } = useMutation(vehiclesService.create)
-  const { mutateAsync: createPart, isLoading: isCreatingPart } = useMutation(vehiclesService.createPart)
-  const { mutateAsync: createTransaction, isLoading: isCreatingQuickAction } = useMutation(transactionsService.create)
-  const { mutateAsync: updateVehicle, isLoading: isUpdatingVehicle } = useMutation({
-    mutationFn: vehiclesService.update,
-    onMutate: async (variables) => {
-      if (!variables.vehicleId) {
-        return undefined
-      }
-
-      await queryClient.cancelQueries({ queryKey: ['vehicles', variables.vehicleId] })
-      const previousVehicle = queryClient.getQueryData(['vehicles', variables.vehicleId])
-
-      queryClient.setQueryData(['vehicles', variables.vehicleId], (oldData: any) => {
-        if (!oldData) {
-          return oldData
-        }
-
-        return {
-          ...oldData,
-          ...variables,
-          effectiveCurrentOdometer: variables.currentOdometer ?? oldData.effectiveCurrentOdometer,
-        }
-      })
-
-      queryClient.setQueryData(['vehicles'], (oldData: any) => {
-        if (!Array.isArray(oldData)) {
-          return oldData
-        }
-
-        return oldData.map((vehicle) => (
-          vehicle.id === variables.vehicleId
-            ? {
-              ...vehicle,
-              ...variables,
-              effectiveCurrentOdometer: variables.currentOdometer ?? vehicle.effectiveCurrentOdometer,
-            }
-            : vehicle
-        ))
-      })
-
-      return { previousVehicle }
-    },
-    onError: (_error, variables, context) => {
-      if (context?.previousVehicle && variables.vehicleId) {
-        queryClient.setQueryData(['vehicles', variables.vehicleId], context.previousVehicle)
-      }
-    },
-  })
-  const { mutateAsync: recalibrateNow, isLoading: isRecalibratingNow } = useMutation({
-    mutationFn: vehiclesService.recalibrateNow,
-  })
-  const { mutateAsync: trackUsageEvent } = useMutation({
-    mutationFn: vehiclesService.trackUsageEvent,
-  })
+  const {
+    createVehicle,
+    isCreatingVehicle,
+    createPart,
+    isCreatingPart,
+    createTransaction,
+    isCreatingQuickAction,
+    updateVehicle,
+    isUpdatingVehicle,
+    recalibrateNow,
+    isRecalibratingNow,
+    trackUsageEvent,
+  } = useVehicleMutations()
 
   const summary = useMemo(() => {
     const totalCost = vehicles.reduce((acc, vehicle) => acc + (vehicle.fuelStats?.totalCost ?? 0), 0)
@@ -318,66 +268,25 @@ export function Vehicles() {
     return `Em dia: ${nextPart.name} em ${remainingKm.toFixed(0)} km${daysLabel}`
   }, [selectedVehicle])
 
-  const timelineItems = useMemo(() => {
-    if (!selectedVehicle) {
-      return []
-    }
-
-    const fuelItems = selectedVehicle.fuelRecords.map((record) => ({
-      id: `fuel-${record.id}`,
-      type: 'FUEL' as const,
-      date: record.transaction.date,
-      title: `Abastecimento • ${record.liters.toFixed(2)} L`,
-      subtitle: `${record.odometer.toFixed(1)} km • ${record.transaction.name}`,
-      amount: record.totalCost,
-      detail: `R$/L ${formatCurrency(record.pricePerLiter)}`,
-    }))
-
-    const maintenanceItems = selectedVehicle.maintenances.map((maintenance) => ({
-      id: `maintenance-${maintenance.id}`,
-      type: 'MAINTENANCE' as const,
-      date: maintenance.date,
-      title: maintenance.title,
-      subtitle: `${maintenance.source === 'ACCOUNT' ? 'Conta' : 'Cartão'} • ${maintenance.sourceLabel}`,
-      amount: maintenance.amount,
-      detail:
-        maintenance.odometer !== null && maintenance.odometer !== undefined
-          ? `${maintenance.odometer.toFixed(1)} km`
-          : 'Sem odômetro',
-    }))
-
-    const partItems = selectedVehicle.parts.map((part) => ({
-      id: `part-${part.id}`,
-      type: 'PART' as const,
-      date: part.installedAt,
-      title: `Peça • ${part.name}`,
-      subtitle: `${part.brand || 'Sem marca'} • Qtd ${part.quantity}`,
-      amount: part.totalCost,
-      detail:
-        part.nextReplacementOdometer !== null
-          ? `Próx. troca ${part.nextReplacementOdometer.toFixed(0)} km`
-          : 'Sem previsão',
-    }))
-
-    return [...fuelItems, ...maintenanceItems, ...partItems].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-    )
-  }, [selectedVehicle])
-
-  const filteredTimelineItems = useMemo(() => {
-    if (timelineFilter === 'ALL') {
-      return timelineItems
-    }
-
-    return timelineItems.filter((item) => item.type === timelineFilter)
-  }, [timelineItems, timelineFilter])
-
-  const visibleTimelineItems = useMemo(
-    () => filteredTimelineItems.slice(0, timelineVisibleCount),
-    [filteredTimelineItems, timelineVisibleCount],
-  )
-
-  const canLoadMoreTimelineItems = visibleTimelineItems.length < filteredTimelineItems.length
+  const {
+    timelineFilter,
+    isTimelineCompactMode,
+    setIsTimelineCompactMode,
+    expandedTimelineItems,
+    expandedTimelineText,
+    filteredTimelineItems,
+    visibleTimelineItems,
+    canLoadMoreTimelineItems,
+    applyTimelineFilter,
+    loadMoreTimelineItems,
+    toggleTimelineItemExpanded,
+    toggleTimelineTextExpanded,
+    onTimelineScroll,
+  } = useVehicleTimeline({
+    selectedVehicle,
+    selectedVehicleId,
+    userIdForStorage: selectedVehicle?.userId ?? vehicles[0]?.userId,
+  })
 
   const selectedHealthBadge = selectedVehicle?.healthBadge ?? 'OK'
   const selectedConfidenceLevel = selectedVehicle?.odometerConfidence?.level ?? 'LOW'
@@ -406,38 +315,18 @@ export function Vehicles() {
   }, [selectedVehicleId, vehicles])
 
   useEffect(() => {
-    setExpandedTimelineText({})
-    setExpandedTimelineItems({})
-  }, [selectedVehicleId, timelineFilter])
-
-  useEffect(() => {
     const userId = selectedVehicle?.userId ?? vehicles[0]?.userId
 
     if (!userId) {
       return
     }
 
-    const savedFilter = localStorage.getItem(`${timelineFilterStoragePrefix}${userId}`)
     const savedCompactMode = localStorage.getItem(`${compactModeStoragePrefix}${userId}`)
-
-    if (savedFilter === 'ALL' || savedFilter === 'FUEL' || savedFilter === 'MAINTENANCE' || savedFilter === 'PART') {
-      setTimelineFilter(savedFilter)
-    }
 
     if (savedCompactMode === 'true' || savedCompactMode === 'false') {
       setIsCompactMode(savedCompactMode === 'true')
     }
   }, [selectedVehicle?.userId, vehicles])
-
-  useEffect(() => {
-    const userId = selectedVehicle?.userId ?? vehicles[0]?.userId
-
-    if (!userId) {
-      return
-    }
-
-    localStorage.setItem(`${timelineFilterStoragePrefix}${userId}`, timelineFilter)
-  }, [timelineFilter, selectedVehicle?.userId, vehicles])
 
   useEffect(() => {
     const userId = selectedVehicle?.userId ?? vehicles[0]?.userId
@@ -539,7 +428,6 @@ export function Vehicles() {
 
     setConfirmOdometerOutlier(false)
     setShowOutlierConfirm(false)
-    setTimelineVisibleCount(20)
   }, [selectedVehicle, partInstalledOdometer])
 
   useEffect(() => {
@@ -676,7 +564,6 @@ export function Vehicles() {
       toast.success('Veículo cadastrado com sucesso!')
     } catch {
       setInlineFeedback({ status: 'error', message: 'Erro ao salvar veículo. Tente novamente.' })
-      toast.error('Não foi possível cadastrar o veículo.')
     }
   }
 
@@ -737,7 +624,6 @@ export function Vehicles() {
       toast.success('Peça cadastrada e vinculada ao financeiro!')
     } catch {
       setInlineFeedback({ status: 'error', message: 'Erro ao salvar peça.' })
-      toast.error('Não foi possível cadastrar a peça.')
     }
   }
 
@@ -772,7 +658,6 @@ export function Vehicles() {
         toast.success('Foto do veículo atualizada!')
       } catch {
         setInlineFeedback({ status: 'error', message: 'Erro ao atualizar foto do veículo.' })
-        toast.error('Não foi possível atualizar a foto do veículo.')
       } finally {
         event.target.value = ''
       }
@@ -839,7 +724,6 @@ export function Vehicles() {
       } else {
         setInlineFeedback({ status: 'error', message: 'Erro ao atualizar odômetro.' })
       }
-      toast.error('Não foi possível atualizar o odômetro.')
     }
   }
 
@@ -877,7 +761,6 @@ export function Vehicles() {
         toast.success('Automação do odômetro atualizada!')
       } catch {
         setInlineFeedback({ status: 'error', message: 'Erro ao atualizar automação.' })
-        toast.error('Não foi possível atualizar a automação do odômetro.')
       }
 
       return
@@ -896,7 +779,6 @@ export function Vehicles() {
       toast.success('Automação do odômetro desativada!')
     } catch {
       setInlineFeedback({ status: 'error', message: 'Erro ao desativar automação.' })
-      toast.error('Não foi possível atualizar a automação do odômetro.')
     }
   }
 
@@ -914,7 +796,6 @@ export function Vehicles() {
       toast.success('Odômetro recalibrado com 1 clique!')
     } catch {
       setInlineFeedback({ status: 'error', message: 'Erro ao recalibrar odômetro.' })
-      toast.error('Não foi possível recalibrar agora.')
     }
   }
 
@@ -958,7 +839,6 @@ export function Vehicles() {
       toast.success('Abastecimento registrado!')
     } catch {
       setInlineFeedback({ status: 'error', message: 'Erro no abastecimento rápido.' })
-      toast.error('Não foi possível registrar abastecimento.')
     }
   }
 
@@ -997,7 +877,6 @@ export function Vehicles() {
       toast.success('Manutenção registrada!')
     } catch {
       setInlineFeedback({ status: 'error', message: 'Erro na manutenção rápida.' })
-      toast.error('Não foi possível registrar manutenção.')
     }
   }
 
@@ -1183,101 +1062,46 @@ export function Vehicles() {
         </form>
       </Modal>
 
-      <Modal
-        title="Abastecimento rápido"
-        open={isQuickFuelModalOpen}
-        onClose={() => {
-          if (quickFuelLiters || quickFuelPricePerLiter) {
-            trackVehicleEvent('quick_fuel_abandoned', { liters: quickFuelLiters, price: quickFuelPricePerLiter })
-          }
-          setIsQuickFuelModalOpen(false)
-        }}
-      >
-        <form
-          className="space-y-3"
-          onSubmit={(event) => {
-            event.preventDefault()
-            handleQuickFuelAction()
-          }}
-        >
-          <Select
-            placeholder="Conta"
-            value={quickFuelBankAccountId}
-            onChange={setQuickFuelBankAccountId}
-            options={accounts.map((account) => ({ value: account.id, label: account.name }))}
-          />
-          <Select
-            placeholder="Categoria"
-            value={quickFuelCategoryId}
-            onChange={setQuickFuelCategoryId}
-            options={expenseCategories.map((category) => ({ value: category.id, label: category.name }))}
-          />
-          <Input type="number" step="0.01" name="quickFuelLiters" placeholder="Litros" value={quickFuelLiters} onChange={(e) => setQuickFuelLiters(e.target.value)} />
-          <Input type="number" step="0.01" name="quickFuelPricePerLiter" placeholder="Preço por litro" value={quickFuelPricePerLiter} onChange={(e) => setQuickFuelPricePerLiter(e.target.value)} />
-          <Input type="number" step="0.1" name="quickFuelOdometer" placeholder="Odômetro" value={quickFuelOdometer} onChange={(e) => setQuickFuelOdometer(e.target.value)} />
-
-          <Select
-            placeholder="Tipo de abastecimento"
-            value={quickFuelFillType}
-            onChange={(value) => setQuickFuelFillType(value as 'FULL' | 'PARTIAL')}
-            options={[
-              { value: 'PARTIAL', label: 'Parcial' },
-              { value: 'FULL', label: 'Tanque cheio' },
-            ]}
-          />
-
-          <label className="flex items-center gap-2 text-xs text-gray-700 rounded-lg border border-gray-200 px-3 py-2">
-            <input
-              type="checkbox"
-              checked={quickFuelFirstPumpClick}
-              onChange={(e) => setQuickFuelFirstPumpClick(e.target.checked)}
-            />
-            Primeiro clique da bomba
-          </label>
-
-          <Input type="date" name="quickFuelDate" value={quickFuelDate} onChange={(e) => setQuickFuelDate(e.target.value)} />
-
-          <Button type="submit" className="w-full" isLoading={isCreatingQuickAction}>Salvar abastecimento</Button>
-        </form>
-      </Modal>
-
-      <Modal
-        title="Manutenção rápida"
-        open={isQuickMaintenanceModalOpen}
-        onClose={() => {
-          if (quickMaintenanceTitle || quickMaintenanceAmount) {
-            trackVehicleEvent('quick_maintenance_abandoned', { title: quickMaintenanceTitle, amount: quickMaintenanceAmount })
-          }
-          setIsQuickMaintenanceModalOpen(false)
-        }}
-      >
-        <form
-          className="space-y-3"
-          onSubmit={(event) => {
-            event.preventDefault()
-            handleQuickMaintenanceAction()
-          }}
-        >
-          <Select
-            placeholder="Conta"
-            value={quickMaintenanceBankAccountId}
-            onChange={setQuickMaintenanceBankAccountId}
-            options={accounts.map((account) => ({ value: account.id, label: account.name }))}
-          />
-          <Select
-            placeholder="Categoria"
-            value={quickMaintenanceCategoryId}
-            onChange={setQuickMaintenanceCategoryId}
-            options={expenseCategories.map((category) => ({ value: category.id, label: category.name }))}
-          />
-          <Input name="quickMaintenanceTitle" placeholder="Título da manutenção" value={quickMaintenanceTitle} onChange={(e) => setQuickMaintenanceTitle(e.target.value)} />
-          <Input type="number" step="0.01" name="quickMaintenanceAmount" placeholder="Valor" value={quickMaintenanceAmount} onChange={(e) => setQuickMaintenanceAmount(e.target.value)} />
-          <Input type="number" step="0.1" name="quickMaintenanceOdometer" placeholder="Odômetro (opcional)" value={quickMaintenanceOdometer} onChange={(e) => setQuickMaintenanceOdometer(e.target.value)} />
-          <Input type="date" name="quickMaintenanceDate" value={quickMaintenanceDate} onChange={(e) => setQuickMaintenanceDate(e.target.value)} />
-
-          <Button type="submit" className="w-full" isLoading={isCreatingQuickAction}>Salvar manutenção</Button>
-        </form>
-      </Modal>
+      <VehicleQuickActionModals
+        isQuickFuelModalOpen={isQuickFuelModalOpen}
+        setIsQuickFuelModalOpen={setIsQuickFuelModalOpen}
+        isQuickMaintenanceModalOpen={isQuickMaintenanceModalOpen}
+        setIsQuickMaintenanceModalOpen={setIsQuickMaintenanceModalOpen}
+        quickFuelLiters={quickFuelLiters}
+        quickFuelPricePerLiter={quickFuelPricePerLiter}
+        quickFuelBankAccountId={quickFuelBankAccountId}
+        setQuickFuelBankAccountId={setQuickFuelBankAccountId}
+        quickFuelCategoryId={quickFuelCategoryId}
+        setQuickFuelCategoryId={setQuickFuelCategoryId}
+        quickFuelOdometer={quickFuelOdometer}
+        setQuickFuelOdometer={setQuickFuelOdometer}
+        quickFuelDate={quickFuelDate}
+        setQuickFuelDate={setQuickFuelDate}
+        quickFuelFillType={quickFuelFillType}
+        setQuickFuelFillType={setQuickFuelFillType}
+        quickFuelFirstPumpClick={quickFuelFirstPumpClick}
+        setQuickFuelFirstPumpClick={setQuickFuelFirstPumpClick}
+        setQuickFuelLiters={setQuickFuelLiters}
+        setQuickFuelPricePerLiter={setQuickFuelPricePerLiter}
+        handleQuickFuelAction={handleQuickFuelAction}
+        quickMaintenanceTitle={quickMaintenanceTitle}
+        quickMaintenanceAmount={quickMaintenanceAmount}
+        quickMaintenanceBankAccountId={quickMaintenanceBankAccountId}
+        setQuickMaintenanceBankAccountId={setQuickMaintenanceBankAccountId}
+        quickMaintenanceCategoryId={quickMaintenanceCategoryId}
+        setQuickMaintenanceCategoryId={setQuickMaintenanceCategoryId}
+        quickMaintenanceOdometer={quickMaintenanceOdometer}
+        setQuickMaintenanceOdometer={setQuickMaintenanceOdometer}
+        quickMaintenanceDate={quickMaintenanceDate}
+        setQuickMaintenanceDate={setQuickMaintenanceDate}
+        setQuickMaintenanceTitle={setQuickMaintenanceTitle}
+        setQuickMaintenanceAmount={setQuickMaintenanceAmount}
+        handleQuickMaintenanceAction={handleQuickMaintenanceAction}
+        isCreatingQuickAction={isCreatingQuickAction}
+        accountOptions={accounts.map((account) => ({ value: account.id, label: account.name }))}
+        expenseCategoryOptions={expenseCategories.map((category) => ({ value: category.id, label: category.name }))}
+        trackVehicleEvent={trackVehicleEvent}
+      />
 
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
@@ -1873,241 +1697,29 @@ export function Vehicles() {
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
-                <button
-                  type="button"
-                  className="lg:hidden w-full flex items-center justify-between text-left"
-                  onClick={() => setMobileOpenSection((state) => (state === 'TIMELINE' ? 'SUMMARY' : 'TIMELINE'))}
-                >
-                  <strong className="text-gray-900">Timeline unificada</strong>
-                  <span className="text-xs text-gray-500">
-                    {mobileOpenSection === 'TIMELINE' ? 'Ocultar' : 'Mostrar'}
-                  </span>
-                </button>
-
-                <div className={`${mobileOpenSection === 'TIMELINE' ? 'block' : 'hidden'} lg:block space-y-4`}>
-                  <div className="flex items-center justify-between gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setIsTimelineCompactMode((state) => !state)}
-                      className="h-9 px-3 rounded-lg border border-gray-300 text-xs text-gray-700 hover:bg-gray-50"
-                    >
-                      {isTimelineCompactMode ? 'Modo detalhado' : 'Modo compacto'}
-                    </button>
-
-                    <Button type="button" className="h-9 px-3 rounded-lg text-xs" onClick={() => setIsCreatePartModalOpen(true)}>
-                      Cadastrar peça
-                    </Button>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    {[
-                      { value: 'ALL' as const, label: 'Tudo' },
-                      { value: 'FUEL' as const, label: 'Abastecimentos' },
-                      { value: 'MAINTENANCE' as const, label: 'Manutenções' },
-                      { value: 'PART' as const, label: 'Peças' },
-                    ].map((filter) => (
-                      <button
-                        key={filter.value}
-                        type="button"
-                        onClick={() => {
-                          setTimelineFilter(filter.value)
-                          setTimelineVisibleCount(20)
-                          trackVehicleEvent('timeline_filter_changed', { filter: filter.value })
-                        }}
-                        className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
-                          timelineFilter === filter.value
-                            ? 'bg-teal-900 text-white border-teal-900'
-                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                        }`}
-                      >
-                        {filter.label}
-                      </button>
-                    ))}
-
-                    {isLoadingVehicle && <span className="h-3 w-20 rounded bg-gray-200 animate-pulse" />}
-                  </div>
-
-                  {!isLoadingVehicle && filteredTimelineItems.length === 0 && (
-                    <div className="rounded-xl border border-dashed border-gray-200 p-4 text-sm text-gray-600 space-y-3">
-                      <p>Ainda não há itens para este filtro.</p>
-
-                      <div className="flex flex-wrap gap-2">
-                        <Link
-                          to="/"
-                          className="text-xs px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
-                        >
-                          Cadastrar primeiro abastecimento
-                        </Link>
-
-                        <Button type="button" className="h-9 px-3 rounded-lg text-xs" onClick={() => setIsCreatePartModalOpen(true)}>
-                          Cadastrar peça
-                        </Button>
-
-                        {accounts.length === 0 && (
-                          <Link
-                            to="/"
-                            className="text-xs px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
-                          >
-                            Vincular conta
-                          </Link>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  <div
-                    className="space-y-2 max-h-[420px] overflow-y-auto pr-1"
-                    onScroll={(event) => {
-                      const target = event.currentTarget
-                      const isNearBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 40
-
-                      if (isNearBottom && canLoadMoreTimelineItems) {
-                        setTimelineVisibleCount((current) => current + 20)
-                      }
-                    }}
-                  >
-                    {isLoadingVehicle ? (
-                      Array.from({ length: 4 }).map((_, index) => (
-                        <div key={`timeline-skeleton-${index}`} className="rounded-xl border border-gray-200 p-3 animate-pulse space-y-2">
-                          <div className="h-4 w-2/3 rounded bg-gray-200" />
-                          <div className="h-3 w-1/2 rounded bg-gray-200" />
-                          <div className="h-3 w-1/3 rounded bg-gray-200" />
-                        </div>
-                      ))
-                    ) : (
-                      visibleTimelineItems.map((item) => {
-                        const subtitleKey = `${item.id}-subtitle`
-                        const detailKey = `${item.id}-detail`
-                        const subtitleExpanded = !!expandedTimelineText[subtitleKey]
-                        const detailExpanded = !!expandedTimelineText[detailKey]
-                        const subtitleNeedsExpand = item.subtitle.length > 70
-                        const detailNeedsExpand = item.detail.length > 60
-                        const subtitleText = subtitleExpanded || !subtitleNeedsExpand
-                          ? item.subtitle
-                          : `${item.subtitle.slice(0, 70).trimEnd()}...`
-                        const detailText = detailExpanded || !detailNeedsExpand
-                          ? item.detail
-                          : `${item.detail.slice(0, 60).trimEnd()}...`
-
-                        const isCompactExpanded = !!expandedTimelineItems[item.id]
-                        const shouldShowDetails = !isTimelineCompactMode || isCompactExpanded
-
-                        return (
-                          <div
-                            key={item.id}
-                            className={`rounded-xl border border-gray-200 p-3 text-sm ${isTimelineCompactMode ? 'cursor-pointer hover:bg-gray-50' : ''}`}
-                            onClick={() => {
-                              if (!isTimelineCompactMode) {
-                                return
-                              }
-
-                              setExpandedTimelineItems((state) => ({
-                                ...state,
-                                [item.id]: !isCompactExpanded,
-                              }))
-                            }}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <strong className="text-gray-800">{item.title}</strong>
-                                  <span className={`text-[10px] px-2 py-0.5 rounded-full ${
-                                    item.type === 'FUEL'
-                                      ? 'bg-amber-100 text-amber-800'
-                                      : item.type === 'MAINTENANCE'
-                                        ? 'bg-blue-100 text-blue-800'
-                                        : 'bg-purple-100 text-purple-800'
-                                  }`}>
-                                    {item.type === 'FUEL' ? 'Abastecimento' : item.type === 'MAINTENANCE' ? 'Manutenção' : 'Peça'}
-                                  </span>
-                                </div>
-
-                                <div
-                                  className={`overflow-hidden transition-all duration-200 ${
-                                    shouldShowDetails ? 'max-h-52 opacity-100 mt-1' : 'max-h-0 opacity-0'
-                                  }`}
-                                >
-                                    <p className="text-xs text-gray-600 mt-1 break-words">
-                                      {subtitleText}
-                                      {subtitleNeedsExpand && (
-                                        <button
-                                          type="button"
-                                          className="ml-1 text-teal-700 hover:text-teal-800"
-                                          onClick={(event) => {
-                                            event.stopPropagation()
-                                            setExpandedTimelineText((state) => ({
-                                              ...state,
-                                              [subtitleKey]: !subtitleExpanded,
-                                            }))
-                                          }}
-                                        >
-                                          {subtitleExpanded ? 'ver menos' : 'ver mais'}
-                                        </button>
-                                      )}
-                                    </p>
-
-                                    <p className="text-xs text-gray-500 mt-1 break-words">
-                                      {detailText}
-                                      {detailNeedsExpand && (
-                                        <button
-                                          type="button"
-                                          className="ml-1 text-teal-700 hover:text-teal-800"
-                                          onClick={(event) => {
-                                            event.stopPropagation()
-                                            setExpandedTimelineText((state) => ({
-                                              ...state,
-                                              [detailKey]: !detailExpanded,
-                                            }))
-                                          }}
-                                        >
-                                          {detailExpanded ? 'ver menos' : 'ver mais'}
-                                        </button>
-                                      )}
-                                    </p>
-                                </div>
-                              </div>
-
-                              <div className="text-right shrink-0">
-                                <strong className="text-rose-700 font-semibold block">{formatCurrency(item.amount)}</strong>
-                                <span className="text-xs text-gray-500">{formatDate(item.date)}</span>
-                              </div>
-                            </div>
-
-                            {isTimelineCompactMode && (
-                              <button
-                                type="button"
-                                className="text-[11px] text-teal-700 hover:text-teal-800 mt-2"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  setExpandedTimelineItems((state) => ({
-                                    ...state,
-                                    [item.id]: !isCompactExpanded,
-                                  }))
-                                }}
-                              >
-                                {isCompactExpanded ? 'recolher' : 'ver detalhes'}
-                              </button>
-                            )}
-                          </div>
-                        )
-                      })
-                    )}
-
-                    {canLoadMoreTimelineItems && (
-                      <div className="pt-2">
-                        <button
-                          type="button"
-                          onClick={() => setTimelineVisibleCount((current) => current + 20)}
-                          className="w-full text-xs px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
-                        >
-                          Carregar mais eventos
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+              <VehicleTimelineSection
+                mobileOpenSection={mobileOpenSection}
+                setMobileOpenSection={setMobileOpenSection}
+                isTimelineCompactMode={isTimelineCompactMode}
+                onToggleTimelineCompactMode={() => setIsTimelineCompactMode((state) => !state)}
+                onOpenCreatePartModal={() => setIsCreatePartModalOpen(true)}
+                timelineFilter={timelineFilter}
+                onSelectFilter={(filter) => {
+                  applyTimelineFilter(filter)
+                  trackVehicleEvent('timeline_filter_changed', { filter })
+                }}
+                isLoadingVehicle={isLoadingVehicle}
+                filteredTimelineItems={filteredTimelineItems}
+                visibleTimelineItems={visibleTimelineItems}
+                expandedTimelineText={expandedTimelineText}
+                expandedTimelineItems={expandedTimelineItems}
+                onToggleTimelineText={toggleTimelineTextExpanded}
+                onToggleTimelineItem={toggleTimelineItemExpanded}
+                onTimelineScroll={onTimelineScroll}
+                canLoadMoreTimelineItems={canLoadMoreTimelineItems}
+                onLoadMoreTimelineItems={loadMoreTimelineItems}
+                accountsLength={accounts.length}
+              />
             </>
           )}
         </section>
