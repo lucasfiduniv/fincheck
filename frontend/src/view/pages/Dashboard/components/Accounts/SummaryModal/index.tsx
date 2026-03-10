@@ -71,16 +71,17 @@ export function SummaryModal({
   })
 
   const statementQueries = useQueries({
-    queries: statementMonths.map(({ month, year }) => ({
-      queryKey: ['creditCardStatement', creditCard?.id, month, year],
-      queryFn: () =>
-        creditCardsService.getStatementByMonth({
-          creditCardId: creditCard!.id,
-          month,
-          year,
-        }),
-      enabled: !!creditCard?.id,
-    })),
+    queries: creditCard
+      ? statementMonths.map(({ month, year }) => ({
+        queryKey: ['creditCardStatement', creditCard.id, month, year],
+        queryFn: () =>
+          creditCardsService.getStatementByMonth({
+            creditCardId: creditCard.id,
+            month,
+            year,
+          }),
+      }))
+      : [],
   })
 
   const allStatements = statementQueries
