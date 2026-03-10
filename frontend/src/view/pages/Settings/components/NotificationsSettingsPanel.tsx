@@ -24,10 +24,9 @@ interface NotificationsSettingsPanelProps {
   setPreferences: (value: NotificationPreferences | ((prevState: NotificationPreferences) => NotificationPreferences)) => void
   handleSendTest: () => Promise<void>
   isSendingTest: boolean
+  canSendTest: boolean
   hasEvolutionConfigured?: boolean
-  handleSave: () => Promise<void>
-  isSaving: boolean
-  canSave: boolean
+  autosaveLabel: string
   history: NotificationEvent[]
   isLoadingHistory: boolean
   formatPhoneMask: (value: string) => string
@@ -46,10 +45,9 @@ export function NotificationsSettingsPanel({
   setPreferences,
   handleSendTest,
   isSendingTest,
+  canSendTest,
   hasEvolutionConfigured,
-  handleSave,
-  isSaving,
-  canSave,
+  autosaveLabel,
   history,
   isLoadingHistory,
   formatPhoneMask,
@@ -70,7 +68,7 @@ export function NotificationsSettingsPanel({
               onChange={(event) => setPhoneNumber(toStoragePhone(event.target.value))}
             />
 
-            <p className="text-xs text-gray-600">Use numero com DDD.</p>
+            <p className="text-xs text-gray-600">Formato aceito: +55 (DDD) 99999-9999.</p>
 
             {phoneValidationError && (
               <p className="text-xs text-red-800">{phoneValidationError}</p>
@@ -135,26 +133,22 @@ export function NotificationsSettingsPanel({
         </SettingsSection>
 
         <div className="sticky bottom-0 z-20 bg-white/95 backdrop-blur border border-gray-200 rounded-2xl p-4">
-          <div className="flex flex-col lg:flex-row gap-3 lg:justify-end">
+            <div className="flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
+              <p className="text-xs text-gray-600">{autosaveLabel}</p>
+
+              {!hasEvolutionConfigured && (
+                <p className="text-xs text-yellow-900">Configure a integracao para habilitar notificacoes reais.</p>
+              )}
+
             <Button
               type="button"
               variant="ghost"
               onClick={handleSendTest}
               isLoading={isSendingTest}
-              disabled={!phoneNumber || !!phoneValidationError || !hasEvolutionConfigured}
+                disabled={!canSendTest}
               className="w-full lg:w-auto"
             >
               Enviar teste
-            </Button>
-
-            <Button
-              type="button"
-              onClick={handleSave}
-              isLoading={isSaving}
-              disabled={!canSave || !!phoneValidationError}
-              className="w-full lg:w-auto"
-            >
-              Salvar configuracoes
             </Button>
           </div>
         </div>

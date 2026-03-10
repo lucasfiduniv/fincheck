@@ -5,6 +5,7 @@ export interface SettingsMenuItem {
   label: string
   description: string
   available: boolean
+  group?: 'current' | 'upcoming'
 }
 
 interface SettingsMenuProps {

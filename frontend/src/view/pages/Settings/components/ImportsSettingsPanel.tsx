@@ -13,6 +13,9 @@ interface ImportsSettingsPanelProps {
   accounts: Array<{ id: string; name: string }>
   handleStatementFileChange: (event: ChangeEvent<HTMLInputElement>) => Promise<void>
   statementFileName: string
+  statementImportError: string
+  statementFilePreview: string[]
+  acceptedFormatsLabel: string
   handleImportStatement: () => Promise<void>
   isImportingStatement: boolean
   statementCsvContent: string
@@ -25,6 +28,8 @@ interface ImportsSettingsPanelProps {
   creditCards: Array<{ id: string; name: string }>
   handleCreditCardStatementFileChange: (event: ChangeEvent<HTMLInputElement>) => Promise<void>
   creditCardStatementFileName: string
+  creditCardImportError: string
+  creditCardPreview: string[]
   handleImportCreditCardStatement: () => Promise<void>
   isImportingCreditCardStatement: boolean
   creditCardStatementContent: string
@@ -42,6 +47,9 @@ export function ImportsSettingsPanel({
   accounts,
   handleStatementFileChange,
   statementFileName,
+  statementImportError,
+  statementFilePreview,
+  acceptedFormatsLabel,
   handleImportStatement,
   isImportingStatement,
   statementCsvContent,
@@ -54,6 +62,8 @@ export function ImportsSettingsPanel({
   creditCards,
   handleCreditCardStatementFileChange,
   creditCardStatementFileName,
+  creditCardImportError,
+  creditCardPreview,
   handleImportCreditCardStatement,
   isImportingCreditCardStatement,
   creditCardStatementContent,
@@ -83,6 +93,10 @@ export function ImportsSettingsPanel({
         </div>
 
         <div className="space-y-3">
+          <p className="text-xs text-gray-600">
+            Tamanho maximo por arquivo: 5MB. Formatos aceitos para o banco selecionado: {acceptedFormatsLabel}.
+          </p>
+
           <Select
             placeholder="Banco"
             value={statementBank}
@@ -118,6 +132,21 @@ export function ImportsSettingsPanel({
 
           {statementFileName && (
             <p className="text-xs text-gray-600">Arquivo selecionado: {statementFileName}</p>
+          )}
+
+          {statementImportError && (
+            <p className="text-xs text-red-800">{statementImportError}</p>
+          )}
+
+          {statementFilePreview.length > 0 && (
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700">
+              <strong className="block mb-2">Preview rapido do arquivo</strong>
+              <ul className="space-y-1">
+                {statementFilePreview.map((line, index) => (
+                  <li key={`${line}-${index}`} className="font-mono break-all">{line}</li>
+                ))}
+              </ul>
+            </div>
           )}
 
           <Button
@@ -176,6 +205,8 @@ export function ImportsSettingsPanel({
         description="Importe CSV ou OFX do Nubank para criar compras no cartao selecionado."
       >
         <div className="space-y-3">
+          <p className="text-xs text-gray-600">Tamanho maximo por arquivo: 5MB. Formatos aceitos: CSV ou OFX.</p>
+
           <Select
             placeholder="Cartao"
             value={creditCardStatementCardId}
@@ -200,6 +231,21 @@ export function ImportsSettingsPanel({
 
           {creditCardStatementFileName && (
             <p className="text-xs text-gray-600">Arquivo selecionado: {creditCardStatementFileName}</p>
+          )}
+
+          {creditCardImportError && (
+            <p className="text-xs text-red-800">{creditCardImportError}</p>
+          )}
+
+          {creditCardPreview.length > 0 && (
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700">
+              <strong className="block mb-2">Preview rapido do arquivo</strong>
+              <ul className="space-y-1">
+                {creditCardPreview.map((line, index) => (
+                  <li key={`${line}-${index}`} className="font-mono break-all">{line}</li>
+                ))}
+              </ul>
+            </div>
           )}
 
           <Button
