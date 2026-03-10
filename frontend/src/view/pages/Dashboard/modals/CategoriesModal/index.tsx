@@ -4,7 +4,6 @@ import { Button } from '../../../../components/Button'
 import { ConfirmDeleteModal } from '../../../../components/ConfirmDeleteModal'
 import { Input } from '../../../../components/Input'
 import { Modal } from '../../../../components/Modal'
-import { Select } from '../../../../components/Select'
 import { CategoryIcon } from '../../../../components/icons/categories/CategoryIcon'
 import { TrashIcon } from '../../../../components/icons/TrashIcon'
 import { useCategoriesModalController } from './useCategoriesModalController'
@@ -42,6 +41,7 @@ export function CategoriesModal() {
     isLoadingDelete,
     isLoadingReorder,
     handleReorderCategories,
+    handleMoveCategoryByOffset,
   } = useCategoriesModalController()
 
   if (isDeleteModalOpen && categoryBeingDeleted) {
@@ -61,6 +61,7 @@ export function CategoriesModal() {
       title="Categorias"
       open={isCategoriesModalOpen}
       onClose={closeCategoriesModal}
+      contentClassName="max-w-[720px] max-h-[88vh] overflow-y-auto"
     >
       <div className="space-y-6">
         <div>
@@ -105,7 +106,7 @@ export function CategoriesModal() {
               Arraste e solte para definir a ordem das categorias mais usadas.
             </p>
 
-            <div className="space-y-2 max-h-56 overflow-y-auto">
+            <div className="space-y-2 max-h-[52vh] overflow-y-auto pr-1">
               {categories.length === 0 && (
                 <div className="h-16 rounded-lg bg-gray-50 text-sm text-gray-700 flex items-center justify-center">
                   Nenhuma categoria cadastrada nesse tipo.
@@ -138,7 +139,7 @@ export function CategoriesModal() {
                     setDragOverCategoryId(null)
                   }}
                   className={cn(
-                    'h-12 px-3 rounded-lg border border-gray-300 flex items-center justify-between gap-3 bg-white',
+                    'h-14 px-3 rounded-lg border border-gray-300 flex items-center justify-between gap-3 bg-white cursor-grab active:cursor-grabbing',
                     dragOverCategoryId === category.id && draggedCategoryId !== category.id && 'border-teal-500 ring-2 ring-teal-100',
                     draggedCategoryId === category.id && 'opacity-60',
                     isLoadingReorder && 'cursor-wait opacity-80',
@@ -154,12 +155,32 @@ export function CategoriesModal() {
 
                   <div className="flex items-center gap-2">
                     <button
+                      type="button"
+                      className="w-7 h-7 rounded-md border border-gray-200 text-gray-600 disabled:opacity-40"
+                      onClick={() => void handleMoveCategoryByOffset(category.id, -1)}
+                      disabled={isLoadingReorder || categories[0]?.id === category.id}
+                      title="Mover para cima"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      className="w-7 h-7 rounded-md border border-gray-200 text-gray-600 disabled:opacity-40"
+                      onClick={() => void handleMoveCategoryByOffset(category.id, 1)}
+                      disabled={isLoadingReorder || categories[categories.length - 1]?.id === category.id}
+                      title="Mover para baixo"
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
                       className="text-xs font-medium text-teal-900"
                       onClick={() => handleOpenEditForm(category)}
                     >
                       Editar
                     </button>
                     <button
+                      type="button"
                       className="w-8 h-8 flex items-center justify-center"
                       onClick={() => handleOpenDeleteModal(category)}
                     >
@@ -208,21 +229,42 @@ export function CategoriesModal() {
 
             <div
               className={`overflow-hidden transition-all duration-200 ${
-                showManualIconSelection ? 'max-h-24 opacity-100' : 'max-h-0 opacity-0'
+                showManualIconSelection ? 'max-h-[520px] opacity-100' : 'max-h-0 opacity-0'
               }`}
             >
-              <div className="pt-1">
+              <div className="pt-2">
                 <Controller
                   control={control}
                   name="icon"
                   render={({ field: { value, onChange } }) => (
-                    <Select
-                      placeholder="Ícone"
-                      onChange={onChange}
-                      value={value}
-                      error={errors.icon?.message}
-                      options={iconOptions}
-                    />
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-[300px] overflow-y-auto pr-1">
+                        {iconOptions.map((option) => {
+                          const isSelected = value === option.value
+
+                          return (
+                            <button
+                              key={option.value}
+                              type="button"
+                              onClick={() => onChange(option.value)}
+                              className={cn(
+                                'rounded-lg border px-2 py-2 bg-white flex items-center gap-2 text-left transition-colors',
+                                isSelected
+                                  ? 'border-teal-700 ring-2 ring-teal-100'
+                                  : 'border-gray-200 hover:border-gray-300',
+                              )}
+                            >
+                              <CategoryIcon type={activeType} category={option.value} />
+                              <span className="text-xs text-gray-700 leading-tight">{option.label}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+
+                      {errors.icon?.message && (
+                        <p className="text-xs text-red-900 mt-2">{errors.icon.message}</p>
+                      )}
+                    </div>
                   )}
                 />
               </div>

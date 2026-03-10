@@ -15,13 +15,15 @@ import { friendshipsService } from '../../../app/services/friendshipsService'
 import { currencyStringToNumber } from '../../../app/utils/currencyStringToNumber'
 import { toast } from 'react-hot-toast'
 import { SavingsBoxYieldMode } from '../../../app/entities/SavingsBox'
+import { getTodayDateInputValue } from '../../../app/utils/getTodayDateInputValue'
+import { formatDate as formatUTCDate } from '../../../app/utils/formatDate'
 
 function formatDate(date?: string | null) {
   if (!date) {
     return '-'
   }
 
-  return new Date(date).toLocaleDateString('pt-BR')
+  return formatUTCDate(new Date(date))
 }
 
 function toISODate(value: string) {
@@ -65,7 +67,7 @@ export function SavingsBoxes() {
 
   const [entryAmount, setEntryAmount] = useState('')
   const [entryDescription, setEntryDescription] = useState('')
-  const [entryDate, setEntryDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [entryDate, setEntryDate] = useState(getTodayDateInputValue())
   const [entryType, setEntryType] = useState<'DEPOSIT' | 'WITHDRAW'>('DEPOSIT')
 
   const [goalAmount, setGoalAmount] = useState('')

@@ -2,6 +2,7 @@ import { Dispatch, SetStateAction, UIEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '../../../components/Button'
 import { formatCurrency } from '../../../../app/utils/formatCurrency'
+import { formatDate as formatUTCDate } from '../../../../app/utils/formatDate'
 import { TimelineFilter, TimelineItem } from '../types'
 
 interface VehicleTimelineSectionProps {
@@ -26,7 +27,7 @@ interface VehicleTimelineSectionProps {
 }
 
 function formatDate(value: string) {
-  return new Date(value).toLocaleDateString('pt-BR')
+  return formatUTCDate(new Date(value))
 }
 
 export function VehicleTimelineSection({

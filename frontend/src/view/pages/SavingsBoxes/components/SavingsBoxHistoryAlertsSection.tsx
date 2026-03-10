@@ -1,5 +1,6 @@
 import { SavingsBoxAlert, SavingsBoxTransaction } from '../../../../app/entities/SavingsBox'
 import { formatCurrency } from '../../../../app/utils/formatCurrency'
+import { formatDate as formatUTCDate } from '../../../../app/utils/formatDate'
 
 interface SavingsBoxHistoryAlertsSectionProps {
   isLoadingDetails: boolean
@@ -17,7 +18,7 @@ function formatDate(date?: string | null) {
     return '-'
   }
 
-  return new Date(date).toLocaleDateString('pt-BR')
+  return formatUTCDate(new Date(date))
 }
 
 export function SavingsBoxHistoryAlertsSection({

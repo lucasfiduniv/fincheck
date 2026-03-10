@@ -18,20 +18,32 @@ type FormData = z.infer<typeof schema>
 
 const EXPENSE_ICON_OPTIONS = [
   { value: 'home', label: 'Casa' },
+  { value: 'bills', label: 'Boletos' },
   { value: 'food', label: 'Alimentação' },
   { value: 'education', label: 'Educação' },
   { value: 'fun', label: 'Lazer' },
   { value: 'grocery', label: 'Mercado' },
   { value: 'clothes', label: 'Roupas' },
+  { value: 'beauty', label: 'Beleza' },
+  { value: 'health', label: 'Saúde' },
+  { value: 'pet', label: 'Pet' },
+  { value: 'electronics', label: 'Eletrônicos' },
+  { value: 'investments', label: 'Investimentos' },
   { value: 'transport', label: 'Transporte' },
   { value: 'travel', label: 'Viagem' },
-  { value: 'other', label: 'Outro' },
+  { value: 'sports', label: 'Esportes' },
+  { value: 'other', label: 'Outros' },
 ]
 
 const INCOME_ICON_OPTIONS = [
   { value: 'salary', label: 'Salário' },
   { value: 'freelance', label: 'Freelance' },
-  { value: 'other', label: 'Outro' },
+  { value: 'bonus', label: 'Bônus' },
+  { value: 'cashback', label: 'Cashback' },
+  { value: 'investments', label: 'Investimentos' },
+  { value: 'rent', label: 'Aluguel recebido' },
+  { value: 'sales', label: 'Vendas' },
+  { value: 'other', label: 'Outros' },
 ]
 
 function getDefaultIconByType(type: Category['type']) {
@@ -78,7 +90,7 @@ export function useCategoriesModalController() {
 
   const iconOptions = useMemo(
     () => activeType === 'EXPENSE' ? EXPENSE_ICON_OPTIONS : INCOME_ICON_OPTIONS,
-    [activeType]
+    [activeType],
   )
 
   function handleSetActiveType(type: Category['type']) {
@@ -216,6 +228,24 @@ export function useCategoriesModalController() {
     }
   }
 
+  async function handleMoveCategoryByOffset(categoryId: string, offset: -1 | 1) {
+    const currentIndex = filteredCategories.findIndex((category) => category.id === categoryId)
+
+    if (currentIndex < 0) {
+      return
+    }
+
+    const targetIndex = currentIndex + offset
+
+    if (targetIndex < 0 || targetIndex >= filteredCategories.length) {
+      return
+    }
+
+    const targetCategory = filteredCategories[targetIndex]
+
+    await handleReorderCategories(categoryId, targetCategory.id)
+  }
+
   const handleSubmit = hookFormSubmit(async (data) => {
     try {
       if (categoryBeingEdited) {
@@ -268,5 +298,6 @@ export function useCategoriesModalController() {
     isLoadingDelete,
     isLoadingReorder,
     handleReorderCategories,
+    handleMoveCategoryByOffset,
   }
 }

@@ -1,6 +1,7 @@
 import { Button } from '../../../components/Button'
 import { Input } from '../../../components/Input'
 import { VehicleDetails } from '../../../../app/entities/Vehicle'
+import { formatDate as formatUTCDate } from '../../../../app/utils/formatDate'
 
 interface VehicleOdometerSectionProps {
   mobileOpenSection: 'SUMMARY' | 'ODOMETER' | 'METRICS' | 'TIMELINE'
@@ -52,7 +53,7 @@ export function VehicleOdometerSection({
   deltaLabel,
 }: VehicleOdometerSectionProps) {
   function formatDate(value: string) {
-    return new Date(value).toLocaleDateString('pt-BR')
+    return formatUTCDate(new Date(value))
   }
 
   return (

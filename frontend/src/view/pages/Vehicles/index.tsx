@@ -18,6 +18,7 @@ import { VehicleSummarySection } from './components/VehicleSummarySection'
 import { VehicleOdometerSection } from './components/VehicleOdometerSection'
 import { VehicleMetricsSection } from './components/VehicleMetricsSection'
 import { InlineFeedbackState } from './types'
+import { getTodayDateInputValue } from '../../../app/utils/getTodayDateInputValue'
 
 const fuelTypeOptions = [
   { value: 'GASOLINE', label: 'Gasolina' },
@@ -122,7 +123,7 @@ export function Vehicles() {
   const [partBrand, setPartBrand] = useState('')
   const [partQuantity, setPartQuantity] = useState('1')
   const [partTotalCost, setPartTotalCost] = useState('')
-  const [partInstalledAt, setPartInstalledAt] = useState(new Date().toISOString().slice(0, 10))
+  const [partInstalledAt, setPartInstalledAt] = useState(getTodayDateInputValue())
   const [partInstalledOdometer, setPartInstalledOdometer] = useState('')
   const [partLifetimeKm, setPartLifetimeKm] = useState('')
   const [partNextReplacementOdometer, setPartNextReplacementOdometer] = useState('')
@@ -137,7 +138,7 @@ export function Vehicles() {
   const [quickFuelLiters, setQuickFuelLiters] = useState('')
   const [quickFuelPricePerLiter, setQuickFuelPricePerLiter] = useState('')
   const [quickFuelOdometer, setQuickFuelOdometer] = useState('')
-  const [quickFuelDate, setQuickFuelDate] = useState(new Date().toISOString().slice(0, 10))
+  const [quickFuelDate, setQuickFuelDate] = useState(getTodayDateInputValue())
   const [quickFuelFillType, setQuickFuelFillType] = useState<'FULL' | 'PARTIAL'>('PARTIAL')
   const [quickFuelFirstPumpClick, setQuickFuelFirstPumpClick] = useState(false)
 
@@ -146,7 +147,7 @@ export function Vehicles() {
   const [quickMaintenanceTitle, setQuickMaintenanceTitle] = useState('')
   const [quickMaintenanceAmount, setQuickMaintenanceAmount] = useState('')
   const [quickMaintenanceOdometer, setQuickMaintenanceOdometer] = useState('')
-  const [quickMaintenanceDate, setQuickMaintenanceDate] = useState(new Date().toISOString().slice(0, 10))
+  const [quickMaintenanceDate, setQuickMaintenanceDate] = useState(getTodayDateInputValue())
 
   const [inlineFeedback, setInlineFeedback] = useState<InlineFeedbackState | null>(null)
   const [mobileOpenSection, setMobileOpenSection] = useState<'SUMMARY' | 'ODOMETER' | 'METRICS' | 'TIMELINE'>('SUMMARY')
@@ -490,7 +491,7 @@ export function Vehicles() {
     setPartBrand('')
     setPartQuantity('1')
     setPartTotalCost('')
-    setPartInstalledAt(new Date().toISOString().slice(0, 10))
+    setPartInstalledAt(getTodayDateInputValue())
     setPartInstalledOdometer('')
     setPartLifetimeKm('')
     setPartNextReplacementOdometer('')
@@ -510,7 +511,7 @@ export function Vehicles() {
         ? referenceOdometer.toFixed(1)
         : '',
     )
-    setQuickFuelDate(new Date().toISOString().slice(0, 10))
+    setQuickFuelDate(getTodayDateInputValue())
     setQuickFuelFillType('PARTIAL')
     setQuickFuelFirstPumpClick(false)
   }
@@ -527,7 +528,7 @@ export function Vehicles() {
         ? referenceOdometer.toFixed(1)
         : '',
     )
-    setQuickMaintenanceDate(new Date().toISOString().slice(0, 10))
+    setQuickMaintenanceDate(getTodayDateInputValue())
   }
 
   async function handleCreateVehicle() {

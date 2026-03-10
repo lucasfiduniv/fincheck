@@ -69,7 +69,7 @@ export function EditTransactionModal({
       scope: adjustmentScope,
       fromDate:
         adjustmentScope === 'THIS_AND_NEXT' && futureFromDate
-          ? new Date(futureFromDate).toISOString()
+          ? new Date(`${futureFromDate}T00:00:00.000Z`).toISOString()
           : undefined,
     })
 

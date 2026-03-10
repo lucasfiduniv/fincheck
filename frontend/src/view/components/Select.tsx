@@ -7,6 +7,7 @@ import {
 
 import { cn } from '../../app/utils/cn'
 import { useState } from 'react'
+import { ReactNode } from 'react'
 
 interface SelectProps {
   className?: string;
@@ -14,7 +15,7 @@ interface SelectProps {
   placeholder?: string;
   options: {
     value: string;
-    label: string;
+    label: ReactNode;
   }[];
   value?: string
   onChange?(value: string): void

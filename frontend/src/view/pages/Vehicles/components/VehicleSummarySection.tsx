@@ -1,6 +1,7 @@
 import { ChangeEvent, RefObject } from 'react'
 import { VehicleDetails } from '../../../../app/entities/Vehicle'
 import { formatCurrency } from '../../../../app/utils/formatCurrency'
+import { formatDate as formatUTCDate } from '../../../../app/utils/formatDate'
 import { InlineFeedbackState } from '../types'
 
 interface VehicleSummarySectionProps {
@@ -29,7 +30,7 @@ export function VehicleSummarySection({
   nextReplacementStatus,
 }: VehicleSummarySectionProps) {
   function formatDate(value: string) {
-    return new Date(value).toLocaleDateString('pt-BR')
+    return formatUTCDate(new Date(value))
   }
 
   return (
