@@ -39,6 +39,7 @@ export class AuthRepository {
               { name: 'Mercado', icon: 'grocery', type: 'EXPENSE' },
               { name: 'Roupas', icon: 'clothes', type: 'EXPENSE' },
               { name: 'Transporte', icon: 'transport', type: 'EXPENSE' },
+              { name: 'Combustível', icon: 'fuel', type: 'EXPENSE' },
               { name: 'Viagem', icon: 'travel', type: 'EXPENSE' },
               { name: 'Outro', icon: 'other', type: 'EXPENSE' },
             ],

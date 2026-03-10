@@ -66,24 +66,26 @@ export class CreditCardsService {
     return cards.map(({ installments, ...card }) => {
       const usedLimit = installments.reduce((acc, installment) => acc + installment.amount, 0)
       const availableLimit = Number((card.creditLimit - usedLimit).toFixed(2))
-      const currentStatement = this.creditCardStatementScheduleService.getCurrentStatementReference()
-      const currentStatementTotal = installments
-        .filter(
-          (installment) =>
-            installment.statementMonth === currentStatement.month &&
-            installment.statementYear === currentStatement.year,
-        )
-        .reduce((acc, installment) => acc + installment.amount, 0)
 
       const nextDue = installments
         .slice()
         .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime())[0]
 
+      const nextDueStatementTotal = nextDue
+        ? installments
+          .filter(
+            (installment) =>
+              installment.statementMonth === nextDue.statementMonth &&
+              installment.statementYear === nextDue.statementYear,
+          )
+          .reduce((acc, installment) => acc + installment.amount, 0)
+        : 0
+
       return {
         ...card,
         usedLimit: Number(usedLimit.toFixed(2)),
         availableLimit,
-        currentStatementTotal: Number(currentStatementTotal.toFixed(2)),
+        currentStatementTotal: Number(nextDueStatementTotal.toFixed(2)),
         nextDueDate: nextDue?.dueDate ?? null,
       }
     })

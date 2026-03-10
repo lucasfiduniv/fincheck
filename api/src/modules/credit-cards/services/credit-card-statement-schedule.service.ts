@@ -24,7 +24,8 @@ export class CreditCardStatementScheduleService {
   resolveStatementForPurchase(date: Date, closingDay: number) {
     const day = date.getUTCDate()
 
-    if (day > closingDay) {
+    // Purchases made on the closing day are treated as next statement.
+    if (day >= closingDay) {
       return this.addMonthsToStatement(
         {
           month: date.getUTCMonth(),

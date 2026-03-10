@@ -45,6 +45,28 @@ function formatStatementMonth(month: number, year: number) {
     .replace('.', '')
 }
 
+function getCurrentCycleRange(statement: CreditCardStatement, closingDay: number) {
+  const cycleEndMaxDay = new Date(statement.year, statement.month + 1, 0).getDate()
+  const cycleEndDay = Math.min(closingDay, cycleEndMaxDay)
+  const cycleEnd = new Date(statement.year, statement.month, cycleEndDay)
+
+  const previousMonthDate = new Date(statement.year, statement.month - 1, 1)
+  const previousMonthMaxDay = new Date(
+    previousMonthDate.getFullYear(),
+    previousMonthDate.getMonth() + 1,
+    0,
+  ).getDate()
+  const previousClosingDay = Math.min(closingDay, previousMonthMaxDay)
+  const cycleStart = new Date(
+    previousMonthDate.getFullYear(),
+    previousMonthDate.getMonth(),
+    previousClosingDay,
+  )
+  cycleStart.setDate(cycleStart.getDate() + 1)
+
+  return { cycleStart, cycleEnd }
+}
+
 function formatSeconds(valueInMs?: number) {
   if (!valueInMs || valueInMs <= 0) {
     return '0s'
@@ -87,8 +109,16 @@ export function CreditCardSummaryContent({
   const [selectedStatementKey, setSelectedStatementKey] = useState('')
   const selectedMonthlyStatement = useMemo(() => {
     const foundStatement = sortedStatements.find((statement) => getStatementKey(statement) === selectedStatementKey)
+
     if (foundStatement) {
       return foundStatement
+    }
+
+    // Default to the next statement that is still open to avoid focusing a paid cycle.
+    const nextOpenStatement = sortedStatements.find((statement) => statement.status !== 'PAID')
+
+    if (nextOpenStatement) {
+      return nextOpenStatement
     }
 
     const currentMonthStatement = sortedStatements.find(
@@ -101,6 +131,9 @@ export function CreditCardSummaryContent({
   const selectedMonthlyStatementIndex = selectedMonthlyStatement
     ? sortedStatements.findIndex((statement) => getStatementKey(statement) === selectedMonthlyStatementKey)
     : -1
+  const selectedCycle = selectedMonthlyStatement
+    ? getCurrentCycleRange(selectedMonthlyStatement, creditCard.closingDay)
+    : null
 
   function handleGoToPreviousMonth() {
     if (selectedMonthlyStatementIndex <= 0) {
@@ -272,6 +305,11 @@ export function CreditCardSummaryContent({
               <span className="text-xs text-gray-500 block mt-1">
                 Fecha dia {creditCard.closingDay} • Vence dia {creditCard.dueDay}
               </span>
+              {selectedCycle && (
+                <span className="text-xs text-teal-800 block mt-1">
+                  Ciclo atual: {formatDate(selectedCycle.cycleStart)} a {formatDate(selectedCycle.cycleEnd)} • Vence {selectedMonthlyStatement ? formatDate(new Date(selectedMonthlyStatement.dueDate)) : '--'}
+                </span>
+              )}
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
